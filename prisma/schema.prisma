@@ -1,0 +1,79 @@
+// LOCUS Explorer — Prisma schema
+// Postgres (local via docker-compose; Vercel Postgres/Neon in production).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// One LOCUS-v1 law chunk (full record). ~2.2M rows in production.
+model Law {
+  id                     Int      @id @default(autoincrement())
+  header                 String?
+  content                String   @db.Text
+  isSubstantive          Boolean  @map("is_substantive")
+  function               String?
+  topic                  String?
+  sourceJurisdictionType String?  @map("source_jurisdiction_type")
+  state                  String
+  city                   String?
+  county                 String?
+  enforcementDiscretion  Float    @map("enforcement_discretion")
+  opacity                Float
+  paternalism            Float
+  problemSalience        Float    @map("problem_salience")
+
+  // Full-text search column: a generated tsvector created in the migration SQL
+  // (Prisma cannot express GENERATED columns). Tracked here as Unsupported so
+  // migrations stay in sync; queried via $queryRaw with websearch_to_tsquery.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  @@index([state])
+  @@index([state, county])
+  @@index([function])
+  @@index([topic])
+  @@index([isSubstantive])
+  @@index([opacity])
+  @@index([enforcementDiscretion])
+  @@index([paternalism])
+  @@index([problemSalience])
+  @@index([searchVector], type: Gin)
+  @@map("laws")
+}
+
+/// Pre-computed aggregates for fast map + dashboard rendering.
+/// `level` = 'national' | 'state' (county is a future phase).
+model Jurisdiction {
+  id                       Int     @id @default(autoincrement())
+  level                    String
+  state                    String?
+  county                   String?
+  name                     String
+  lawCount                 Int     @map("law_count")
+  substantiveCount         Int     @map("substantive_count")
+  avgOpacity               Float   @map("avg_opacity")
+  avgEnforcementDiscretion Float   @map("avg_enforcement_discretion")
+  avgPaternalism           Float   @map("avg_paternalism")
+  avgProblemSalience       Float   @map("avg_problem_salience")
+  // Per-axis [min,max] bounds (used for slider domains + color scale).
+  // Populated on the single level='national' row.
+  bounds                   Json?
+
+  @@unique([level, state, county])
+  @@index([level])
+  @@map("jurisdictions")
+}
+
+/// Resumability for the full-dataset seed: one row per completed parquet shard.
+model SeedCheckpoint {
+  id          Int      @id @default(autoincrement())
+  shard       String   @unique
+  rowsLoaded  Int      @map("rows_loaded")
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  @@map("seed_checkpoints")
+}

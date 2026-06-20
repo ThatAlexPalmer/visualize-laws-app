@@ -1,0 +1,24 @@
+# Local Postgres for LOCUS Explorer development.
+# Start:  pnpm db:up   (docker compose up -d)
+# Stop:   pnpm db:down (docker compose down)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: locus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: locus
+    ports:
+      - "5432:5432"
+    volumes:
+      - locus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d locus"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  locus_pgdata:
