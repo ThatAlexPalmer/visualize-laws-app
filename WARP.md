@@ -8,7 +8,7 @@ visualizelaws.app is a fast, fork-friendly web app for searching and visualizing
 [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws. It ships
 full-text search, server-side filtering/pagination, an interactive HTML5 Canvas choropleth
 map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)
-interface with framer-motion throughout. MIT licensed.
+interface with framer-motion throughout. Business Source License 1.1 (BUSL-1.1).
 
 It is a standard single Next.js app at the repo root with a dedicated **data layer**:
 
@@ -71,6 +71,7 @@ pnpm up                 # docker compose up (full stack; 25k sample first run)
 pnpm up:build           # docker compose up --build
 pnpm up:full            # full ~2.2M corpus on first boot (SEED_LIMIT=0)
 pnpm db:up / db:down    # start / stop local Postgres only
+pnpm db:studio          # prisma studio --schema data/prisma/schema.prisma
 
 pnpm prisma:deploy      # apply migrations (data/prisma/schema.prisma)
 pnpm prisma:migrate     # create/apply a dev migration
@@ -140,6 +141,11 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - `DIRECT_URL` — direct/non-pooled connection used by Prisma migrations (same as `DATABASE_URL`
   locally).
 - `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000); 0 = full corpus.
+## Deployment and SEO runbooks
+
+Deployment, CI/CD, domain, and SEO execution details are intentionally kept out of this file to
+avoid staleness. Use plan `cec5df35-4596-4df4-bc1c-7b470b069bba` as the runbook source of truth,
+and use `agents/AGENTS.md` for durable agent/developer context.
 
 ## Git Workflow
 
@@ -153,6 +159,6 @@ Not built yet; good first issues to file:
 1. **Score New Law** (lead premium feature) — `POST /api/score` + UI running arbitrary text
    through the four HF LocalLaws scorer models, behind a configurable `HF_INFERENCE_BASE_URL`.
    Strong fit for the first USDC-gated unlock.
-2. **USDC / agentic payments** — open-core monetization gating premium capability while the MIT
-   core stays free.
+2. **USDC / agentic payments** — open-core monetization gating premium capability while the core
+   remains source-available under BUSL terms.
 3. **County-level map** — extend the choropleth + aggregates to `level='county'`.

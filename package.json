@@ -2,7 +2,7 @@
   "name": "visualize-laws-app",
   "version": "1.0.0",
   "private": true,
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "description": "Explore the complete LOCUS-v1 corpus of 2.2M U.S. local laws: search, filter, and an interactive canvas map.",
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "prisma:deploy": "prisma migrate deploy --schema data/prisma/schema.prisma",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
+    "db:studio": "prisma studio --schema data/prisma/schema.prisma",
     "up": "docker compose up",
     "up:build": "docker compose up --build",
     "up:full": "SEED_LIMIT=0 docker compose up",

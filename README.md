@@ -119,6 +119,28 @@ the slider domains and map color scale. It's checkpointed, so an interrupted `pn
 safely; `pnpm seed --fresh` resets and reseeds. Other flags: `--limit 25000` (sample),
 `--shards 0,1` (specific shards).
 
+## Inspecting the database (Prisma Studio)
+
+[Prisma Studio](https://www.prisma.io/studio) is a local GUI for browsing and editing the
+database. Start the database first (`pnpm db:up`, or the full stack with `docker compose up`),
+then launch Studio:
+
+```bash
+pnpm db:studio        # = prisma studio --schema data/prisma/schema.prisma
+```
+
+It opens at <http://localhost:5555> and reads `DATABASE_URL` from `.env`, so it points at the
+local Docker Postgres on `localhost:5432`. From there you can browse:
+
+- **laws** — the ~2.2M-row corpus (paginated; filter and sort in the UI).
+- **jurisdictions** — the 51 pre-computed national + per-state aggregate rows.
+- **seed_checkpoints** — one row per completed parquet shard.
+
+The generated `search_vector` (`tsvector`) column is an `Unsupported(...)` type in Prisma, so it
+is intentionally hidden in Studio — that is expected and does not affect search. Studio can edit
+and delete rows, so treat it as a development tool and be careful pointing it at any production
+database.
+
 ## Available scripts
 
 - `pnpm dev` — start the dev server.
@@ -128,6 +150,7 @@ safely; `pnpm seed --fresh` resets and reseeds. Other flags: `--limit 25000` (sa
 - `pnpm up` / `pnpm up:build` — run the full stack (Postgres + app) via Docker Compose.
 - `pnpm up:full` — same, but seed the full ~2.2M-row corpus on first boot (`SEED_LIMIT=0`).
 - `pnpm db:up` / `pnpm db:down` — start / stop local Postgres only (Docker).
+- `pnpm db:studio` — open Prisma Studio to browse the DB (<http://localhost:5555>).
 - `pnpm prisma:deploy` — apply migrations (production-safe).
 - `pnpm prisma:migrate` — create/apply a dev migration.
 - `pnpm seed` — run the seed pipeline (see above).
@@ -154,19 +177,10 @@ next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 ```
 
-## Deployment (Vercel)
+## Deployment and SEO runbooks
 
-The app deploys to Vercel with a managed Postgres database (Vercel Postgres or Neon).
-
-1. Import the repository into Vercel (a standard Next.js project at the repo root — auto-detected).
-2. Provision a Postgres database and map its connection strings to the app's variables:
-   - `DATABASE_URL` → the **pooled** connection string (e.g. `POSTGRES_PRISMA_URL`).
-   - `DIRECT_URL` → the **non-pooling** connection string (e.g. `POSTGRES_URL_NON_POOLING`).
-3. Apply migrations against the production database (`pnpm prisma:deploy` with the production
-   `DIRECT_URL`) and run the seed.
-
-All API route handlers are `dynamic = "force-dynamic"`, so results always reflect the current
-database.
+Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally maintained outside this
+README to avoid drift. Use plan `cec5df35-4596-4df4-bc1c-7b470b069bba` as the source of truth.
 
 ## Attribution
 
@@ -187,4 +201,4 @@ visualizelaws.app is built on the LOCUS-v1 corpus.
 ## Contributing & license
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution workflow. Licensed under
-[MIT](./LICENSE).
+Business Source License 1.1 (BUSL-1.1); see [LICENSE](./LICENSE).
