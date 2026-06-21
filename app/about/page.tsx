@@ -7,7 +7,6 @@ import styled from "styled-components";
 import { motion } from "framer-motion";
 import { Footer } from "@/components/footer/Footer";
 import {
-  APP_AUTHOR,
   APP_AUTHOR_URL,
   AUTHOR_NAME,
   AUTHOR_URL,
@@ -333,7 +332,7 @@ export default function AboutPage() {
         </Section>
 
         <Section variants={item}>
-          <CiteLabel>Built on LOCUS-v1 &middot; please cite</CiteLabel>
+          <CiteLabel>Built on LOCUS-v1</CiteLabel>
           <Cite>{BIBTEX}</Cite>
           <Links $gap={3}>
             <LinkButton
@@ -378,12 +377,11 @@ export default function AboutPage() {
             </LinkButton>
           </Links>
           <Note>
-            App by{" "}
+            app by{" "}
             <MonoLink href={APP_AUTHOR_URL} target="_blank" rel="noreferrer" $size="sm">
-              {APP_AUTHOR} ↗
+              alex palmer ↗
             </MonoLink>{" "}
-            &mdash; an independent project, separate from the LOCUS-v1 dataset &amp;
-            research credited above.
+            just for fun
           </Note>
         </Section>
       </Inner>
