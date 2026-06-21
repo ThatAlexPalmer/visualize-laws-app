@@ -45,24 +45,26 @@ const Wrap = styled.div`
   z-index: ${({ theme }) => theme.z.map};
 `;
 
-const Canvas = styled(motion.canvas)`
+// Base layer: opaque state fills + base separators. Repainted ONLY when the
+// size / axis / domain / aggregate data change — never on hover or selection.
+const BaseCanvas = styled(motion.canvas)`
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+  pointer-events: none;
 `;
 
-// Subtle film grain: an inline fractal-noise SVG screened over the black map.
-const Grain = styled.div`
+// Overlay layer: transparent canvas stacked directly on top. Draws only the
+// hover highlight + active-selection stroke, so pointer activity repaints just
+// this (cheap) layer while the base fills are left untouched.
+const OverlayCanvas = styled.canvas`
   position: absolute;
   inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.06;
-  mix-blend-mode: screen;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
+  width: 100%;
+  height: 100%;
+  display: block;
 `;
 
 const Hint = styled(motion.div)`
@@ -78,14 +80,25 @@ const Hint = styled(motion.div)`
   color: ${({ theme }) => theme.colors.g32};
 `;
 
+/** Size a canvas backing store to its DPR-scaled pixel box (clears on change). */
+function syncCanvasSize(canvas: HTMLCanvasElement, size: Size): void {
+  const bw = Math.round(size.w * size.dpr);
+  const bh = Math.round(size.h * size.dpr);
+  if (canvas.width !== bw) canvas.width = bw;
+  if (canvas.height !== bh) canvas.height = bh;
+}
+
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
   const axis = state.axis;
   const selectedState = state.selectedState;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const baseRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const pathsRef = useRef<PathEntry[]>([]);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const [size, setSize] = useState<Size | null>(null);
   const [rows, setRows] = useState<JurisdictionAgg[]>([]);
@@ -148,19 +161,17 @@ export function MapPanel() {
     return () => ro.disconnect();
   }, []);
 
-  // --- draw -----------------------------------------------------------------
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
+  // --- base layer: opaque fills + separators --------------------------------
+  // Deps deliberately EXCLUDE hovered / selectedState, so pointer activity can
+  // never trigger a base repaint — this is what eliminates the hover flicker.
+  const drawBase = useCallback(() => {
+    const canvas = baseRef.current;
     if (!canvas || !size) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    syncCanvasSize(canvas, size);
     const { w, h, dpr } = size;
-    const bw = Math.round(w * dpr);
-    const bh = Math.round(h * dpr);
-    if (canvas.width !== bw) canvas.width = bw;
-    if (canvas.height !== bh) canvas.height = bh;
-
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = theme.colors.bg;
@@ -183,9 +194,27 @@ export function MapPanel() {
     ctx.lineWidth = 0.6;
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     for (const e of entries) ctx.stroke(e.path);
+  }, [size, aggByUsps, domain, axis]);
 
-    // 3) hover highlight
-    if (hovered) {
+  // --- overlay layer: hover highlight + active selection --------------------
+  // Transparent; cleared and repainted on its own. Only the hovered + selected
+  // state outlines are stroked, so a hover change is a couple of strokes.
+  const drawOverlay = useCallback(() => {
+    const canvas = overlayRef.current;
+    if (!canvas || !size) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    syncCanvasSize(canvas, size);
+    const { w, h, dpr } = size;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const entries = pathsRef.current;
+    ctx.lineJoin = "round";
+
+    // hover highlight (skip when it coincides with the selection stroke)
+    if (hovered && hovered !== selectedState) {
       const he = entries.find((e) => e.usps === hovered);
       if (he) {
         ctx.lineWidth = 1.2;
@@ -194,7 +223,7 @@ export function MapPanel() {
       }
     }
 
-    // 4) active selection (drawn last, on top)
+    // active selection (drawn last, on top)
     if (selectedState) {
       const se = entries.find((e) => e.usps === selectedState);
       if (se) {
@@ -203,7 +232,7 @@ export function MapPanel() {
         ctx.stroke(se.path);
       }
     }
-  }, [size, aggByUsps, domain, axis, hovered, selectedState]);
+  }, [size, hovered, selectedState]);
 
   // Rebuild the per-state Path2D set whenever the canvas size changes.
   useEffect(() => {
@@ -229,10 +258,16 @@ export function MapPanel() {
     pathsRef.current = entries;
   }, [size]);
 
-  // Redraw on any visual input change (incl. freshly-rebuilt paths via `size`).
+  // Repaint the base only when its inputs change (size/paths, data, axis). The
+  // path-rebuild effect above runs first on a size change, so paths are fresh.
   useEffect(() => {
-    draw();
-  }, [draw]);
+    drawBase();
+  }, [drawBase]);
+
+  // Repaint the lightweight overlay only when the hover/selection changes.
+  useEffect(() => {
+    drawOverlay();
+  }, [drawOverlay]);
 
   // framer-motion crossfade when the active axis changes (skip initial mount).
   useEffect(() => {
@@ -249,7 +284,7 @@ export function MapPanel() {
 
   // --- interaction: hit-test in CSS px under an identity transform ----------
   const pick = useCallback((clientX: number, clientY: number): string | null => {
-    const canvas = canvasRef.current;
+    const canvas = overlayRef.current;
     if (!canvas) return null;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
@@ -269,15 +304,41 @@ export function MapPanel() {
     return found;
   }, []);
 
+  // Coalesce mousemoves: store the latest pointer and hit-test at most once per
+  // animation frame, updating `hovered` only when the picked state changes.
+  const flushHover = useCallback(() => {
+    rafRef.current = null;
+    const p = pointerRef.current;
+    if (!p) return;
+    const u = pick(p.x, p.y);
+    setHovered((prev) => (prev === u ? prev : u));
+  }, [pick]);
+
   const handleMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const u = pick(e.clientX, e.clientY);
-      setHovered((prev) => (prev === u ? prev : u));
+      pointerRef.current = { x: e.clientX, y: e.clientY };
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(flushHover);
+      }
     },
-    [pick],
+    [flushHover],
   );
 
-  const handleLeave = useCallback(() => setHovered(null), []);
+  const handleLeave = useCallback(() => {
+    pointerRef.current = null;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setHovered((prev) => (prev === null ? prev : null));
+  }, []);
+
+  // Cancel any pending hover frame on unmount.
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -292,15 +353,14 @@ export function MapPanel() {
 
   return (
     <Wrap ref={wrapRef}>
-      <Canvas
-        ref={canvasRef}
-        animate={controls}
+      <BaseCanvas ref={baseRef} animate={controls} />
+      <OverlayCanvas
+        ref={overlayRef}
         onMouseMove={handleMove}
         onMouseLeave={handleLeave}
         onClick={handleClick}
         style={{ cursor: hovered ? "pointer" : "default" }}
       />
-      <Grain />
       {rows.length === 0 && (
         <Hint
           initial={{ opacity: 0 }}
