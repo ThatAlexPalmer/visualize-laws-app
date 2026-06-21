@@ -10,8 +10,8 @@ export const theme = {
     g08: "rgba(255,255,255,0.08)",
     g12: "rgba(255,255,255,0.12)",
     g20: "rgba(255,255,255,0.20)",
-    g32: "rgba(255,255,255,0.42)",
-    g48: "rgba(255,255,255,0.60)",
+    g32: "rgba(255,255,255,0.52)",
+    g48: "rgba(255,255,255,0.68)",
     g64: "rgba(255,255,255,0.76)",
     g80: "rgba(255,255,255,0.90)",
     // per-axis accent colors (vivid; used by nav pills + map legend)

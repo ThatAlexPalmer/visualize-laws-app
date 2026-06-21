@@ -149,7 +149,7 @@ const ScoreKey = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 9px;
   letter-spacing: 0.08em;
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g48};
 `;
 
 const ScoreVal = styled.span`
@@ -163,7 +163,7 @@ const Centered = styled.div`
   align-items: center;
   justify-content: center;
   padding: ${({ theme }) => theme.space(8)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g64};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
   text-align: center;
@@ -286,7 +286,9 @@ export function ResultsPanel() {
                 }
                 title={`Sort by ${resolveAxisCopy(a.key, unhinged).label}`}
               >
-                {resolveAxisCopy(a.key, unhinged).label.split(" ")[0]}
+                {unhinged
+                  ? resolveAxisCopy(a.key, unhinged).label
+                  : resolveAxisCopy(a.key, unhinged).label.split(" ")[0]}
                 {arrow}
               </SortButton>
             );

@@ -146,7 +146,7 @@ const Empty = styled.div`
   justify-content: center;
   text-align: center;
   padding: ${({ theme }) => theme.space(6)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g64};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
 `;
