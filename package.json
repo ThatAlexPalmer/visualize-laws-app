@@ -19,6 +19,7 @@
     "db:down": "docker compose down",
     "up": "docker compose up",
     "up:build": "docker compose up --build",
+    "up:full": "SEED_LIMIT=0 docker compose up",
     "postinstall": "prisma generate --schema data/prisma/schema.prisma"
   },
   "prisma": {
