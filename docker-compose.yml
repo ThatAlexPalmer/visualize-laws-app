@@ -1,6 +1,7 @@
-# Local Postgres for LOCUS Explorer development.
-# Start:  pnpm db:up   (docker compose up -d)
-# Stop:   pnpm db:down (docker compose down)
+# LOCUS Explorer — full local stack.
+#   One command:  docker compose up   (or: pnpm up / pnpm up:build)
+#     -> Postgres + the Next.js app (auto-migrate, sample-seed, hot reload) on :3000
+#   DB only (for host-run `pnpm dev`):  pnpm db:up  /  pnpm db:down
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,5 +21,31 @@ services:
       timeout: 5s
       retries: 12
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: locus-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/locus?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/locus?schema=public
+      NEXT_PUBLIC_TWEET_URL: ${NEXT_PUBLIC_TWEET_URL:-}
+      NODE_ENV: development
+      # Reliable file watching / hot reload over a bind mount (macOS/Windows).
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/workspace
+      - locus_node_modules:/workspace/node_modules
+      - locus_next:/workspace/app/.next
+      - locus_cache:/workspace/.locus-cache
+
 volumes:
   locus_pgdata:
+  locus_node_modules:
+  locus_next:
+  locus_cache:
