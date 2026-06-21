@@ -1,11 +1,15 @@
-# LOCUS Explorer — full local stack.
+# visualizelaws.app — full local stack.
 #   One command:  docker compose up   (or: pnpm up / pnpm up:build)
-#     -> Postgres + the Next.js app (auto-migrate, sample-seed, hot reload) on :3000
+#     Full ~2.2M-row corpus:  pnpm up:full   (SEED_LIMIT=0)
+#     -> Postgres (pg18) + the Next.js app (auto-migrate, seed, hot reload) on :3000
 #   DB only (for host-run `pnpm dev`):  pnpm db:up  /  pnpm db:down
+name: visualize-laws-app
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: locus-postgres
+    # pgvector image = stock PostgreSQL 18 with the pgvector extension available
+    # (dormant until `CREATE EXTENSION vector`). Debian-based, not alpine.
+    image: pgvector/pgvector:pg18
+    container_name: visualize-laws-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -14,7 +18,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - locus_pgdata:/var/lib/postgresql/data
+      # PG18 moved PGDATA/VOLUME to /var/lib/postgresql (was .../data).
+      - visualize_laws_pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d locus"]
       interval: 5s
@@ -25,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: locus-app
+    container_name: visualize-laws-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,12 +46,12 @@ services:
       - "3000:3000"
     volumes:
       - .:/workspace
-      - locus_node_modules:/workspace/node_modules
-      - locus_next:/workspace/.next
-      - locus_cache:/workspace/.locus-cache
+      - visualize_laws_node_modules:/workspace/node_modules
+      - visualize_laws_next:/workspace/.next
+      - visualize_laws_cache:/workspace/.locus-cache
 
 volumes:
-  locus_pgdata:
-  locus_node_modules:
-  locus_next:
-  locus_cache:
+  visualize_laws_pgdata:
+  visualize_laws_node_modules:
+  visualize_laws_next:
+  visualize_laws_cache:

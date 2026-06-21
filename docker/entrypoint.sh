@@ -1,5 +1,5 @@
 #!/bin/sh
-# LOCUS Explorer container entrypoint:
+# visualizelaws.app container entrypoint:
 #   1. wait for Postgres + apply migrations (idempotent retry doubles as wait)
 #   2. sample-seed only if the laws table is empty (so re-`up` is fast, no dupes)
 #   3. start the Next.js dev server (hot reload) on :3000
