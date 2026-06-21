@@ -32,6 +32,8 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/locus?schema=public
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/locus?schema=public
+      # Rows the entrypoint seeds on first boot; 0 = the full ~2.2M-row corpus.
+      SEED_LIMIT: ${SEED_LIMIT:-25000}
       NODE_ENV: development
       # Reliable file watching / hot reload over a bind mount (macOS/Windows).
       WATCHPACK_POLLING: "true"

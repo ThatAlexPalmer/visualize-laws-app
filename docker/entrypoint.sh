@@ -21,8 +21,14 @@ echo "[entrypoint] migrations applied."
 
 count=$(pnpm -s exec tsx data/db-count.ts 2>/dev/null | tr -dc '0-9')
 if [ -z "$count" ] || [ "$count" = "0" ]; then
-  echo "[entrypoint] laws table is empty — sample seeding (--limit 25000)..."
-  pnpm seed --limit 25000 || echo "[entrypoint] seed failed; continuing with an empty database."
+  limit="${SEED_LIMIT:-25000}"
+  if [ "$limit" = "0" ] || [ -z "$limit" ]; then
+    echo "[entrypoint] laws table is empty — seeding the FULL corpus (SEED_LIMIT=0; downloads ~1.77 GB)..."
+    pnpm seed || echo "[entrypoint] seed failed; continuing with an empty database."
+  else
+    echo "[entrypoint] laws table is empty — sample seeding --limit $limit (set SEED_LIMIT=0 for the full corpus)..."
+    pnpm seed --limit "$limit" || echo "[entrypoint] seed failed; continuing with an empty database."
+  fi
 else
   echo "[entrypoint] laws table has $count rows — skipping seed."
 fi

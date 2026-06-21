@@ -108,6 +108,9 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 Postgres `COPY` (`pg` + `pg-copy-streams`) in ~10k-row batches, checkpoints each shard inside a
 transaction (crash-safe resume), then recomputes the `jurisdictions` aggregates. `search_vector`
 is generated automatically and never written by the seeder.
+The corpus is **not** in git (~1.77 GB). `docker compose up` sample-seeds `SEED_LIMIT` rows
+(default 25000) only when `laws` is empty; set `SEED_LIMIT=0` for the full ~2.2M-row corpus. Or
+seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compose exec app pnpm seed`.
 
 ## Important Patterns & Gotchas
 
@@ -128,7 +131,7 @@ is generated automatically and never written by the seeder.
 - `DATABASE_URL` — Postgres connection (pooled in production).
 - `DIRECT_URL` — direct/non-pooled connection used by Prisma migrations (same as `DATABASE_URL`
   locally).
-- `NEXT_PUBLIC_TWEET_URL` — optional announcement link; the `/about` page shows it only when set.
+- `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000); 0 = full corpus.
 
 ## Git Workflow
 

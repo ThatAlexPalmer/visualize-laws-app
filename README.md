@@ -77,22 +77,34 @@ the host path or production, where you copy `.env.example` to `.env`:
 - `DATABASE_URL` — Postgres connection string used by the app (pooled in production).
 - `DIRECT_URL` — direct (non-pooled) connection string used by Prisma for migrations. Locally
   this is identical to `DATABASE_URL`.
+- `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000); set to 0
+  for the full corpus (see the Seeding section).
 
-## Seeding
+## Seeding (getting the data)
 
-The seed script streams the LOCUS-v1 parquet shards from Hugging Face, bulk-loads them into the
-`laws` table via Postgres `COPY`, records completed shards in `seed_checkpoints` for
-resumability, and computes the `jurisdictions` aggregates (national + per-state) including the
-per-axis `[min, max]` bounds used for the slider domains and the map color scale.
+The corpus is **not** committed to git — it's ~1.77 GB of Postgres data. A fresh clone +
+`docker compose up` loads a fast **~25k-row sample** so the app is immediately usable, but the
+map only shows the handful of states in that sample.
+
+To load the **entire ~2.2M-row corpus** (every state):
 
 ```bash
-pnpm seed --limit 25000   # fast sample (~25k rows) for local development
-pnpm seed                 # full ingest of the complete ~2.2M-row corpus
-pnpm seed --shards a,b     # ingest specific parquet shards
+# host, against the Docker Postgres:
+pnpm db:up && pnpm seed
+
+# or inside the running container:
+docker compose exec app pnpm seed
+
+# or have `docker compose up` do it on a fresh DB (set SEED_LIMIT=0, e.g. in .env):
+SEED_LIMIT=0 docker compose up
 ```
 
-The full ingest is large and long-running; because it is checkpointed, it can be re-run safely
-to resume after an interruption.
+The seeder streams the 8 parquet shards from Hugging Face, bulk-loads them via Postgres `COPY`,
+records completed shards in `seed_checkpoints` for resumability, and recomputes the
+`jurisdictions` aggregates (national + per-state) with the per-axis `[min, max]` bounds used for
+the slider domains and map color scale. It's checkpointed, so an interrupted `pnpm seed` resumes
+safely; `pnpm seed --fresh` resets and reseeds. Other flags: `--limit 25000` (sample),
+`--shards 0,1` (specific shards).
 
 ## Available scripts
 
