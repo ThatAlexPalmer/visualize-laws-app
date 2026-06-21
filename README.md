@@ -160,7 +160,7 @@ database.
 
 ## Attribution
 
-visualizelaws.app is built on the LOCUS-v1 corpus. Please cite:
+visualizelaws.app is built on the LOCUS-v1 corpus.
 
 ```bibtex
 @article{peskoff2026freeing,

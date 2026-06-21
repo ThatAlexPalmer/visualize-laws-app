@@ -58,7 +58,7 @@ export function TopNav() {
   const { state, dispatch } = useExplorer();
   return (
     <Bar>
-      <Brand>visualizelaws.app</Brand>
+		  <Brand>VISUALIZE LAWS</Brand>
       <Axes>
         {AXES.map((a) => {
           const active = state.axis === a.key;
