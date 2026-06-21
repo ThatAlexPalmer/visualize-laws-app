@@ -20,6 +20,76 @@ function parseFloatOrNull(raw: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// --- Approximate totals -----------------------------------------------------
+//
+// The pager only needs a row *count* to size itself; it does not need an exact
+// value. An exact count(*) over the filtered 2.2M-row table costs hundreds of
+// ms–seconds and runs on every page step, so instead we read the planner's
+// estimate, which is effectively instant.
+
+/**
+ * Pull the estimated row count from an `EXPLAIN (FORMAT JSON)` result. Postgres
+ * returns `[{ "Plan": { "Plan Rows": N, ... } }]` in a single `QUERY PLAN`
+ * column; Prisma hands JSON columns back already parsed, but we tolerate a
+ * string too.
+ */
+function extractPlanRows(explainResult: unknown): number | null {
+  if (!Array.isArray(explainResult) || explainResult.length === 0) return null;
+  const row = explainResult[0];
+  if (row === null || typeof row !== "object") return null;
+  const planField = Object.values(row as Record<string, unknown>)[0];
+  let parsed: unknown = planField;
+  if (typeof planField === "string") {
+    try {
+      parsed = JSON.parse(planField);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  const top = parsed[0] as { Plan?: { "Plan Rows"?: unknown } };
+  const planRows = top?.Plan?.["Plan Rows"];
+  return typeof planRows === "number" && Number.isFinite(planRows)
+    ? planRows
+    : null;
+}
+
+/** Whole-table row estimate from catalog stats (a catalog lookup; no scan). */
+async function estimateTotalFromCatalog(): Promise<number | null> {
+  try {
+    const rows = await prisma.$queryRawUnsafe<{ total: number | null }[]>(
+      `SELECT reltuples::float8 AS total FROM pg_class WHERE oid = 'laws'::regclass`,
+    );
+    const total = rows[0]?.total;
+    return typeof total === "number" && total > 0 ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Planner row estimate for the filtered query, via EXPLAIN. Without ANALYZE the
+ * query is only planned, never executed. The SELECT list and ORDER BY do not
+ * affect the row estimate, and LIMIT/OFFSET are intentionally omitted so we
+ * estimate the full filtered set. `params` are bound exactly as for the rows
+ * query, so the planner uses the real values for an accurate estimate.
+ */
+async function estimateFilteredRows(
+  whereSql: string,
+  params: unknown[],
+): Promise<number | null> {
+  try {
+    const sql = `EXPLAIN (FORMAT JSON) SELECT 1 FROM laws ${whereSql}`;
+    const result = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      sql,
+      ...params,
+    );
+    return extractPlanRows(result);
+  } catch {
+    return null;
+  }
+}
+
 // Columns we select, aliased to the camelCase shape of LawRecord.
 const SELECT_COLUMNS = `
   id,
@@ -57,9 +127,13 @@ export async function queryLaws(
     return `$${params.length}`;
   };
 
+  // Full-text search. Capture the bound placeholder so the *same* query text can
+  // drive both the WHERE match and the relevance ORDER BY (ts_rank_cd) below.
   const q = searchParams.get("q")?.trim();
+  let qParam: string | null = null;
   if (q) {
-    where.push(`search_vector @@ websearch_to_tsquery('english', ${bind(q)})`);
+    qParam = bind(q);
+    where.push(`search_vector @@ websearch_to_tsquery('english', ${qParam})`);
   }
 
   const state = searchParams.get("state")?.trim();
@@ -90,33 +164,53 @@ export async function queryLaws(
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   // Sort: whitelist the column (from AXES) and direction. Always append a stable
-  // secondary key on id so pagination is deterministic.
+  // secondary key on id so pagination is deterministic. When q is present,
+  // relevance wins per the search contract; otherwise keep the existing sort/id
+  // ordering.
   const sortKey = searchParams.get("sort") as Axis | null;
   const sortMeta = sortKey ? AXIS_BY_KEY[sortKey] : undefined;
   const dir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
-  const orderSql = sortMeta
-    ? `ORDER BY ${sortMeta.column} ${dir}, id ASC`
-    : `ORDER BY id ASC`;
+  let orderSql: string;
+  if (qParam) {
+    orderSql = `ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('english', ${qParam})) DESC, id ASC`;
+  } else if (sortMeta) {
+    orderSql = `ORDER BY ${sortMeta.column} ${dir}, id ASC`;
+  } else {
+    orderSql = `ORDER BY id ASC`;
+  }
 
+  // The rows query appends its own LIMIT/OFFSET params after the WHERE params.
+  const limitParam = `$${params.length + 1}`;
+  const offsetParam = `$${params.length + 2}`;
+  const rowsParams = [...params, pageSize, offset];
   const rowsSql = `
     SELECT ${SELECT_COLUMNS}
     FROM laws
     ${whereSql}
     ${orderSql}
-    LIMIT ${bind(pageSize)} OFFSET ${bind(offset)}
+    LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
-  const countSql = `SELECT count(*)::int AS total FROM laws ${whereSql}`;
-
-  // rowsSql consumes the two extra LIMIT/OFFSET params; countSql only the WHERE
-  // params, so slice them off.
-  const countParams = params.slice(0, params.length - 2);
 
   try {
-    const [rows, countRows] = await Promise.all([
-      prisma.$queryRawUnsafe<LawRecord[]>(rowsSql, ...params),
-      prisma.$queryRawUnsafe<{ total: number }[]>(countSql, ...countParams),
+    // `total` is an APPROXIMATE planner estimate, not an exact count(*):
+    //   - No filters: the table's cached row estimate from pg_class.reltuples.
+    //   - Filtered:   the planner's "Plan Rows" via EXPLAIN (FORMAT JSON).
+    // Both are effectively instant and run in parallel with the rows query.
+    const estimatePromise =
+      where.length === 0
+        ? estimateTotalFromCatalog().then(
+            (t) => t ?? estimateFilteredRows("", []),
+          )
+        : estimateFilteredRows(whereSql, params);
+
+    const [rows, estimate] = await Promise.all([
+      prisma.$queryRawUnsafe<LawRecord[]>(rowsSql, ...rowsParams),
+      estimatePromise,
     ]);
-    const total = countRows[0]?.total ?? 0;
+
+    // Never report fewer than the rows the caller can already see on this page.
+    const floor = offset + rows.length;
+    const total = Math.max(Math.round(estimate ?? 0), floor);
     return { rows, total, page, pageSize };
   } catch (err) {
     console.error("queryLaws failed:", err);
