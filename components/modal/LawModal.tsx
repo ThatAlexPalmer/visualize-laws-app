@@ -7,6 +7,7 @@ import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import { AXES, DEFAULT_SCORE_RANGE, stateName } from "@/lib/types";
+import { resolveAxisCopy } from "@/lib/copy";
 import { IconButton } from "@/components/ui/buttons";
 import { Card as CardBase, Cluster, Stack } from "@/components/ui/containers";
 import { Heading, Mono } from "@/components/ui/text";
@@ -49,7 +50,7 @@ const Title = styled(Heading)`
 
 const Sub = styled(Mono)`
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
   letter-spacing: 0.04em;
 `;
 
@@ -63,7 +64,7 @@ const Chip = styled.span`
   border: 1px solid ${({ theme }) => theme.colors.g20};
   border-radius: ${({ theme }) => theme.radius.pill};
   padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(2.5)};
-  color: ${({ theme }) => theme.colors.g80};
+  color: ${({ theme }) => theme.colors.g90};
 `;
 
 const ScoreGrid = styled.div`
@@ -83,7 +84,7 @@ const ScoreTop = styled.div`
   justify-content: space-between;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
 `;
 
 const ScoreNum = styled.span`
@@ -112,7 +113,7 @@ const Body = styled.div`
   border-top: 1px solid ${({ theme }) => theme.colors.g12};
   white-space: pre-wrap;
   line-height: 1.6;
-  color: ${({ theme }) => theme.colors.g80};
+  color: ${({ theme }) => theme.colors.g90};
   font-size: ${({ theme }) => theme.fontSize.md};
 `;
 
@@ -124,6 +125,7 @@ function clampPct(v: number): number {
 
 export function LawModal() {
   const { state, dispatch } = useExplorer();
+  const { unhinged } = state;
   const law = state.selectedLaw;
   const close = () => dispatch({ type: "closeLaw" });
 
@@ -183,7 +185,7 @@ export function LawModal() {
                 return (
                   <Stack key={a.key} $gap={1.5}>
                     <ScoreTop>
-                      <span>{a.label}</span>
+                      <span>{resolveAxisCopy(a.key, unhinged).label}</span>
                       <ScoreNum>{value.toFixed(2)}</ScoreNum>
                     </ScoreTop>
                     <Meter>

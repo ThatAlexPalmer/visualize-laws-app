@@ -1,5 +1,24 @@
 import type { Axis, AxisBounds, JurisdictionAgg } from "@/lib/types";
 
+/**
+ * Per-axis HSL ramp params. Keeping hue constant while sweeping lightness
+ * 4%→56% gives the widest perceptual gradient on a black background —
+ * the same principle as the original white-opacity ramp but in full color.
+ */
+interface AxisHSL {
+  hue: number;
+  satLow: number;
+  satHigh: number;
+  litLow: number;
+  litHigh: number;
+}
+const AXIS_HSL: Record<Axis, AxisHSL> = {
+  opacity:               { hue: 4,   satLow: 60, satHigh: 88, litLow: 4, litHigh: 56 }, // red
+  enforcementDiscretion: { hue: 217, satLow: 65, satHigh: 90, litLow: 4, litHigh: 58 }, // blue
+  paternalism:           { hue: 22,  satLow: 65, satHigh: 93, litLow: 4, litHigh: 53 }, // orange
+  problemSalience:       { hue: 258, satLow: 60, satHigh: 83, litLow: 4, litHigh: 60 }, // purple
+};
+
 /** Maps each axis to the aggregate's average column on a JurisdictionAgg. */
 export const AXIS_TO_AVG: Record<Axis, keyof JurisdictionAgg> = {
   opacity: "avgOpacity",
@@ -61,9 +80,21 @@ export function normalize(value: number, domain: Domain): number {
 const MIN_ALPHA = 0.06;
 const MAX_ALPHA = 0.92;
 
-/** White at an opacity mapped from t in [0,1] — the choropleth fill color. */
+/** White at an opacity mapped from t in [0,1] — monochrome fallback. */
 export function rampColor(t: number): string {
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
   const alpha = MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * clamped;
   return `rgba(255,255,255,${alpha.toFixed(3)})`;
+}
+
+/**
+ * Axis-aware choropleth fill: sweeps lightness 4%→56% at a fixed hue,
+ * producing a wide, readable gradient on a black background.
+ */
+export function rampColorForAxis(t: number, axis: Axis): string {
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  const p = AXIS_HSL[axis];
+  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
+  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
+  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
 }

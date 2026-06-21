@@ -3,9 +3,11 @@
 import styled from "styled-components";
 import { motion } from "framer-motion";
 
-import { rampColor, type Domain } from "./color";
+import type { Axis } from "@/lib/types";
+import { rampColorForAxis, type Domain } from "./color";
 
 interface Props {
+  axis: Axis;
   axisLabel: string;
   blurb: string;
   domain: Domain | null;
@@ -39,13 +41,12 @@ const Label = styled.div`
 const Blurb = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   line-height: 1.35;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Bar = styled.div`
   height: 8px;
   border-radius: ${({ theme }) => theme.radius.pill};
-  background: linear-gradient(90deg, ${rampColor(0)} 0%, ${rampColor(1)} 100%);
   border: 1px solid ${({ theme }) => theme.colors.g08};
 `;
 
@@ -54,15 +55,29 @@ const Scale = styled.div`
   justify-content: space-between;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
+`;
+
+const Direction = styled.div`
+  display: flex;
+  justify-content: space-between;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.g60};
+  margin-top: -${({ theme }) => theme.space(0.5)};
 `;
 
 function fmt(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
 
-/** Compact legend: axis label, blurb, and the monochrome value ramp. */
-export function MapLegend({ axisLabel, blurb, domain }: Props) {
+/** Compact legend: axis label, blurb, and the axis-colored value ramp. */
+export function MapLegend({ axis, axisLabel, blurb, domain }: Props) {
+  const barStyle = {
+    background: `linear-gradient(90deg, ${rampColorForAxis(0, axis)} 0%, ${rampColorForAxis(1, axis)} 100%)`,
+  };
   return (
     <Box
       initial={{ opacity: 0, y: 8 }}
@@ -71,11 +86,15 @@ export function MapLegend({ axisLabel, blurb, domain }: Props) {
     >
       <Label>{axisLabel}</Label>
       <Blurb>{blurb}</Blurb>
-      <Bar />
+      <Bar style={barStyle} />
       <Scale>
         <span>{domain ? fmt(domain.min) : "—"}</span>
         <span>{domain ? fmt(domain.max) : "—"}</span>
       </Scale>
+      <Direction>
+        <span>less</span>
+        <span>more</span>
+      </Direction>
     </Box>
   );
 }

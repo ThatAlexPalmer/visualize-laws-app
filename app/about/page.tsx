@@ -89,13 +89,13 @@ const TierName = styled.span`
 
 const TierMeta = styled.span<{ $active?: boolean }>`
   font-size: ${({ theme }) => theme.fontSize.sm};
-  color: ${({ theme, $active }) => ($active ? theme.colors.bg : theme.colors.g48)};
+  color: ${({ theme, $active }) => ($active ? theme.colors.bg : theme.colors.g68)};
   text-align: right;
 `;
 
 const Note = styled(Muted)`
   margin: ${({ theme }) => theme.space(4)} 0 0;
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
   font-size: ${({ theme }) => theme.fontSize.sm};
 `;
 
@@ -119,7 +119,7 @@ const CoverItem = styled.li`
     font-weight: 600;
   }
   span {
-    color: ${({ theme }) => theme.colors.g64};
+    color: ${({ theme }) => theme.colors.g76};
   }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
@@ -145,13 +145,13 @@ const Table = styled.table`
     font-size: ${({ theme }) => theme.fontSize.xs};
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: ${({ theme }) => theme.colors.g64};
+    color: ${({ theme }) => theme.colors.g76};
   }
   td b {
     font-weight: 600;
   }
   td span {
-    color: ${({ theme }) => theme.colors.g64};
+    color: ${({ theme }) => theme.colors.g76};
   }
 `;
 
@@ -175,7 +175,7 @@ const Cite = styled.pre`
   border: 1px solid ${({ theme }) => theme.colors.g12};
   border-radius: ${({ theme }) => theme.radius.sm};
   padding: ${({ theme }) => theme.space(3)};
-  color: ${({ theme }) => theme.colors.g80};
+  color: ${({ theme }) => theme.colors.g90};
 `;
 
 const Links = styled(Cluster)`

@@ -14,6 +14,7 @@ import {
   type LawRecord,
   type LawsResponse,
 } from "@/lib/types";
+import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
 import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
 import { Kicker, Mono } from "@/components/ui/text";
@@ -65,7 +66,7 @@ const Toolbar = styled(Row)`
 // `text-transform: none` opts out of the uppercase Kicker it sits inside.
 const Updating = styled(motion.span)`
   margin-left: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g60};
   text-transform: none;
 `;
 
@@ -75,8 +76,8 @@ const SortBar = styled(Cluster)`
 
 const SortButton = styled.button<{ $active: boolean }>`
   background: ${({ $active, theme }) => ($active ? theme.colors.g12 : "transparent")};
-  border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.g32 : theme.colors.g08)};
-  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g48)};
+  border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g08)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
   border-radius: ${({ theme }) => theme.radius.sm};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
@@ -124,7 +125,7 @@ const RowMeta = styled.div`
   margin-top: ${({ theme }) => theme.space(1)};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -141,14 +142,14 @@ const Score = styled.div<{ $active: boolean }>`
   align-items: flex-end;
   gap: 2px;
   min-width: 34px;
-  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g48)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
 `;
 
 const ScoreKey = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 9px;
   letter-spacing: 0.08em;
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const ScoreVal = styled.span`
@@ -162,7 +163,7 @@ const Centered = styled.div`
   align-items: center;
   justify-content: center;
   padding: ${({ theme }) => theme.space(8)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g76};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
   text-align: center;
@@ -196,7 +197,7 @@ const PageButton = styled(Button)`
 
 const PageInfo = styled(Mono)`
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 function fmt(n: number): string {
@@ -205,7 +206,7 @@ function fmt(n: number): string {
 
 export function ResultsPanel() {
   const { state, dispatch } = useExplorer();
-  const { filters } = state;
+  const { filters, unhinged } = state;
   const query = useMemo(() => buildQuery(filters), [filters]);
 
   // `data` holds the last successful response and is intentionally NOT cleared
@@ -256,8 +257,10 @@ export function ResultsPanel() {
       <Toolbar $gap={3}>
         <Kicker>
           {isInitialLoading
-            ? "Loading…"
-            : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
+            ? ui("Loading…", unhinged)
+            : unhinged
+              ? `${total.toLocaleString()} ORDINANCES FROM THE VOID`
+              : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
           {isRevalidating && (
             <Updating
               animate={{ opacity: [0.5, 1, 0.5] }}
@@ -281,9 +284,11 @@ export function ResultsPanel() {
                     filters: { sort: nextSort(filters.sort, a.key) },
                   })
                 }
-                title={`Sort by ${a.label}`}
+                title={`Sort by ${resolveAxisCopy(a.key, unhinged).label}`}
               >
-                {a.label.split(" ")[0]}
+                {unhinged
+                  ? resolveAxisCopy(a.key, unhinged).label
+                  : resolveAxisCopy(a.key, unhinged).label.split(" ")[0]}
                 {arrow}
               </SortButton>
             );
@@ -312,7 +317,7 @@ export function ResultsPanel() {
         ) : showError ? (
           <Centered>Could not load results. Is the database seeded?</Centered>
         ) : rows.length === 0 ? (
-          <Centered>No laws match these filters.</Centered>
+          <Centered>{ui("No laws match these filters.", unhinged)}</Centered>
         ) : (
           <AnimatePresence initial={false}>
             {rows.map((law: LawRecord, i) => (
@@ -336,7 +341,7 @@ export function ResultsPanel() {
                 <Scores>
                   {AXES.map((a) => (
                     <Score key={a.key} $active={state.axis === a.key}>
-                      <ScoreKey>{a.label.slice(0, 3).toUpperCase()}</ScoreKey>
+                      <ScoreKey>{resolveAxisCopy(a.key, unhinged).label.slice(0, 3).toUpperCase()}</ScoreKey>
                       <ScoreVal>{fmt(law[a.key])}</ScoreVal>
                     </Score>
                   ))}
@@ -355,7 +360,7 @@ export function ResultsPanel() {
           disabled={page <= 1 || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page - 1 })}
         >
-          ← Prev
+          {unhinged ? "← RETREAT" : "← Prev"}
         </PageButton>
         <PageInfo>
           Page {page} of {totalPages}
@@ -367,7 +372,7 @@ export function ResultsPanel() {
           disabled={page >= totalPages || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page + 1 })}
         >
-          Next →
+          {unhinged ? "CONTINUE SUFFERING →" : "Next →"}
         </PageButton>
       </Pager>
     </Panel>

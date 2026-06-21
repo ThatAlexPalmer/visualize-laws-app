@@ -16,7 +16,7 @@ const Bar = styled.footer`
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 export function Footer() {

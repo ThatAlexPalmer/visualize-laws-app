@@ -66,5 +66,5 @@ export const SectionLabel = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;

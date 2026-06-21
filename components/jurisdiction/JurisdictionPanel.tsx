@@ -13,6 +13,7 @@ import {
   stateName,
   type JurisdictionDetailResponse,
 } from "@/lib/types";
+import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
 import {
   Card,
@@ -37,7 +38,7 @@ const Header = styled(Row)`
 // Clear reuses the subtle Button; it only drops padding and dims the label.
 const Clear = styled(Button)`
   padding: 0;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Inner = styled(ScrollArea)`
@@ -68,7 +69,7 @@ const StatLabel = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const AvgTop = styled.div`
@@ -77,7 +78,7 @@ const AvgTop = styled.div`
   justify-content: space-between;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
 `;
 
 const AvgNum = styled.span`
@@ -116,7 +117,7 @@ const LawRow = styled.button`
   border: 0;
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
   padding: ${({ theme }) => theme.space(2.5)} 0;
-  color: ${({ theme }) => theme.colors.g80};
+  color: ${({ theme }) => theme.colors.g90};
   cursor: pointer;
 
   &:hover {
@@ -135,7 +136,7 @@ const LawVal = styled.span`
   flex-shrink: 0;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Empty = styled.div`
@@ -145,9 +146,12 @@ const Empty = styled.div`
   justify-content: center;
   text-align: center;
   padding: ${({ theme }) => theme.space(6)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.fg};
   font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
+  font-size: ${({ theme }) => theme.fontSize.md};
+  line-height: 1.5;
+  max-width: 220px;
+  margin: 0 auto;
 `;
 
 const AVG_BY_AXIS = {
@@ -164,7 +168,7 @@ function clampPct(v: number): number {
 
 export function JurisdictionPanel() {
   const { state, dispatch } = useExplorer();
-  const { selectedState } = state;
+  const { selectedState, unhinged } = state;
 
   const [data, setData] = useState<JurisdictionDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -201,7 +205,7 @@ export function JurisdictionPanel() {
   if (!selectedState) {
     return (
       <Panel as="aside">
-        <Empty>Select a state on the map to see its profile.</Empty>
+        <Empty>{ui("Select a state on the map to see its profile.", unhinged)}</Empty>
       </Panel>
     );
   }
@@ -248,14 +252,14 @@ export function JurisdictionPanel() {
                 </Stat>
               </CountRow>
 
-              <SectionLabel>Average scores</SectionLabel>
+              <SectionLabel>{ui("Average scores", unhinged)}</SectionLabel>
               <Stack $gap={3}>
                 {AXES.map((a) => {
                   const value = agg[AVG_BY_AXIS[a.key]];
                   return (
                     <Stack key={a.key} $gap={1.5}>
                       <AvgTop>
-                        <span>{a.label}</span>
+                        <span>{resolveAxisCopy(a.key, unhinged).label}</span>
                         <AvgNum>{value.toFixed(2)}</AvgNum>
                       </AvgTop>
                       <Meter>
@@ -272,7 +276,7 @@ export function JurisdictionPanel() {
 
               {topLaws.length > 0 && (
                 <>
-                  <SectionLabel>Notable laws</SectionLabel>
+                  <SectionLabel>{ui("Notable laws", unhinged)}</SectionLabel>
                   <TopLaws>
                     {topLaws.map((law) => (
                       <LawRow

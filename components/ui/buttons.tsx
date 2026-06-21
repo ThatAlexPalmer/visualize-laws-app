@@ -37,14 +37,14 @@ const buttonBase = css<ButtonProps>`
     $variant === "primary"
       ? theme.colors.bg
       : $variant === "subtle"
-        ? theme.colors.g64
+        ? theme.colors.g76
         : theme.colors.fg};
   border: 1px solid
     ${({ theme, $variant }) =>
       $variant === "ghost"
         ? theme.colors.g20
         : $variant === "danger"
-          ? theme.colors.g48
+          ? theme.colors.g68
           : "transparent"};
 
   &:hover:not(:disabled) {
@@ -59,7 +59,7 @@ const buttonBase = css<ButtonProps>`
             `
           : css`
               color: ${theme.colors.fg};
-              border-color: ${theme.colors.g48};
+              border-color: ${theme.colors.g68};
             `}
   }
 
@@ -89,13 +89,13 @@ export const IconButton = styled.button`
   line-height: 1;
   background: transparent;
   border: 1px solid ${({ theme }) => theme.colors.g20};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
   border-radius: ${({ theme }) => theme.radius.pill};
   cursor: pointer;
   transition: ${({ theme }) => theme.transitions.default};
 
   &:hover {
     color: ${({ theme }) => theme.colors.fg};
-    border-color: ${({ theme }) => theme.colors.g48};
+    border-color: ${({ theme }) => theme.colors.g68};
   }
 `;

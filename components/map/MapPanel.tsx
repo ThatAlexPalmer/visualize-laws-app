@@ -2,24 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
-import { motion, useAnimationControls } from "framer-motion";
+import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import { geoAlbersUsa, geoPath } from "d3-geo";
 
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
-  AXIS_BY_KEY,
-  type AxisBounds,
+  stateName,
+  type Axis,
   type JurisdictionAgg,
   type JurisdictionsResponse,
 } from "@/lib/types";
+import { resolveAxisCopy } from "@/lib/copy";
 
 import { stateFeatureCollection, stateFeatures } from "./geo";
 import {
   axisValue,
   computeDomain,
   normalize,
-  rampColor,
+  rampColorForAxis,
   type Domain,
 } from "./color";
 import { MapLegend } from "./Legend";
@@ -80,6 +81,29 @@ const OverlayCanvas = styled.canvas`
   display: block;
 `;
 
+/** Per-axis tinted hover stroke colors. */
+const AXIS_HOVER_STROKE: Record<Axis, string> = {
+  opacity: "rgba(229,62,62,0.72)",
+  enforcementDiscretion: "rgba(59,130,246,0.72)",
+  paternalism: "rgba(249,115,22,0.72)",
+  problemSalience: "rgba(139,92,246,0.72)",
+};
+
+/** State name displayed on top-left of the map canvas. */
+const StateLabel = styled(motion.div)`
+  position: absolute;
+  top: ${({ theme }) => theme.space(4)};
+  left: ${({ theme }) => theme.space(4)};
+  z-index: 3;
+  pointer-events: none;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 22px;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.fg};
+`;
+
 const Hint = styled(motion.div)`
   position: absolute;
   top: ${({ theme }) => theme.space(4)};
@@ -90,7 +114,7 @@ const Hint = styled(motion.div)`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g60};
 `;
 
 /** Size a canvas backing store to its DPR-scaled pixel box (clears on change). */
@@ -115,8 +139,6 @@ export function MapPanel() {
 
   const [size, setSize] = useState<Size | null>(null);
   const [rows, setRows] = useState<JurisdictionAgg[]>([]);
-  const [national, setNational] =
-    useState<(JurisdictionAgg & { bounds?: AxisBounds }) | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
 
   const controls = useAnimationControls();
@@ -132,7 +154,6 @@ export function MapPanel() {
         const json: JurisdictionsResponse = await res.json();
         if (cancelled) return;
         setRows(Array.isArray(json.rows) ? json.rows : []);
-        setNational(json.national ?? null);
       } catch {
         // Leave rows empty; the outline map still renders.
       }
@@ -148,9 +169,12 @@ export function MapPanel() {
     return m;
   }, [rows]);
 
+  // Use the actual min/max of state averages, not the national corpus bounds.
+  // Corpus bounds span all individual laws (e.g. -4 to 4); state averages cluster
+  // in a much tighter band, which compresses every state to the same mid-color.
   const domain: Domain | null = useMemo(
-    () => computeDomain(axis, rows, national?.bounds),
-    [axis, rows, national],
+    () => computeDomain(axis, rows),
+    [axis, rows],
   );
 
   // --- size + devicePixelRatio via ResizeObserver ---------------------------
@@ -201,15 +225,16 @@ export function MapPanel() {
       const agg = e.usps ? aggByUsps.get(e.usps) : undefined;
       ctx.fillStyle =
         agg && domain
-          ? rampColor(normalize(axisValue(agg, axis), domain))
+          ? rampColorForAxis(normalize(axisValue(agg, axis), domain), axis)
           : "rgba(255,255,255,0.015)";
       ctx.fill(e.path);
     }
 
-    // 2) base separators
+    // 2) base separators — 1px white at 0.32 stays visible over both near-black
+    // dark fills and vivid saturated fills across all axis color ramps.
     ctx.lineJoin = "round";
-    ctx.lineWidth = 0.6;
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = "rgba(255,255,255,0.32)";
     for (const e of entries) ctx.stroke(e.path);
   }, [size, aggByUsps, domain, axis]);
 
@@ -234,8 +259,8 @@ export function MapPanel() {
     if (hovered && hovered !== selectedState) {
       const he = entries.find((e) => e.usps === hovered);
       if (he) {
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
         ctx.stroke(he.path);
       }
     }
@@ -249,7 +274,7 @@ export function MapPanel() {
         ctx.stroke(se.path);
       }
     }
-  }, [size, hovered, selectedState]);
+  }, [size, hovered, selectedState, axis]);
 
   // Rebuild the per-state Path2D set whenever the canvas size changes.
   useEffect(() => {
@@ -366,7 +391,8 @@ export function MapPanel() {
     [pick, dispatch, selectedState],
   );
 
-  const axisMeta = AXIS_BY_KEY[axis];
+  const { unhinged } = state;
+  const axisCopy = resolveAxisCopy(axis, unhinged);
 
   return (
     <Wrap ref={wrapRef}>
@@ -387,7 +413,20 @@ export function MapPanel() {
           awaiting aggregates
         </Hint>
       )}
-      <MapLegend axisLabel={axisMeta.label} blurb={axisMeta.blurb} domain={domain} />
+      <MapLegend axis={axis} axisLabel={axisCopy.label} blurb={axisCopy.blurb} domain={domain} />
+      <AnimatePresence>
+        {(hovered ?? selectedState) && (
+          <StateLabel
+            key={hovered ?? selectedState}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {stateName(hovered ?? selectedState)}
+          </StateLabel>
+        )}
+      </AnimatePresence>
     </Wrap>
   );
 }
