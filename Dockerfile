@@ -3,6 +3,13 @@
 # (see docker-compose.yml) so the Linux build is not shadowed by the host.
 FROM node:20-bookworm-slim
 
+# OpenSSL: the slim image omits it, so Prisma can't detect libssl and warns on
+# every query. Install it before `pnpm install` so postinstall `prisma generate`
+# picks the correct (debian-openssl-3.0.x) query engine.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 # pnpm installed directly (no corepack).
 RUN npm install -g pnpm@9.15.0
 
