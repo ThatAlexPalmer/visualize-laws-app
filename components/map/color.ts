@@ -1,12 +1,22 @@
 import type { Axis, AxisBounds, JurisdictionAgg } from "@/lib/types";
 
-/** Per-axis dark→vivid RGB palette for the choropleth. */
-type RGB = [number, number, number];
-const AXIS_PALETTE: Record<Axis, { dark: RGB; vivid: RGB }> = {
-  opacity: { dark: [40, 6, 6], vivid: [229, 62, 62] },               // red
-  enforcementDiscretion: { dark: [6, 14, 50], vivid: [59, 130, 246] }, // blue
-  paternalism: { dark: [55, 24, 4], vivid: [249, 115, 22] },           // orange
-  problemSalience: { dark: [38, 10, 72], vivid: [139, 92, 246] },      // purple
+/**
+ * Per-axis HSL ramp params. Keeping hue constant while sweeping lightness
+ * 4%→56% gives the widest perceptual gradient on a black background —
+ * the same principle as the original white-opacity ramp but in full color.
+ */
+interface AxisHSL {
+  hue: number;
+  satLow: number;
+  satHigh: number;
+  litLow: number;
+  litHigh: number;
+}
+const AXIS_HSL: Record<Axis, AxisHSL> = {
+  opacity:               { hue: 4,   satLow: 60, satHigh: 88, litLow: 4, litHigh: 56 }, // red
+  enforcementDiscretion: { hue: 217, satLow: 65, satHigh: 90, litLow: 4, litHigh: 58 }, // blue
+  paternalism:           { hue: 22,  satLow: 65, satHigh: 93, litLow: 4, litHigh: 53 }, // orange
+  problemSalience:       { hue: 258, satLow: 60, satHigh: 83, litLow: 4, litHigh: 60 }, // purple
 };
 
 /** Maps each axis to the aggregate's average column on a JurisdictionAgg. */
@@ -78,14 +88,13 @@ export function rampColor(t: number): string {
 }
 
 /**
- * Axis-aware choropleth fill: linearly interpolates from the axis's near-black
- * dark tint (t=0) to its vivid saturated accent (t=1).
+ * Axis-aware choropleth fill: sweeps lightness 4%→56% at a fixed hue,
+ * producing a wide, readable gradient on a black background.
  */
 export function rampColorForAxis(t: number, axis: Axis): string {
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
-  const { dark, vivid } = AXIS_PALETTE[axis];
-  const r = Math.round(dark[0] + (vivid[0] - dark[0]) * clamped);
-  const g = Math.round(dark[1] + (vivid[1] - dark[1]) * clamped);
-  const b = Math.round(dark[2] + (vivid[2] - dark[2]) * clamped);
-  return `rgb(${r},${g},${b})`;
+  const p = AXIS_HSL[axis];
+  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
+  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
+  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
 }
