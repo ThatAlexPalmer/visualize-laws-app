@@ -7,6 +7,7 @@ import styled from "styled-components";
 import { motion } from "framer-motion";
 import { Footer } from "@/components/footer/Footer";
 import {
+  APP_AUTHOR_URL,
   AUTHOR_NAME,
   AUTHOR_URL,
   BIBTEX,
@@ -321,7 +322,7 @@ export default function AboutPage() {
           <Body>
             The catch: these laws are public, but they&rsquo;re scattered across
             thousands of clunky vendor sites. LOCUS rounded up ~2.2&nbsp;million of
-            them into a single corpus, and LOCUS Explorer lets you actually search and
+            them into a single corpus, and visualizelaws.app lets you actually search and
             map them &mdash; each scored along four axes: opacity, enforcement
             discretion, paternalism, and problem salience.
           </Body>
@@ -331,7 +332,7 @@ export default function AboutPage() {
         </Section>
 
         <Section variants={item}>
-          <CiteLabel>Built on LOCUS-v1 &middot; please cite</CiteLabel>
+          <CiteLabel>Built on LOCUS-v1</CiteLabel>
           <Cite>{BIBTEX}</Cite>
           <Links $gap={3}>
             <LinkButton
@@ -375,6 +376,13 @@ export default function AboutPage() {
               {AUTHOR_NAME} ↗
             </LinkButton>
           </Links>
+          <Note>
+            app by{" "}
+            <MonoLink href={APP_AUTHOR_URL} target="_blank" rel="noreferrer" $size="sm">
+              alex palmer ↗
+            </MonoLink>{" "}
+            just for fun
+          </Note>
         </Section>
       </Inner>
       <Footer />

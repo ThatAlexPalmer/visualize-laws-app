@@ -12,10 +12,10 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LOCUS Explorer",
+  title: "visualizelaws.app",
   description:
     "Explore the complete LOCUS-v1 corpus of ~2.2M U.S. local laws: search, filter, and an interactive map.",
-  applicationName: "LOCUS Explorer",
+  applicationName: "visualizelaws.app",
 };
 
 export default function RootLayout({

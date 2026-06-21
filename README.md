@@ -1,4 +1,4 @@
-# LOCUS Explorer
+# visualizelaws.app
 
 Explore the complete [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local
 laws: full-text search, server-side filtering, an interactive HTML5 Canvas choropleth map, and
@@ -46,12 +46,15 @@ Every law in LOCUS-v1 is scored along four axes:
 With Docker running, a fresh clone becomes a full local app in one command:
 
 ```bash
-docker compose up        # or: pnpm up
+docker compose up        # or: pnpm up          (25k-row sample on first run)
+pnpm up:full             # the ENTIRE ~2.2M-row corpus (SEED_LIMIT=0)
 ```
 
-This builds the app image, starts Postgres, applies migrations, sample-seeds the database
-(~25k rows) on first run, and serves the app at http://localhost:3000 with hot reload.
-Re-running `docker compose up` is fast — the seed is skipped once data already exists.
+This builds the app image, starts Postgres 18 (the `pgvector/pgvector:pg18` image — stock PG18
+with pgvector available but dormant), applies migrations, seeds the database on first run, and
+serves the app at http://localhost:3000 with hot reload. Re-running is fast — the seed is skipped
+once data already exists. Inspect the DB with Postgres.app or `npx prisma studio` at
+`localhost:5432`.
 
 ## Alternative: run on the host
 
@@ -95,8 +98,8 @@ pnpm db:up && pnpm seed
 # or inside the running container:
 docker compose exec app pnpm seed
 
-# or have `docker compose up` do it on a fresh DB (set SEED_LIMIT=0, e.g. in .env):
-SEED_LIMIT=0 docker compose up
+# or one command on a fresh DB (full corpus on first boot):
+pnpm up:full        # = SEED_LIMIT=0 docker compose up
 ```
 
 The seeder streams the 8 parquet shards from Hugging Face, bulk-loads them via Postgres `COPY`,
@@ -113,6 +116,7 @@ safely; `pnpm seed --fresh` resets and reseeds. Other flags: `--limit 25000` (sa
 - `pnpm typecheck` — `tsc --noEmit`.
 - `pnpm lint` — Next.js ESLint.
 - `pnpm up` / `pnpm up:build` — run the full stack (Postgres + app) via Docker Compose.
+- `pnpm up:full` — same, but seed the full ~2.2M-row corpus on first boot (`SEED_LIMIT=0`).
 - `pnpm db:up` / `pnpm db:down` — start / stop local Postgres only (Docker).
 - `pnpm prisma:deploy` — apply migrations (production-safe).
 - `pnpm prisma:migrate` — create/apply a dev migration.
@@ -156,7 +160,7 @@ database.
 
 ## Attribution
 
-LOCUS Explorer is built on the LOCUS-v1 corpus. Please cite:
+visualizelaws.app is built on the LOCUS-v1 corpus.
 
 ```bibtex
 @article{peskoff2026freeing,
