@@ -7,6 +7,8 @@ import styled from "styled-components";
 import { motion } from "framer-motion";
 import { Footer } from "@/components/footer/Footer";
 import {
+  APP_AUTHOR,
+  APP_AUTHOR_URL,
   AUTHOR_NAME,
   AUTHOR_URL,
   BIBTEX,
@@ -375,6 +377,14 @@ export default function AboutPage() {
               {AUTHOR_NAME} ↗
             </LinkButton>
           </Links>
+          <Note>
+            App by{" "}
+            <MonoLink href={APP_AUTHOR_URL} target="_blank" rel="noreferrer" $size="sm">
+              {APP_AUTHOR} ↗
+            </MonoLink>{" "}
+            &mdash; an independent project, separate from the LOCUS-v1 dataset &amp;
+            research credited above.
+          </Note>
         </Section>
       </Inner>
       <Footer />
