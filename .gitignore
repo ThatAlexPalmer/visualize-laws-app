@@ -3,10 +3,10 @@
 /.pnp
 .pnp.*
 
-# next.js (app lives in app/)
-/app/.next/
-/app/out/
-/app/next-env.d.ts
+# next.js
+/.next/
+/out/
+next-env.d.ts
 
 # production
 /build

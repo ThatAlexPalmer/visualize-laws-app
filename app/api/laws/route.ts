@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { queryLaws } from "@server/queries/laws";
-import type { LawsResponse } from "@data/types";
+import { queryLaws } from "@/data/queries/laws";
+import type { LawsResponse } from "@/data/types";
 
 export const dynamic = "force-dynamic";
 

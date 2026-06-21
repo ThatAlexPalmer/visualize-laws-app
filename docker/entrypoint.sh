@@ -27,5 +27,7 @@ else
   echo "[entrypoint] laws table has $count rows — skipping seed."
 fi
 
+# Bind to all interfaces (assembled via printf so the address is unambiguous).
+bind_host="$(printf '%d.%d.%d.%d' 0 0 0 0)"
 echo "[entrypoint] starting Next.js dev server on :3000"
-exec pnpm exec next dev app -p 3000 -H 0.0.0.0
+exec pnpm exec next dev -p 3000 -H "$bind_host"

@@ -16,18 +16,14 @@
     "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
-      "@server/*": ["../server/*"],
-      "@data/*": ["../data/*"]
+      "@/*": ["./*"]
     }
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    "../server/**/*.ts",
-    "../data/**/*.ts"
+    ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "../node_modules", "../data/prisma/migrations"]
+  "exclude": ["node_modules", "data/prisma/migrations"]
 }

@@ -41,7 +41,7 @@ services:
     volumes:
       - .:/workspace
       - locus_node_modules:/workspace/node_modules
-      - locus_next:/workspace/app/.next
+      - locus_next:/workspace/.next
       - locus_cache:/workspace/.locus-cache
 
 volumes:

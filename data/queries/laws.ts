@@ -1,11 +1,11 @@
-import { prisma } from "../../data/db";
+import { prisma } from "../db";
 import {
   AXES,
   AXIS_BY_KEY,
   type Axis,
   type LawRecord,
   type LawsResponse,
-} from "../../data/types";
+} from "../types";
 
 // Server-side filter / sort / pagination over the `laws` table.
 //

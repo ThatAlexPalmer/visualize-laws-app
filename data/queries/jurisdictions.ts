@@ -1,9 +1,9 @@
-import { prisma } from "../../data/db";
+import { prisma } from "../db";
 import type {
   AxisBounds,
   JurisdictionDetailResponse,
   JurisdictionsResponse,
-} from "../../data/types";
+} from "../types";
 
 // The columns that make up a JurisdictionAgg (excludes id + bounds).
 const AGG_SELECT = {

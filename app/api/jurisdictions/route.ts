@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getJurisdictions } from "@server/queries/jurisdictions";
-import type { JurisdictionsResponse } from "@data/types";
+import { getJurisdictions } from "@/data/queries/jurisdictions";
+import type { JurisdictionsResponse } from "@/data/types";
 
 export const dynamic = "force-dynamic";
 
