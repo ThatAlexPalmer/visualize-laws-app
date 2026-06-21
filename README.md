@@ -111,23 +111,21 @@ to resume after an interruption.
 ## Project structure
 
 ```text
-app/                                # Next.js web app (run via `next dev app`)
-  app/
-    api/laws/route.ts               # GET /api/laws -> server queryLaws
-    api/jurisdictions/route.ts      # GET /api/jurisdictions -> server getJurisdictions
-    api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]
-    layout.tsx, page.tsx            # root layout + single-page shell
-  components/                       # nav, sidebar, map, results, jurisdiction, modal, about
-  lib/                              # store, theme, styled-components registry, types re-export
-  next.config.ts, tsconfig.json
-server/
-  queries/                          # data-access layer: laws.ts, jurisdictions.ts
+app/                                # Next.js App Router
+  api/laws/route.ts                 # GET /api/laws -> data/queries.queryLaws
+  api/jurisdictions/route.ts        # GET /api/jurisdictions -> getJurisdictions
+  api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]
+  layout.tsx, page.tsx              # root layout + single-page shell
+components/                         # nav, sidebar, map, results, jurisdiction, modal, about
+lib/                                # store, theme, styled-components registry, types re-export
 data/
   prisma/                           # schema.prisma + migrations (tsvector/GIN)
+  queries/                          # data-access layer: laws.ts, jurisdictions.ts
   db.ts                             # Prisma client singleton
   types.ts                          # shared domain types (axes, filters, records)
   seed.ts                           # parquet -> Postgres seed pipeline
   db-count.ts                       # row-count probe for the Docker entrypoint
+next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 ```
 
@@ -135,8 +133,7 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 
 The app deploys to Vercel with a managed Postgres database (Vercel Postgres or Neon).
 
-1. Import the repository into Vercel. Because the Next.js app lives in `app/`, set the
-   **Build Command** to `pnpm build` and the **Output Directory** to `app/.next`.
+1. Import the repository into Vercel (a standard Next.js project at the repo root — auto-detected).
 2. Provision a Postgres database and map its connection strings to the app's variables:
    - `DATABASE_URL` → the **pooled** connection string (e.g. `POSTGRES_PRISMA_URL`).
    - `DIRECT_URL` → the **non-pooling** connection string (e.g. `POSTGRES_URL_NON_POOLING`).

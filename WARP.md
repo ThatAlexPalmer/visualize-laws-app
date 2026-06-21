@@ -10,18 +10,15 @@ full-text search, server-side filtering/pagination, an interactive HTML5 Canvas 
 map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)
 interface with framer-motion throughout. MIT licensed.
 
-This is a **single-folder monorepo** (one root `package.json` / lockfile, one `docker compose`)
-with three source folders:
+It is a standard single Next.js app at the repo root with a dedicated **data layer**:
 
-- `app/` — the Next.js 15 web app (App Router, React 19, styled-components, framer-motion).
-  Run with `next dev app`; the App Router lives in `app/app/`.
-- `server/` — the data-access / query layer (`queryLaws`, `getJurisdictions`,
-  `getJurisdictionDetail`). Pure functions; no Next.js.
-- `data/` — Prisma schema + migrations, the Prisma client singleton, shared domain types, and
-  the seed pipeline.
+- `app/` — the App Router (`app/layout.tsx`, `app/page.tsx`, `app/api/*`).
+- `components/`, `lib/` — React components and client utilities (theme, store, SSR registry).
+- `data/` — the data layer: Prisma schema + migrations, the Prisma client singleton, shared
+  domain types, the seed pipeline, and the data-access query functions (`data/queries/*`).
 
-Dependency direction is `app → server → data`. The thin `/api` route handlers delegate to
-`server/queries/*`, which use the Prisma client from `data/db.ts`.
+The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getJurisdictions`,
+`getJurisdictionDetail`), which use the Prisma client from `data/db.ts`.
 
 ## One-command DevEx
 
@@ -35,37 +32,37 @@ the `laws` table is non-empty (see `docker/entrypoint.sh`).
 
 ## Architecture
 
-### Three tiers
+### Layers
 
-- **Presentation (`app/`)**: App Router pages + a single-page shell (`app/app/page.tsx`). UI
-  state (selected axis, filters, selected state, open law/about) lives in a small React context
-  store (`app/lib/store.tsx`). All styling is styled-components against the tokens in
-  `app/lib/theme.ts`; SSR is wired via `app/lib/registry.tsx`.
-- **Logic (`server/`)**: `server/queries/laws.ts` builds a parameterized SQL query (full-text
-  via `search_vector @@ websearch_to_tsquery`, per-axis range filters, whitelisted sort) and
-  runs it with `prisma.$queryRawUnsafe`. `server/queries/jurisdictions.ts` reads the
+- **Presentation (`app/`, `components/`, `lib/`)**: App Router pages + a single-page shell
+  (`app/page.tsx`). UI state (selected axis, filters, selected state, open law/about) lives in a
+  small React context store (`lib/store.tsx`). All styling is styled-components against the
+  tokens in `lib/theme.ts`; SSR is wired via `lib/registry.tsx`.
+- **Data access (`data/queries/`)**: `data/queries/laws.ts` builds a parameterized SQL query
+  (full-text via `search_vector @@ websearch_to_tsquery`, per-axis range filters, whitelisted
+  sort) and runs it with `prisma.$queryRawUnsafe`. `data/queries/jurisdictions.ts` reads the
   pre-computed aggregates.
 - **Data (`data/`)**: Postgres via Prisma. `data/db.ts` is the Prisma client singleton;
-  `data/types.ts` holds the shared domain types (re-exported by `app/lib/types.ts` so app code
+  `data/types.ts` holds the shared domain types (re-exported by `lib/types.ts` so app code
   imports them from `@/lib/types`).
 
 ### Map rendering
 
-The map is a **pure HTML5 Canvas** choropleth (`app/components/map/`): `us-atlas` TopoJSON →
+The map is a **pure HTML5 Canvas** choropleth (`components/map/`): `us-atlas` TopoJSON →
 `topojson-client` features → `d3-geo` (`geoAlbersUsa` + `geoPath` drawn to a 2D context).
 States are colored by the selected axis average using the national `bounds` for the domain;
 clicks hit-test via `Path2D` + `ctx.isPointInPath`. `us-atlas` state ids are FIPS codes mapped
-to lowercase USPS codes in `app/components/map/fips.ts` to match the dataset.
+to lowercase USPS codes in `components/map/fips.ts` to match the dataset.
 
 ## Development Commands
 
 ```bash
 pnpm install            # installs deps; postinstall runs prisma generate (data/prisma)
-pnpm dev                # next dev app  -> http://localhost:3000
-pnpm build              # next build app
-pnpm start              # next start app
-pnpm lint               # next lint app
-pnpm typecheck          # tsc --noEmit -p app/tsconfig.json (covers app + server + data)
+pnpm dev                # next dev  -> http://localhost:3000
+pnpm build              # next build
+pnpm start              # next start
+pnpm lint               # next lint
+pnpm typecheck          # tsc --noEmit
 
 pnpm up                 # docker compose up (full stack)
 pnpm up:build           # docker compose up --build
@@ -81,15 +78,14 @@ pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 ## Project Structure
 
 ```text
-app/                                # Next.js web app (run via `next dev app`)
-  app/                              # App Router: layout, page, api/*
-  components/                       # nav, sidebar, map, results, jurisdiction, modal, about
-  lib/                              # store, theme, styled-components registry, types re-export
-  next.config.ts, tsconfig.json
-server/queries/                     # laws.ts, jurisdictions.ts (data-access layer)
+app/                                # Next.js App Router: layout, page, api/*
+components/                         # nav, sidebar, map, results, jurisdiction, modal, about
+lib/                                # store, theme, styled-components registry, types re-export
 data/
   prisma/                           # schema.prisma + migrations (tsvector/GIN)
+  queries/                          # data-access layer: laws.ts, jurisdictions.ts
   db.ts, types.ts, seed.ts, db-count.ts
+next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
 
@@ -115,14 +111,13 @@ is generated automatically and never written by the seeder.
 
 ## Important Patterns & Gotchas
 
-- **Next runs from `app/`** (`next dev app`), so `app/next.config.ts` enables
-  `experimental.externalDir` to import the sibling `server/` and `data/` folders, and loads the
-  repo-root `.env` (Next only auto-loads env from its own project dir). In Docker the DB URLs
-  come from compose `environment:` and the loader leaves them untouched.
+- **Standard root app**: the Next.js app is at the repo root (`next dev`), so Next auto-loads the
+  root `.env` and compiles `data/` normally — no `externalDir` or custom env loader. In Docker
+  the DB URLs come from compose `environment:`.
 - **One `.env` at the repo root** serves the app, the seed, and the Prisma CLI.
-- **Aliases**: `@/*` → `app/*`, `@server/*` → `server/*`, `@data/*` → `data/*` (see
-  `app/tsconfig.json`). `server/` imports `data/` via relative paths.
-- **Parameterized SQL only** in `server/queries/laws.ts` — user input is always bound; only
+- **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
+  and `data/queries/*` import the client/types via relative paths.
+- **Parameterized SQL only** in `data/queries/laws.ts` — user input is always bound; only
   whitelisted column names / sort directions are interpolated.
 - **State codes are lowercase 2-letter** throughout (matches the dataset). Use `stateName()`
   from `data/types.ts` for display.
