@@ -58,6 +58,17 @@ const Scale = styled.div`
   color: ${({ theme }) => theme.colors.g48};
 `;
 
+const Direction = styled.div`
+  display: flex;
+  justify-content: space-between;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.g32};
+  margin-top: -${({ theme }) => theme.space(0.5)};
+`;
+
 function fmt(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
@@ -80,6 +91,10 @@ export function MapLegend({ axis, axisLabel, blurb, domain }: Props) {
         <span>{domain ? fmt(domain.min) : "—"}</span>
         <span>{domain ? fmt(domain.max) : "—"}</span>
       </Scale>
+      <Direction>
+        <span>less</span>
+        <span>more</span>
+      </Direction>
     </Box>
   );
 }

@@ -11,7 +11,6 @@ import {
   AXIS_BY_KEY,
   stateName,
   type Axis,
-  type AxisBounds,
   type JurisdictionAgg,
   type JurisdictionsResponse,
 } from "@/lib/types";
@@ -140,8 +139,6 @@ export function MapPanel() {
 
   const [size, setSize] = useState<Size | null>(null);
   const [rows, setRows] = useState<JurisdictionAgg[]>([]);
-  const [national, setNational] =
-    useState<(JurisdictionAgg & { bounds?: AxisBounds }) | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
 
   const controls = useAnimationControls();
@@ -157,7 +154,6 @@ export function MapPanel() {
         const json: JurisdictionsResponse = await res.json();
         if (cancelled) return;
         setRows(Array.isArray(json.rows) ? json.rows : []);
-        setNational(json.national ?? null);
       } catch {
         // Leave rows empty; the outline map still renders.
       }
@@ -234,10 +230,11 @@ export function MapPanel() {
       ctx.fill(e.path);
     }
 
-    // 2) base separators
+    // 2) base separators — 1px white at 0.32 stays visible over both near-black
+    // dark fills and vivid saturated fills across all axis color ramps.
     ctx.lineJoin = "round";
-    ctx.lineWidth = 0.6;
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = "rgba(255,255,255,0.32)";
     for (const e of entries) ctx.stroke(e.path);
   }, [size, aggByUsps, domain, axis]);
 
