@@ -13,51 +13,38 @@ import {
   stateName,
   type JurisdictionDetailResponse,
 } from "@/lib/types";
+import { Button } from "@/components/ui/buttons";
+import {
+  Card,
+  Panel as PanelBase,
+  Row,
+  ScrollArea,
+  SectionLabel,
+  Stack,
+} from "@/components/ui/containers";
+import { Heading } from "@/components/ui/text";
 
-const Panel = styled.aside`
-  display: flex;
-  flex-direction: column;
-  border: 1px solid ${({ theme }) => theme.colors.g08};
-  border-radius: ${({ theme }) => theme.radius.md};
-  overflow: hidden;
+const Panel = styled(PanelBase)`
   min-height: 320px;
 `;
 
-const Header = styled.div`
-  display: flex;
-  align-items: baseline;
+const Header = styled(Row)`
   justify-content: space-between;
-  gap: ${({ theme }) => theme.space(2)};
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border-bottom: 1px solid ${({ theme }) => theme.colors.g08};
 `;
 
-const Name = styled.div`
-  font-size: ${({ theme }) => theme.fontSize.lg};
-  font-weight: 600;
-`;
-
-const Clear = styled.button`
-  background: transparent;
-  border: 0;
+// Clear reuses the subtle Button; it only drops padding and dims the label.
+const Clear = styled(Button)`
+  padding: 0;
   color: ${({ theme }) => theme.colors.g48};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  cursor: pointer;
-
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-  }
 `;
 
-const Inner = styled(motion.div)`
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: ${({ theme }) => theme.space(4)};
+const Inner = styled(ScrollArea)`
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.space(4)};
+  padding: ${({ theme }) => theme.space(4)};
 `;
 
 const CountRow = styled.div`
@@ -66,9 +53,7 @@ const CountRow = styled.div`
   gap: ${({ theme }) => theme.space(3)};
 `;
 
-const Stat = styled.div`
-  border: 1px solid ${({ theme }) => theme.colors.g08};
-  border-radius: ${({ theme }) => theme.radius.sm};
+const Stat = styled(Card)`
   padding: ${({ theme }) => theme.space(3)};
 `;
 
@@ -84,26 +69,6 @@ const StatLabel = styled.div`
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: ${({ theme }) => theme.colors.g48};
-`;
-
-const SectionLabel = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
-`;
-
-const Averages = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(3)};
-`;
-
-const Avg = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(1.5)};
 `;
 
 const AvgTop = styled.div`
@@ -235,7 +200,7 @@ export function JurisdictionPanel() {
 
   if (!selectedState) {
     return (
-      <Panel>
+      <Panel as="aside">
         <Empty>Select a state on the map to see its profile.</Empty>
       </Panel>
     );
@@ -245,15 +210,21 @@ export function JurisdictionPanel() {
   const topLaws = data?.topLaws ?? [];
 
   return (
-    <Panel>
-      <Header>
-        <Name>{stateName(selectedState)}</Name>
-        <Clear type="button" onClick={() => dispatch({ type: "selectState", state: null })}>
+    <Panel as="aside">
+      <Header $align="baseline" $gap={2}>
+        <Heading $size="lg">{stateName(selectedState)}</Heading>
+        <Clear
+          type="button"
+          $variant="subtle"
+          $size="sm"
+          onClick={() => dispatch({ type: "selectState", state: null })}
+        >
           Clear
         </Clear>
       </Header>
       <AnimatePresence mode="wait">
         <Inner
+          as={motion.div}
           key={selectedState}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -278,11 +249,11 @@ export function JurisdictionPanel() {
               </CountRow>
 
               <SectionLabel>Average scores</SectionLabel>
-              <Averages>
+              <Stack $gap={3}>
                 {AXES.map((a) => {
                   const value = agg[AVG_BY_AXIS[a.key]];
                   return (
-                    <Avg key={a.key}>
+                    <Stack key={a.key} $gap={1.5}>
                       <AvgTop>
                         <span>{a.label}</span>
                         <AvgNum>{value.toFixed(2)}</AvgNum>
@@ -294,10 +265,10 @@ export function JurisdictionPanel() {
                           transition={{ duration: 0.4, ease: "easeOut" }}
                         />
                       </Meter>
-                    </Avg>
+                    </Stack>
                   );
                 })}
-              </Averages>
+              </Stack>
 
               {topLaws.length > 0 && (
                 <>
