@@ -321,7 +321,7 @@ export default function AboutPage() {
           <Body>
             The catch: these laws are public, but they&rsquo;re scattered across
             thousands of clunky vendor sites. LOCUS rounded up ~2.2&nbsp;million of
-            them into a single corpus, and LOCUS Explorer lets you actually search and
+            them into a single corpus, and visualizelaws.app lets you actually search and
             map them &mdash; each scored along four axes: opacity, enforcement
             discretion, paternalism, and problem salience.
           </Body>
