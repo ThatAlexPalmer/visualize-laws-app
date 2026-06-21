@@ -129,6 +129,10 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - **State codes are lowercase 2-letter** throughout (matches the dataset). Use `stateName()`
   from `data/types.ts` for display.
 - **Strict aesthetic**: only `#000` / `#fff` and white-opacity grays via theme tokens.
+- **Docker bind mount is path-bound**: the `app` service mounts the project dir at `/workspace`
+  via an absolute host path captured at container-create time. Renaming/moving the folder breaks
+  it (empty `/workspace`); the entrypoint fails fast — recreate with `docker compose up -d
+  --force-recreate` (data persists in the named volume).
 
 ## Environment Variables
 
