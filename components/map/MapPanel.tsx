@@ -35,6 +35,11 @@ interface Size {
   dpr: number;
 }
 
+// Ignore layout reflows smaller than this (CSS px) before re-fitting the
+// projection — defense-in-depth so a scrollbar/sub-pixel jitter can't shift the
+// map. Genuine resizes (>= threshold) and any devicePixelRatio change still fit.
+const SIZE_REFIT_THRESHOLD_PX = 8;
+
 const Wrap = styled.div`
   position: relative;
   width: 100%;
@@ -149,11 +154,15 @@ export function MapPanel() {
       const w = Math.max(1, Math.floor(rect.width));
       const h = Math.max(1, Math.floor(rect.height));
       const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
-      setSize((prev) =>
-        prev && prev.w === w && prev.h === h && prev.dpr === dpr
-          ? prev
-          : { w, h, dpr },
-      );
+      setSize((prev) => {
+        if (!prev) return { w, h, dpr };
+        // Re-fit on any DPR change (crispness); otherwise only when the box
+        // moved by >= the threshold, so tiny reflows never shift the map.
+        const moved =
+          Math.abs(w - prev.w) >= SIZE_REFIT_THRESHOLD_PX ||
+          Math.abs(h - prev.h) >= SIZE_REFIT_THRESHOLD_PX;
+        return prev.dpr !== dpr || moved ? { w, h, dpr } : prev;
+      });
     };
     measure();
     const ro = new ResizeObserver(measure);
