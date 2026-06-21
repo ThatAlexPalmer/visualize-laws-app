@@ -45,6 +45,14 @@ const Wrap = styled.div`
   width: 100%;
   height: 56vh;
   min-height: 420px;
+  /* The map is a flex child of the scrolling <Main> column. Without this it
+     keeps the default flex-shrink: 1, so when selecting a state grows the
+     panels below (results + jurisdiction) the flexbox shrinks this box between
+     56vh and 420px to fit. That height change fires the ResizeObserver, re-fits
+     the projection, and clears the base canvas — the flicker/jump on click.
+     Locking flex-shrink pins the map height; the panels overflow into <Main>'s
+     scroll area instead, so a selection never resizes the canvas. */
+  flex-shrink: 0;
   overflow: hidden;
   background: ${({ theme }) => theme.colors.bg};
   z-index: ${({ theme }) => theme.z.map};
