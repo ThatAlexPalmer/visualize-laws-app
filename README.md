@@ -40,14 +40,28 @@ Every law in LOCUS-v1 is scored along four axes:
 
 - Node.js >= 20
 - pnpm
-- Docker (for the local Postgres instance)
+- Docker (for the one-command stack, or just the local Postgres instance)
 
-## Local setup
+## Quick start (one command)
+
+With Docker running, a fresh clone becomes a full local app in one command:
+
+```bash
+docker compose up        # or: pnpm up
+```
+
+This builds the app image, starts Postgres, applies migrations, sample-seeds the database
+(~25k rows) on first run, and serves the app at http://localhost:3000 with hot reload.
+Re-running `docker compose up` is fast — the seed is skipped once data already exists.
+
+## Manual setup (host Node + Dockerized Postgres)
+
+Prefer running Next.js on the host? Start only Postgres in Docker:
 
 ```bash
 pnpm install              # installs deps; postinstall runs `prisma generate`
 cp .env.example .env      # then adjust values if needed
-pnpm db:up                # start local Postgres (Docker, port 5432)
+pnpm db:up                # start local Postgres only (Docker, port 5432)
 pnpm prisma:deploy        # apply migrations (creates tables + tsvector/GIN index)
 pnpm seed --limit 25000   # fast sample seed for development
 pnpm dev                  # http://localhost:3000
@@ -88,7 +102,8 @@ to resume after an interruption.
 - `pnpm build` / `pnpm start` — production build / serve.
 - `pnpm typecheck` — `tsc --noEmit`.
 - `pnpm lint` — Next.js ESLint.
-- `pnpm db:up` / `pnpm db:down` — start / stop local Postgres (Docker).
+- `pnpm up` / `pnpm up:build` — run the full stack (Postgres + app) via Docker Compose.
+- `pnpm db:up` / `pnpm db:down` — start / stop local Postgres only (Docker).
 - `pnpm prisma:deploy` — apply migrations (production-safe).
 - `pnpm prisma:migrate` — create/apply a dev migration.
 - `pnpm seed` — run the seed pipeline (see above).
@@ -96,30 +111,32 @@ to resume after an interruption.
 ## Project structure
 
 ```text
-app/
-  api/
-    laws/route.ts                 # GET /api/laws — filter/sort/paginate over laws
-    jurisdictions/route.ts        # GET /api/jurisdictions — state aggregates + national bounds
-    jurisdictions/[state]/route.ts# GET /api/jurisdictions/[state] — one state + top laws
-  layout.tsx, page.tsx            # root layout + single-page shell
-components/
-  nav/        TopNav.tsx           # brand, animated axis selector, About trigger
-  sidebar/    Sidebar.tsx, RangeSlider.tsx  # search + filters
-  map/        MapPanel.tsx         # canvas choropleth
-  results/    ResultsPanel.tsx     # paginated results list
-  jurisdiction/ JurisdictionPanel.tsx       # per-state dashboard
-  modal/      LawModal.tsx         # law detail modal
-  about/      AboutModal.tsx       # attribution / about
-lib/                              # types, store, theme, prisma, styling plumbing
-prisma/                           # schema + migrations
-scripts/seed.ts                   # parquet -> Postgres seed pipeline
+app/                                # Next.js web app (run via `next dev app`)
+  app/
+    api/laws/route.ts               # GET /api/laws -> server queryLaws
+    api/jurisdictions/route.ts      # GET /api/jurisdictions -> server getJurisdictions
+    api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]
+    layout.tsx, page.tsx            # root layout + single-page shell
+  components/                       # nav, sidebar, map, results, jurisdiction, modal, about
+  lib/                              # store, theme, styled-components registry, types re-export
+  next.config.ts, tsconfig.json
+server/
+  queries/                          # data-access layer: laws.ts, jurisdictions.ts
+data/
+  prisma/                           # schema.prisma + migrations (tsvector/GIN)
+  db.ts                             # Prisma client singleton
+  types.ts                          # shared domain types (axes, filters, records)
+  seed.ts                           # parquet -> Postgres seed pipeline
+  db-count.ts                       # row-count probe for the Docker entrypoint
+Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 ```
 
 ## Deployment (Vercel)
 
 The app deploys to Vercel with a managed Postgres database (Vercel Postgres or Neon).
 
-1. Import the repository into Vercel.
+1. Import the repository into Vercel. Because the Next.js app lives in `app/`, set the
+   **Build Command** to `pnpm build` and the **Output Directory** to `app/.next`.
 2. Provision a Postgres database and map its connection strings to the app's variables:
    - `DATABASE_URL` → the **pooled** connection string (e.g. `POSTGRES_PRISMA_URL`).
    - `DIRECT_URL` → the **non-pooling** connection string (e.g. `POSTGRES_URL_NON_POOLING`).
