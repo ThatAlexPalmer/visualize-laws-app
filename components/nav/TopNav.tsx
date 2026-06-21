@@ -1,8 +1,9 @@
 "use client";
 
-// STUB (owned by agent-ui). Renders the title + an axis selector wired to the
-// store so the foundation is interactive. Replace with the animated version.
+// Top navigation: brand, the axis selector (with a framer-motion shared-layout
+// active indicator), and the About trigger.
 import styled from "styled-components";
+import { motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import { AXES } from "@/lib/types";
 
@@ -21,30 +22,53 @@ const Brand = styled.div`
   font-weight: 600;
   letter-spacing: 0.04em;
   font-size: ${({ theme }) => theme.fontSize.lg};
+  white-space: nowrap;
 `;
 
 const Axes = styled.nav`
   display: flex;
   gap: ${({ theme }) => theme.space(1)};
+  padding: 3px;
+  border: 1px solid ${({ theme }) => theme.colors.g12};
+  border-radius: ${({ theme }) => theme.radius.pill};
+  overflow-x: auto;
+  max-width: 100%;
 `;
 
 const AxisButton = styled.button<{ $active: boolean }>`
-  background: ${({ $active, theme }) => ($active ? theme.colors.fg : "transparent")};
+  position: relative;
+  background: transparent;
+  border: 0;
+  z-index: 1;
   color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g64)};
-  border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g20)};
   border-radius: ${({ theme }) => theme.radius.pill};
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
   font-size: ${({ theme }) => theme.fontSize.sm};
+  white-space: nowrap;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color ${({ theme }) => theme.motion.fast}s ease;
+
+  &:hover {
+    color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.fg)};
+  }
 `;
 
-const AboutLink = styled.button`
+const ActivePill = styled(motion.span)`
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: ${({ theme }) => theme.colors.fg};
+  border-radius: ${({ theme }) => theme.radius.pill};
+`;
+
+const AboutLink = styled(motion.button)`
   background: transparent;
   color: ${({ theme }) => theme.colors.g64};
   border: 0;
   cursor: pointer;
+  font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
+  white-space: nowrap;
 `;
 
 export function TopNav() {
@@ -53,17 +77,34 @@ export function TopNav() {
     <Bar>
       <Brand>LOCUS&nbsp;EXPLORER</Brand>
       <Axes>
-        {AXES.map((a) => (
-          <AxisButton
-            key={a.key}
-            $active={state.axis === a.key}
-            onClick={() => dispatch({ type: "setAxis", axis: a.key })}
-          >
-            {a.label}
-          </AxisButton>
-        ))}
+        {AXES.map((a) => {
+          const active = state.axis === a.key;
+          return (
+            <AxisButton
+              key={a.key}
+              $active={active}
+              onClick={() => dispatch({ type: "setAxis", axis: a.key })}
+              title={a.blurb}
+            >
+              {active && (
+                <ActivePill
+                  layoutId="axis-active"
+                  transition={{ type: "spring", stiffness: 480, damping: 38 }}
+                />
+              )}
+              {a.label}
+            </AxisButton>
+          );
+        })}
       </Axes>
-      <AboutLink onClick={() => dispatch({ type: "setAbout", open: true })}>About</AboutLink>
+      <AboutLink
+        type="button"
+        onClick={() => dispatch({ type: "setAbout", open: true })}
+        whileHover={{ color: "#fff" }}
+        whileTap={{ scale: 0.96 }}
+      >
+        About
+      </AboutLink>
     </Bar>
   );
 }
