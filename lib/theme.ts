@@ -30,12 +30,27 @@ export const theme = {
     xl: "24px",
     xxl: "40px",
   },
+  // numeric font weights (consumed via styled-components, not global CSS)
+  fontWeights: { normal: 400, medium: 500, semibold: 600, bold: 700 },
   // framer-motion durations (seconds)
   motion: {
     fast: 0.18,
     base: 0.28,
     slow: 0.5,
     ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+  },
+  // CSS transition shorthands for plain (non-framer) hover/focus interactions.
+  // `default` mirrors motion.fast (0.18s) + motion.ease for a consistent feel.
+  transitions: {
+    default: "all 0.18s cubic-bezier(0.22, 1, 0.36, 1)",
+    spring: "0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55)",
+  },
+  // min-width breakpoints matching the app's existing media queries.
+  breakpoints: { xs: "520px", sm: "560px", md: "720px", lg: "900px" },
+  // Subtle monochrome elevation + focus ring (white-on-black aesthetic).
+  shadows: {
+    none: "none",
+    focus: "0 0 0 2px rgba(255,255,255,0.48)",
   },
   z: { map: 1, sidebar: 10, nav: 20, modal: 100 },
 } as const;

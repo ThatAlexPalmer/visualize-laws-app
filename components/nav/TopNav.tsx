@@ -4,9 +4,10 @@
 // active indicator), and the About trigger.
 import styled from "styled-components";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import { AXES } from "@/lib/types";
+import { Mono, MonoLink } from "@/components/ui/text";
+import { PillHighlight } from "@/components/ui/forms";
 
 const Bar = styled.header`
   display: flex;
@@ -18,9 +19,8 @@ const Bar = styled.header`
   z-index: ${({ theme }) => theme.z.nav};
 `;
 
-const Brand = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-weight: 600;
+const Brand = styled(Mono)`
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
   letter-spacing: 0.04em;
   font-size: ${({ theme }) => theme.fontSize.lg};
   white-space: nowrap;
@@ -54,28 +54,6 @@ const AxisButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const ActivePill = styled(motion.span)`
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.pill};
-`;
-
-const AboutLink = styled(Link)`
-  background: transparent;
-  color: ${({ theme }) => theme.colors.g64};
-  border: 0;
-  cursor: pointer;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  white-space: nowrap;
-  transition: color ${({ theme }) => theme.motion.fast}s ease;
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-  }
-`;
-
 export function TopNav() {
   const { state, dispatch } = useExplorer();
   return (
@@ -92,7 +70,7 @@ export function TopNav() {
               title={a.blurb}
             >
               {active && (
-                <ActivePill
+                <PillHighlight
                   layoutId="axis-active"
                   transition={{ type: "spring", stiffness: 480, damping: 38 }}
                 />
@@ -102,7 +80,9 @@ export function TopNav() {
           );
         })}
       </Axes>
-      <AboutLink href="/about">About</AboutLink>
+      <MonoLink as={Link} href="/about">
+        About
+      </MonoLink>
     </Bar>
   );
 }

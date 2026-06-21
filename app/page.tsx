@@ -30,6 +30,11 @@ const Main = styled.main`
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* Reserve the scrollbar gutter so the map's width stays constant whether or
+     not this column is scrollable. Selecting a state grows the panels below the
+     map; without this the scrollbar's appearance would shrink the content width
+     and re-fit the geoAlbersUsa projection, making the canvas visibly jump. */
+  scrollbar-gutter: stable;
 `;
 
 const Lower = styled.div`
@@ -39,7 +44,7 @@ const Lower = styled.div`
   padding: ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
 
-  @media (max-width: 900px) {
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     grid-template-columns: 1fr;
   }
 `;

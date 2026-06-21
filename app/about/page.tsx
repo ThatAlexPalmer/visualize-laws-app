@@ -14,6 +14,9 @@ import {
   PAPER_URL,
   TWEET_URL,
 } from "@/lib/attribution";
+import { ButtonLink } from "@/components/ui/buttons";
+import { Cluster, Row, SectionLabel, Stack } from "@/components/ui/containers";
+import { Heading, Kicker as UiKicker, MonoLink, Muted } from "@/components/ui/text";
 
 const Page = styled.div`
   height: 100vh;
@@ -28,65 +31,40 @@ const Inner = styled(motion.main)`
     ${({ theme }) => theme.space(16)};
 `;
 
-const TopRow = styled.div`
-  display: flex;
-  align-items: center;
+const TopRow = styled(Row)`
   justify-content: space-between;
   margin-bottom: ${({ theme }) => theme.space(8)};
 `;
 
-const Back = styled(Link)`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  color: ${({ theme }) => theme.colors.g64};
-  transition: color ${({ theme }) => theme.motion.fast}s ease;
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-  }
-`;
-
-const Kicker = styled.span`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
+// Same mono micro-label as the rest of the app, with the wider /about tracking.
+const Kicker = styled(UiKicker)`
   letter-spacing: 0.18em;
-  color: ${({ theme }) => theme.colors.g48};
 `;
 
 const Section = styled(motion.section)`
   margin-top: ${({ theme }) => theme.space(10)};
 `;
 
-const H1 = styled.h1`
-  margin: 0;
+const H1 = styled(Heading)`
   font-size: ${({ theme }) => theme.fontSize.xxl};
   line-height: 1.05;
   letter-spacing: -0.02em;
-  font-weight: 700;
+  font-weight: ${({ theme }) => theme.fontWeights.bold};
 `;
 
-const Lede = styled.p`
+const Lede = styled(Muted)`
   margin: ${({ theme }) => theme.space(5)} 0 0;
   font-size: ${({ theme }) => theme.fontSize.lg};
-  line-height: 1.6;
-  color: ${({ theme }) => theme.colors.g80};
 `;
 
-const H2 = styled.h2`
+const H2 = styled(Heading)`
   margin: 0 0 ${({ theme }) => theme.space(4)};
   font-size: ${({ theme }) => theme.fontSize.xl};
-  font-weight: 600;
 `;
 
-const Body = styled.p`
+const Body = styled(Muted)`
   margin: ${({ theme }) => theme.space(3)} 0 0;
   line-height: 1.65;
-  color: ${({ theme }) => theme.colors.g80};
-`;
-
-const Tiers = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(2)};
 `;
 
 const Tier = styled.div<{ $active?: boolean }>`
@@ -114,9 +92,8 @@ const TierMeta = styled.span<{ $active?: boolean }>`
   text-align: right;
 `;
 
-const Note = styled.p`
+const Note = styled(Muted)`
   margin: ${({ theme }) => theme.space(4)} 0 0;
-  line-height: 1.6;
   color: ${({ theme }) => theme.colors.g64};
   font-size: ${({ theme }) => theme.fontSize.sm};
 `;
@@ -144,7 +121,7 @@ const CoverItem = styled.li`
     color: ${({ theme }) => theme.colors.g64};
   }
 
-  @media (max-width: 560px) {
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
     grid-template-columns: 1fr;
     gap: ${({ theme }) => theme.space(1)};
   }
@@ -177,27 +154,15 @@ const Table = styled.table`
   }
 `;
 
-const Cta = styled(Link)`
-  display: inline-block;
+// The primary call-to-action reuses the primary ButtonLink (fg fill, pill).
+const Cta = styled(ButtonLink)`
   margin-top: ${({ theme }) => theme.space(5)};
   padding: ${({ theme }) => theme.space(2.5)} ${({ theme }) => theme.space(5)};
-  background: ${({ theme }) => theme.colors.fg};
-  color: ${({ theme }) => theme.colors.bg};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  font-weight: 600;
   font-size: ${({ theme }) => theme.fontSize.sm};
-  transition: opacity ${({ theme }) => theme.motion.fast}s ease;
-  &:hover {
-    opacity: 0.85;
-  }
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
 `;
 
-const CiteLabel = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+const CiteLabel = styled(SectionLabel)`
   margin-bottom: ${({ theme }) => theme.space(2)};
 `;
 
@@ -212,24 +177,13 @@ const Cite = styled.pre`
   color: ${({ theme }) => theme.colors.g80};
 `;
 
-const Links = styled.div`
-  display: flex;
-  gap: ${({ theme }) => theme.space(3)};
-  flex-wrap: wrap;
+const Links = styled(Cluster)`
   margin-top: ${({ theme }) => theme.space(4)};
 `;
 
-const LinkButton = styled.a`
-  border: 1px solid ${({ theme }) => theme.colors.g20};
-  border-radius: ${({ theme }) => theme.radius.pill};
+// External resource links reuse the ghost ButtonLink (pill, g20 border → g48).
+const LinkButton = styled(ButtonLink)`
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.fg};
-  transition: border-color ${({ theme }) => theme.motion.fast}s ease;
-  &:hover {
-    border-color: ${({ theme }) => theme.colors.g48};
-  }
 `;
 
 const container = {
@@ -261,12 +215,14 @@ export default function AboutPage() {
     <Page>
       <Inner variants={container} initial="hidden" animate="show">
         <TopRow>
-          <Back href="/">← back to the map</Back>
+          <MonoLink as={Link} href="/">
+            ← back to the map
+          </MonoLink>
           <Kicker>ABOUT</Kicker>
         </TopRow>
 
         <Section variants={item}>
-          <H1>So what is a local ordinance?</H1>
+          <H1 as="h1">So what is a local ordinance?</H1>
           <Lede>
             Short version: it&rsquo;s a law your city or county made up, and it only
             applies inside those lines on the map. Not federal. Not state. It&rsquo;s
@@ -279,7 +235,7 @@ export default function AboutPage() {
           <H2>The legal pecking order</H2>
           <Body>U.S. law is a stack, and local ordinances sit at the very bottom:</Body>
           <Note as="div" style={{ marginTop: 16 }}>
-            <Tiers>
+            <Stack $gap={2}>
               <Tier>
                 <TierName>FEDERAL</TierName>
                 <TierMeta>U.S. Congress &middot; the whole country</TierMeta>
@@ -292,7 +248,7 @@ export default function AboutPage() {
                 <TierName>LOCAL ← you are here</TierName>
                 <TierMeta $active>city / county council &middot; your town</TierMeta>
               </Tier>
-            </Tiers>
+            </Stack>
           </Note>
           <Note>
             Local rules can&rsquo;t pick a fight with the bigger ones. If an ordinance
@@ -369,23 +325,53 @@ export default function AboutPage() {
             map them &mdash; each scored along four axes: opacity, enforcement
             discretion, paternalism, and problem salience.
           </Body>
-          <Cta href="/">Explore 2.2M laws →</Cta>
+          <Cta href="/" $variant="primary" $pill>
+            Explore 2.2M laws →
+          </Cta>
         </Section>
 
         <Section variants={item}>
           <CiteLabel>Built on LOCUS-v1 &middot; please cite</CiteLabel>
           <Cite>{BIBTEX}</Cite>
-          <Links>
-            <LinkButton href={PAPER_URL} target="_blank" rel="noreferrer">
+          <Links $gap={3}>
+            <LinkButton
+              href={PAPER_URL}
+              target="_blank"
+              rel="noreferrer"
+              $variant="ghost"
+              $pill
+              $size="sm"
+            >
               Paper ↗
             </LinkButton>
-            <LinkButton href={DATASET_URL} target="_blank" rel="noreferrer">
+            <LinkButton
+              href={DATASET_URL}
+              target="_blank"
+              rel="noreferrer"
+              $variant="ghost"
+              $pill
+              $size="sm"
+            >
               Models &amp; Dataset ↗
             </LinkButton>
-            <LinkButton href={TWEET_URL} target="_blank" rel="noreferrer">
+            <LinkButton
+              href={TWEET_URL}
+              target="_blank"
+              rel="noreferrer"
+              $variant="ghost"
+              $pill
+              $size="sm"
+            >
               Announcement ↗
             </LinkButton>
-            <LinkButton href={AUTHOR_URL} target="_blank" rel="noreferrer">
+            <LinkButton
+              href={AUTHOR_URL}
+              target="_blank"
+              rel="noreferrer"
+              $variant="ghost"
+              $pill
+              $size="sm"
+            >
               {AUTHOR_NAME} ↗
             </LinkButton>
           </Links>

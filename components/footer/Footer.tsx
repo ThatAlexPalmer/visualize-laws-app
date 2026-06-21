@@ -4,6 +4,7 @@
 // from the LOCUS dataset + research it builds on (credited on /about).
 import styled from "styled-components";
 import { APP_AUTHOR, APP_AUTHOR_URL, COPYRIGHT } from "@/lib/attribution";
+import { MonoLink } from "@/components/ui/text";
 
 const Bar = styled.footer`
   display: flex;
@@ -16,14 +17,6 @@ const Bar = styled.footer`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
   color: ${({ theme }) => theme.colors.g48};
-
-  a {
-    color: ${({ theme }) => theme.colors.g64};
-    transition: color ${({ theme }) => theme.motion.fast}s ease;
-  }
-  a:hover {
-    color: ${({ theme }) => theme.colors.fg};
-  }
 `;
 
 export function Footer() {
@@ -31,9 +24,9 @@ export function Footer() {
     <Bar>
       <span>
         app by{" "}
-        <a href={APP_AUTHOR_URL} target="_blank" rel="noreferrer">
+        <MonoLink href={APP_AUTHOR_URL} target="_blank" rel="noreferrer" $size="xs">
           {APP_AUTHOR} ↗
-        </a>
+        </MonoLink>
       </span>
       <span>{COPYRIGHT}</span>
     </Bar>
