@@ -173,9 +173,12 @@ export function MapPanel() {
     return m;
   }, [rows]);
 
+  // Use the actual min/max of state averages, not the national corpus bounds.
+  // Corpus bounds span all individual laws (e.g. -4 to 4); state averages cluster
+  // in a much tighter band, which compresses every state to the same mid-color.
   const domain: Domain | null = useMemo(
-    () => computeDomain(axis, rows, national?.bounds),
-    [axis, rows, national],
+    () => computeDomain(axis, rows),
+    [axis, rows],
   );
 
   // --- size + devicePixelRatio via ResizeObserver ---------------------------
