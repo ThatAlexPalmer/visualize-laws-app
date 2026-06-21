@@ -56,6 +56,16 @@ serves the app at http://localhost:3000 with hot reload. Re-running is fast — 
 once data already exists. Inspect the DB with Postgres.app or `npx prisma studio` at
 `localhost:5432`.
 
+## Troubleshooting
+
+If you rename or move the project folder, the app container's `/workspace` bind mount (an absolute
+host path captured when the container was created) goes stale and the entrypoint exits with a clear
+FATAL message. Recreate the stack from the current folder — data is preserved:
+
+```bash
+docker compose up -d --force-recreate
+```
+
 ## Alternative: run on the host
 
 Prefer running Next.js on the host instead of in the container? Start only Postgres in Docker:
