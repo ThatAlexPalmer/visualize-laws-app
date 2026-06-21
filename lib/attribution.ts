@@ -1,7 +1,10 @@
 // Attribution constants for the LOCUS-v1 corpus, shared by the About page.
 
-// Announcement tweet/X URL — set via NEXT_PUBLIC_TWEET_URL (optional).
-export const TWEET_URL = process.env.NEXT_PUBLIC_TWEET_URL || "";
+// Announcement tweet/X URL. Defaults to the LOCUS announcement; override via
+// the optional NEXT_PUBLIC_TWEET_URL env var.
+export const TWEET_URL =
+  process.env.NEXT_PUBLIC_TWEET_URL ||
+  "https://x.com/barrowjoseph/status/2067993371541492025";
 export const PAPER_URL = "https://arxiv.org/abs/2606.19334";
 export const DATASET_URL = "https://huggingface.co/LocalLaws";
 
