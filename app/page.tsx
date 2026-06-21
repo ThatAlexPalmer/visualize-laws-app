@@ -39,7 +39,7 @@ const Lower = styled.div`
   padding: ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
 
-  @media (max-width: 900px) {
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     grid-template-columns: 1fr;
   }
 `;
