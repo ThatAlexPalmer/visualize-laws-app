@@ -261,7 +261,7 @@ export default function AboutPage() {
     <Page>
       <Inner variants={container} initial="hidden" animate="show">
         <TopRow>
-          <Back href="/">&larr; back to the map</Back>
+          <Back href="/">← back to the map</Back>
           <Kicker>ABOUT</Kicker>
         </TopRow>
 
@@ -289,7 +289,7 @@ export default function AboutPage() {
                 <TierMeta>state legislature &middot; one entire state</TierMeta>
               </Tier>
               <Tier $active>
-                <TierName>LOCAL &larr; you are here</TierName>
+                <TierName>LOCAL ← you are here</TierName>
                 <TierMeta $active>city / county council &middot; your town</TierMeta>
               </Tier>
             </Tiers>
@@ -369,7 +369,7 @@ export default function AboutPage() {
             map them &mdash; each scored along four axes: opacity, enforcement
             discretion, paternalism, and problem salience.
           </Body>
-          <Cta href="/">Explore 2.2M laws &rarr;</Cta>
+          <Cta href="/">Explore 2.2M laws →</Cta>
         </Section>
 
         <Section variants={item}>
@@ -377,16 +377,16 @@ export default function AboutPage() {
           <Cite>{BIBTEX}</Cite>
           <Links>
             <LinkButton href={PAPER_URL} target="_blank" rel="noreferrer">
-              Paper &nearr;
+              Paper ↗
             </LinkButton>
             <LinkButton href={DATASET_URL} target="_blank" rel="noreferrer">
-              Models &amp; Dataset &nearr;
+              Models &amp; Dataset ↗
             </LinkButton>
             <LinkButton href={TWEET_URL} target="_blank" rel="noreferrer">
-              Announcement &nearr;
+              Announcement ↗
             </LinkButton>
             <LinkButton href={AUTHOR_URL} target="_blank" rel="noreferrer">
-              {AUTHOR_NAME} &nearr;
+              {AUTHOR_NAME} ↗
             </LinkButton>
           </Links>
         </Section>

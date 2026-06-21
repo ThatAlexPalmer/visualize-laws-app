@@ -32,7 +32,7 @@ export function Footer() {
       <span>
         app by{" "}
         <a href={APP_AUTHOR_URL} target="_blank" rel="noreferrer">
-          {APP_AUTHOR} &nearr;
+          {APP_AUTHOR} ↗
         </a>
       </span>
       <span>{COPYRIGHT}</span>

@@ -56,9 +56,9 @@ export default function Page() {
             <ResultsPanel />
             <JurisdictionPanel />
           </Lower>
-          <Footer />
         </Main>
       </Body>
+      <Footer />
       <LawModal />
     </Shell>
   );
