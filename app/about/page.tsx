@@ -5,7 +5,15 @@
 import Link from "next/link";
 import styled from "styled-components";
 import { motion } from "framer-motion";
-import { BIBTEX, DATASET_URL, PAPER_URL, TWEET_URL } from "@/lib/attribution";
+import { Footer } from "@/components/footer/Footer";
+import {
+  AUTHOR_NAME,
+  AUTHOR_URL,
+  BIBTEX,
+  DATASET_URL,
+  PAPER_URL,
+  TWEET_URL,
+} from "@/lib/attribution";
 
 const Page = styled.div`
   height: 100vh;
@@ -374,14 +382,16 @@ export default function AboutPage() {
             <LinkButton href={DATASET_URL} target="_blank" rel="noreferrer">
               Models &amp; Dataset &nearr;
             </LinkButton>
-            {TWEET_URL ? (
-              <LinkButton href={TWEET_URL} target="_blank" rel="noreferrer">
-                Announcement &nearr;
-              </LinkButton>
-            ) : null}
+            <LinkButton href={TWEET_URL} target="_blank" rel="noreferrer">
+              Announcement &nearr;
+            </LinkButton>
+            <LinkButton href={AUTHOR_URL} target="_blank" rel="noreferrer">
+              {AUTHOR_NAME} &nearr;
+            </LinkButton>
           </Links>
         </Section>
       </Inner>
+      <Footer />
     </Page>
   );
 }
