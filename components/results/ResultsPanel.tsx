@@ -14,6 +14,9 @@ import {
   type LawRecord,
   type LawsResponse,
 } from "@/lib/types";
+import { Button } from "@/components/ui/buttons";
+import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
+import { Kicker, Mono } from "@/components/ui/text";
 
 function buildQuery(f: LawFilters): string {
   const p = new URLSearchParams();
@@ -48,36 +51,25 @@ function nextSort(
   return null;
 }
 
-const Panel = styled.section`
-  display: flex;
-  flex-direction: column;
+const Panel = styled(PanelBase)`
   min-height: 320px;
-  border: 1px solid ${({ theme }) => theme.colors.g08};
-  border-radius: ${({ theme }) => theme.radius.md};
-  overflow: hidden;
 `;
 
-const Toolbar = styled.div`
-  display: flex;
-  align-items: center;
+const Toolbar = styled(Row)`
   justify-content: space-between;
-  gap: ${({ theme }) => theme.space(3)};
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border-bottom: 1px solid ${({ theme }) => theme.colors.g08};
 `;
 
-const Count = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+// Subtle "updating…" affordance shown during stale-while-revalidate refreshes.
+// `text-transform: none` opts out of the uppercase Kicker it sits inside.
+const Updating = styled(motion.span)`
+  margin-left: ${({ theme }) => theme.space(2)};
+  color: ${({ theme }) => theme.colors.g32};
+  text-transform: none;
 `;
 
-const SortBar = styled.div`
-  display: flex;
-  gap: ${({ theme }) => theme.space(1)};
-  flex-wrap: wrap;
+const SortBar = styled(Cluster)`
   justify-content: flex-end;
 `;
 
@@ -93,13 +85,12 @@ const SortButton = styled.button<{ $active: boolean }>`
   white-space: nowrap;
 `;
 
-const Scroll = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+const Scroll = styled(ScrollArea)<{ $stale?: boolean }>`
+  transition: opacity ${({ theme }) => theme.motion.base}s ease;
+  opacity: ${({ $stale }) => ($stale ? 0.6 : 1)};
 `;
 
-const Row = styled(motion.button)`
+const ResultRow = styled(motion.button)`
   display: grid;
   grid-template-columns: 1fr auto;
   gap: ${({ theme }) => theme.space(4)};
@@ -192,33 +183,18 @@ const Bar = styled.div<{ $w: string }>`
   background: ${({ theme }) => theme.colors.g08};
 `;
 
-const Pager = styled.div`
-  display: flex;
-  align-items: center;
+const Pager = styled(Row)`
   justify-content: space-between;
-  gap: ${({ theme }) => theme.space(3)};
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
 `;
 
-const PageButton = styled.button`
-  background: transparent;
-  border: 1px solid ${({ theme }) => theme.colors.g20};
-  color: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.sm};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
+// Reuses the ghost Button; only the pager padding is tuned to the original.
+const PageButton = styled(Button)`
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
 `;
 
-const PageInfo = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
+const PageInfo = styled(Mono)`
   font-size: ${({ theme }) => theme.fontSize.xs};
   color: ${({ theme }) => theme.colors.g48};
 `;
@@ -232,15 +208,17 @@ export function ResultsPanel() {
   const { filters } = state;
   const query = useMemo(() => buildQuery(filters), [filters]);
 
+  // `data` holds the last successful response and is intentionally NOT cleared
+  // between queries, so the previous page stays visible while a new one loads.
   const [data, setData] = useState<LawsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState(false);
   const reqId = useRef(0);
 
   useEffect(() => {
     const id = ++reqId.current;
     const ctrl = new AbortController();
-    setLoading(true);
+    setIsFetching(true);
     setError(false);
     fetch(`/api/laws?${query}`, { signal: ctrl.signal, cache: "no-store" })
       .then((r) => {
@@ -250,12 +228,12 @@ export function ResultsPanel() {
       .then((json) => {
         if (id !== reqId.current) return;
         setData(json);
-        setLoading(false);
+        setIsFetching(false);
       })
       .catch((err) => {
         if (ctrl.signal.aborted || id !== reqId.current) return;
         setError(true);
-        setLoading(false);
+        setIsFetching(false);
         void err;
       });
     return () => ctrl.abort();
@@ -267,13 +245,29 @@ export function ResultsPanel() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rows = data?.rows ?? [];
 
+  // Stale-while-revalidate: skeletons only when there is nothing to show yet;
+  // once the first page has loaded we keep it (subtly dimmed) while refetching.
+  const isInitialLoading = isFetching && data === null;
+  const isRevalidating = isFetching && data !== null;
+  const showError = error && data === null;
+
   return (
     <Panel>
-      <Toolbar>
-        <Count>
-          {loading ? "Loading…" : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
-        </Count>
-        <SortBar>
+      <Toolbar $gap={3}>
+        <Kicker>
+          {isInitialLoading
+            ? "Loading…"
+            : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
+          {isRevalidating && (
+            <Updating
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 1.1, repeat: Infinity }}
+            >
+              updating…
+            </Updating>
+          )}
+        </Kicker>
+        <SortBar $gap={1}>
           {AXES.map((a) => {
             const active = filters.sort?.axis === a.key;
             const arrow = active ? (filters.sort?.dir === "asc" ? " ↑" : " ↓") : "";
@@ -297,8 +291,8 @@ export function ResultsPanel() {
         </SortBar>
       </Toolbar>
 
-      <Scroll>
-        {loading ? (
+      <Scroll $stale={isRevalidating}>
+        {isInitialLoading ? (
           <div>
             {Array.from({ length: 8 }).map((_, i) => (
               <SkeletonRow
@@ -315,14 +309,14 @@ export function ResultsPanel() {
               </SkeletonRow>
             ))}
           </div>
-        ) : error ? (
+        ) : showError ? (
           <Centered>Could not load results. Is the database seeded?</Centered>
         ) : rows.length === 0 ? (
           <Centered>No laws match these filters.</Centered>
         ) : (
           <AnimatePresence initial={false}>
             {rows.map((law: LawRecord, i) => (
-              <Row
+              <ResultRow
                 key={law.id}
                 type="button"
                 onClick={() => dispatch({ type: "openLaw", law })}
@@ -347,16 +341,18 @@ export function ResultsPanel() {
                     </Score>
                   ))}
                 </Scores>
-              </Row>
+              </ResultRow>
             ))}
           </AnimatePresence>
         )}
       </Scroll>
 
-      <Pager>
+      <Pager $gap={3}>
         <PageButton
           type="button"
-          disabled={page <= 1 || loading}
+          $variant="ghost"
+          $size="sm"
+          disabled={page <= 1 || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page - 1 })}
         >
           ← Prev
@@ -366,7 +362,9 @@ export function ResultsPanel() {
         </PageInfo>
         <PageButton
           type="button"
-          disabled={page >= totalPages || loading}
+          $variant="ghost"
+          $size="sm"
+          disabled={page >= totalPages || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page + 1 })}
         >
           Next →
