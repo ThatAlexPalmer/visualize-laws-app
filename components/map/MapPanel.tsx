@@ -114,7 +114,7 @@ const Hint = styled(motion.div)`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g60};
 `;
 
 /** Size a canvas backing store to its DPR-scaled pixel box (clears on change). */

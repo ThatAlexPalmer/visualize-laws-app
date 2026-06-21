@@ -41,7 +41,7 @@ const Label = styled.div`
 const Blurb = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   line-height: 1.35;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Bar = styled.div`
@@ -55,7 +55,7 @@ const Scale = styled.div`
   justify-content: space-between;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Direction = styled.div`
@@ -65,7 +65,7 @@ const Direction = styled.div`
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g60};
   margin-top: -${({ theme }) => theme.space(0.5)};
 `;
 

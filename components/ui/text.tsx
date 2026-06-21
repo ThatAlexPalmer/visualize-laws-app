@@ -21,27 +21,27 @@ export const Mono = styled.span`
 `;
 
 /** Muted body copy. Tone defaults to the brightest gray (`g80`). */
-export const Muted = styled.p<{ $tone?: "g48" | "g64" | "g80"; $size?: "sm" | "md" | "lg" }>`
+export const Muted = styled.p<{ $tone?: "g68" | "g76" | "g90"; $size?: "sm" | "md" | "lg" }>`
   margin: 0;
   line-height: 1.6;
-  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g80"]};
+  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g90"]};
   ${({ theme, $size }) => $size && `font-size: ${theme.fontSize[$size]};`}
 `;
 
 /** The recurring mono / xs / uppercase / letter-spaced micro-label. */
-export const Kicker = styled.span<{ $tone?: "g48" | "g64" }>`
+export const Kicker = styled.span<{ $tone?: "g68" | "g76" }>`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g48"]};
+  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g68"]};
 `;
 
 /** Subtle mono text link (g64 → fg on hover). Render as a Next `<Link>` via `as`. */
 export const MonoLink = styled.a<{ $size?: "xs" | "sm" }>`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme, $size }) => theme.fontSize[$size ?? "sm"]};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
   cursor: pointer;
   transition: color ${({ theme }) => theme.motion.fast}s ease;
 

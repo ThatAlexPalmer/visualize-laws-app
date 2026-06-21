@@ -83,7 +83,7 @@ const Aside = styled(motion.aside)`
 // The Reset control reuses the Button primitive (ghost variant); it only dims
 // the resting label to g64 and keeps a subtle press affordance.
 const ResetButton = styled(Button)`
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
 
   &:active {
     transform: scale(0.94);

@@ -19,7 +19,7 @@ const fieldBox = css`
   outline: none;
 
   &:focus {
-    border-color: ${({ theme }) => theme.colors.g48};
+    border-color: ${({ theme }) => theme.colors.g68};
   }
 `;
 
@@ -27,7 +27,7 @@ export const Input = styled.input`
   ${fieldBox}
 
   &::placeholder {
-    color: ${({ theme }) => theme.colors.g32};
+    color: ${({ theme }) => theme.colors.g60};
   }
 `;
 
@@ -54,7 +54,7 @@ export const FieldLabel = styled.label`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 /** Segmented (pill) toggle group — equal-width columns for any child count. */
@@ -78,7 +78,7 @@ export const SegItem = styled.button<{ $active: boolean }>`
   border-radius: ${({ theme }) => theme.radius.pill};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g64)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g76)};
   transition: color ${({ theme }) => theme.motion.fast}s ease;
 `;
 
@@ -164,11 +164,11 @@ export const SliderInput = styled.input<{ $z: number }>`
     outline: none;
   }
   &:focus-visible::-webkit-slider-thumb {
-    outline: 2px solid ${({ theme }) => theme.colors.g48};
+    outline: 2px solid ${({ theme }) => theme.colors.g68};
     outline-offset: 2px;
   }
   &:focus-visible::-moz-range-thumb {
-    outline: 2px solid ${({ theme }) => theme.colors.g48};
+    outline: 2px solid ${({ theme }) => theme.colors.g68};
     outline-offset: 2px;
   }
 `;

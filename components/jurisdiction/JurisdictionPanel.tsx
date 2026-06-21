@@ -38,7 +38,7 @@ const Header = styled(Row)`
 // Clear reuses the subtle Button; it only drops padding and dims the label.
 const Clear = styled(Button)`
   padding: 0;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Inner = styled(ScrollArea)`
@@ -69,7 +69,7 @@ const StatLabel = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const AvgTop = styled.div`
@@ -78,7 +78,7 @@ const AvgTop = styled.div`
   justify-content: space-between;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
 `;
 
 const AvgNum = styled.span`
@@ -117,7 +117,7 @@ const LawRow = styled.button`
   border: 0;
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
   padding: ${({ theme }) => theme.space(2.5)} 0;
-  color: ${({ theme }) => theme.colors.g80};
+  color: ${({ theme }) => theme.colors.g90};
   cursor: pointer;
 
   &:hover {
@@ -136,7 +136,7 @@ const LawVal = styled.span`
   flex-shrink: 0;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const Empty = styled.div`
@@ -146,9 +146,12 @@ const Empty = styled.div`
   justify-content: center;
   text-align: center;
   padding: ${({ theme }) => theme.space(6)};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.fg};
   font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
+  font-size: ${({ theme }) => theme.fontSize.md};
+  line-height: 1.5;
+  max-width: 220px;
+  margin: 0 auto;
 `;
 
 const AVG_BY_AXIS = {

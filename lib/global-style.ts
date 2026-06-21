@@ -33,7 +33,7 @@ export const GlobalStyle = createGlobalStyle`
     background: ${({ theme }) => theme.colors.g20};
     border-radius: ${({ theme }) => theme.radius.pill};
   }
-  ::-webkit-scrollbar-thumb:hover { background: ${({ theme }) => theme.colors.g32}; }
+  ::-webkit-scrollbar-thumb:hover { background: ${({ theme }) => theme.colors.g60}; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

@@ -71,7 +71,7 @@ const AxisButton = styled.button<{ $active: boolean }>`
   background: transparent;
   border: 0;
   z-index: 1;
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g64)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g76)};
   border-radius: ${({ theme }) => theme.radius.pill};
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
   font-size: ${({ theme }) => theme.fontSize.sm};

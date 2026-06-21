@@ -66,7 +66,7 @@ const Toolbar = styled(Row)`
 // `text-transform: none` opts out of the uppercase Kicker it sits inside.
 const Updating = styled(motion.span)`
   margin-left: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g32};
+  color: ${({ theme }) => theme.colors.g60};
   text-transform: none;
 `;
 
@@ -76,8 +76,8 @@ const SortBar = styled(Cluster)`
 
 const SortButton = styled.button<{ $active: boolean }>`
   background: ${({ $active, theme }) => ($active ? theme.colors.g12 : "transparent")};
-  border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.g32 : theme.colors.g08)};
-  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g48)};
+  border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g08)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
   border-radius: ${({ theme }) => theme.radius.sm};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
@@ -125,7 +125,7 @@ const RowMeta = styled.div`
   margin-top: ${({ theme }) => theme.space(1)};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -142,14 +142,14 @@ const Score = styled.div<{ $active: boolean }>`
   align-items: flex-end;
   gap: 2px;
   min-width: 34px;
-  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g48)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
 `;
 
 const ScoreKey = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 9px;
   letter-spacing: 0.08em;
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 const ScoreVal = styled.span`
@@ -163,7 +163,7 @@ const Centered = styled.div`
   align-items: center;
   justify-content: center;
   padding: ${({ theme }) => theme.space(8)};
-  color: ${({ theme }) => theme.colors.g64};
+  color: ${({ theme }) => theme.colors.g76};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
   text-align: center;
@@ -197,7 +197,7 @@ const PageButton = styled(Button)`
 
 const PageInfo = styled(Mono)`
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g48};
+  color: ${({ theme }) => theme.colors.g68};
 `;
 
 function fmt(n: number): string {

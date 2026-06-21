@@ -5,15 +5,15 @@ export const theme = {
   colors: {
     bg: "#000000",
     fg: "#FFFFFF",
-    // white-opacity gray ramp — boosted for legibility on pitch-black
+    // white-opacity gray ramp — token name = opacity %. Higher = brighter.
     g04: "rgba(255,255,255,0.04)",
     g08: "rgba(255,255,255,0.08)",
     g12: "rgba(255,255,255,0.12)",
     g20: "rgba(255,255,255,0.20)",
-    g32: "rgba(255,255,255,0.52)",
-    g48: "rgba(255,255,255,0.68)",
-    g64: "rgba(255,255,255,0.76)",
-    g80: "rgba(255,255,255,0.90)",
+    g60: "rgba(255,255,255,0.60)",
+    g68: "rgba(255,255,255,0.68)",
+    g76: "rgba(255,255,255,0.76)",
+    g90: "rgba(255,255,255,0.90)",
     // per-axis accent colors (vivid; used by nav pills + map legend)
     axis: {
       opacity: "#E53E3E",
@@ -57,7 +57,7 @@ export const theme = {
   // Subtle monochrome elevation + focus ring (white-on-black aesthetic).
   shadows: {
     none: "none",
-    focus: "0 0 0 2px rgba(255,255,255,0.48)",
+    focus: "0 0 0 2px rgba(255,255,255,0.68)",
   },
   z: { map: 1, sidebar: 10, nav: 20, modal: 100 },
 } as const;
