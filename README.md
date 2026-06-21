@@ -38,9 +38,8 @@ Every law in LOCUS-v1 is scored along four axes:
 
 ## Prerequisites
 
-- Node.js >= 20
-- pnpm
-- Docker (for the one-command stack, or just the local Postgres instance)
+- **Docker** — the only thing you need for the one-command stack below.
+- Node.js >= 20 and pnpm — only if you'd rather run the app on the host.
 
 ## Quick start (one command)
 
@@ -54,9 +53,9 @@ This builds the app image, starts Postgres, applies migrations, sample-seeds the
 (~25k rows) on first run, and serves the app at http://localhost:3000 with hot reload.
 Re-running `docker compose up` is fast — the seed is skipped once data already exists.
 
-## Manual setup (host Node + Dockerized Postgres)
+## Alternative: run on the host
 
-Prefer running Next.js on the host? Start only Postgres in Docker:
+Prefer running Next.js on the host instead of in the container? Start only Postgres in Docker:
 
 ```bash
 pnpm install              # installs deps; postinstall runs `prisma generate`
@@ -72,13 +71,12 @@ seeded, so you can start `pnpm dev` before seeding finishes.
 
 ## Environment variables
 
-Copy `.env.example` to `.env`. The variables are:
+`docker compose up` wires these automatically — you don't set anything. They're only needed for
+the host path or production, where you copy `.env.example` to `.env`:
 
 - `DATABASE_URL` — Postgres connection string used by the app (pooled in production).
 - `DIRECT_URL` — direct (non-pooled) connection string used by Prisma for migrations. Locally
   this is identical to `DATABASE_URL`.
-- `NEXT_PUBLIC_TWEET_URL` — optional announcement tweet/X URL. The `/about` page renders the
-  "Announcement" link only when this is set.
 
 ## Seeding
 
@@ -138,8 +136,7 @@ The app deploys to Vercel with a managed Postgres database (Vercel Postgres or N
 2. Provision a Postgres database and map its connection strings to the app's variables:
    - `DATABASE_URL` → the **pooled** connection string (e.g. `POSTGRES_PRISMA_URL`).
    - `DIRECT_URL` → the **non-pooling** connection string (e.g. `POSTGRES_URL_NON_POOLING`).
-3. Optionally set `NEXT_PUBLIC_TWEET_URL`.
-4. Apply migrations against the production database (`pnpm prisma:deploy` with the production
+3. Apply migrations against the production database (`pnpm prisma:deploy` with the production
    `DIRECT_URL`) and run the seed.
 
 All API route handlers are `dynamic = "force-dynamic"`, so results always reflect the current
