@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
-import { motion, useAnimationControls } from "framer-motion";
+import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import { geoAlbersUsa, geoPath } from "d3-geo";
 
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
   AXIS_BY_KEY,
+  stateName,
+  type Axis,
   type AxisBounds,
   type JurisdictionAgg,
   type JurisdictionsResponse,
@@ -19,7 +21,7 @@ import {
   axisValue,
   computeDomain,
   normalize,
-  rampColor,
+  rampColorForAxis,
   type Domain,
 } from "./color";
 import { MapLegend } from "./Legend";
@@ -78,6 +80,29 @@ const OverlayCanvas = styled.canvas`
   width: 100%;
   height: 100%;
   display: block;
+`;
+
+/** Per-axis tinted hover stroke colors. */
+const AXIS_HOVER_STROKE: Record<Axis, string> = {
+  opacity: "rgba(229,62,62,0.72)",
+  enforcementDiscretion: "rgba(59,130,246,0.72)",
+  paternalism: "rgba(249,115,22,0.72)",
+  problemSalience: "rgba(139,92,246,0.72)",
+};
+
+/** State name displayed on top-left of the map canvas. */
+const StateLabel = styled(motion.div)`
+  position: absolute;
+  top: ${({ theme }) => theme.space(4)};
+  left: ${({ theme }) => theme.space(4)};
+  z-index: 3;
+  pointer-events: none;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 22px;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.fg};
 `;
 
 const Hint = styled(motion.div)`
@@ -201,7 +226,7 @@ export function MapPanel() {
       const agg = e.usps ? aggByUsps.get(e.usps) : undefined;
       ctx.fillStyle =
         agg && domain
-          ? rampColor(normalize(axisValue(agg, axis), domain))
+          ? rampColorForAxis(normalize(axisValue(agg, axis), domain), axis)
           : "rgba(255,255,255,0.015)";
       ctx.fill(e.path);
     }
@@ -234,8 +259,8 @@ export function MapPanel() {
     if (hovered && hovered !== selectedState) {
       const he = entries.find((e) => e.usps === hovered);
       if (he) {
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
         ctx.stroke(he.path);
       }
     }
@@ -249,7 +274,7 @@ export function MapPanel() {
         ctx.stroke(se.path);
       }
     }
-  }, [size, hovered, selectedState]);
+  }, [size, hovered, selectedState, axis]);
 
   // Rebuild the per-state Path2D set whenever the canvas size changes.
   useEffect(() => {
@@ -387,7 +412,20 @@ export function MapPanel() {
           awaiting aggregates
         </Hint>
       )}
-      <MapLegend axisLabel={axisMeta.label} blurb={axisMeta.blurb} domain={domain} />
+      <MapLegend axis={axis} axisLabel={axisMeta.label} blurb={axisMeta.blurb} domain={domain} />
+      <AnimatePresence>
+        {(hovered ?? selectedState) && (
+          <StateLabel
+            key={hovered ?? selectedState}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {stateName(hovered ?? selectedState)}
+          </StateLabel>
+        )}
+      </AnimatePresence>
     </Wrap>
   );
 }

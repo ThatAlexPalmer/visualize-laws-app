@@ -5,9 +5,12 @@
 import styled from "styled-components";
 import Link from "next/link";
 import { useExplorer } from "@/lib/store";
-import { AXES } from "@/lib/types";
+import { AXES, type Axis } from "@/lib/types";
+import { theme } from "@/lib/theme";
 import { Mono, MonoLink } from "@/components/ui/text";
 import { PillHighlight } from "@/components/ui/forms";
+
+const AXIS_ACCENT: Record<Axis, string> = theme.colors.axis;
 
 const Bar = styled.header`
   display: flex;
@@ -72,6 +75,7 @@ export function TopNav() {
               {active && (
                 <PillHighlight
                   layoutId="axis-active"
+                  $bg={AXIS_ACCENT[a.key]}
                   transition={{ type: "spring", stiffness: 480, damping: 38 }}
                 />
               )}

@@ -82,12 +82,13 @@ export const SegItem = styled.button<{ $active: boolean }>`
   transition: color ${({ theme }) => theme.motion.fast}s ease;
 `;
 
-/** Sliding white highlight behind the active segment / axis pill (framer layout). */
-export const PillHighlight = styled(motion.span)`
+/** Sliding highlight behind the active segment / axis pill (framer layout).
+ *  Pass `$bg` to override the default white with an accent color. */
+export const PillHighlight = styled(motion.span)<{ $bg?: string }>`
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: ${({ theme }) => theme.colors.fg};
+  background: ${({ $bg, theme }) => $bg ?? theme.colors.fg};
   border-radius: ${({ theme }) => theme.radius.pill};
 `;
 

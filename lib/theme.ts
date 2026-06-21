@@ -5,15 +5,22 @@ export const theme = {
   colors: {
     bg: "#000000",
     fg: "#FFFFFF",
-    // white-opacity gray ramp
+    // white-opacity gray ramp — boosted for legibility on pitch-black
     g04: "rgba(255,255,255,0.04)",
     g08: "rgba(255,255,255,0.08)",
     g12: "rgba(255,255,255,0.12)",
     g20: "rgba(255,255,255,0.20)",
-    g32: "rgba(255,255,255,0.32)",
-    g48: "rgba(255,255,255,0.48)",
-    g64: "rgba(255,255,255,0.64)",
-    g80: "rgba(255,255,255,0.80)",
+    g32: "rgba(255,255,255,0.42)",
+    g48: "rgba(255,255,255,0.60)",
+    g64: "rgba(255,255,255,0.76)",
+    g80: "rgba(255,255,255,0.90)",
+    // per-axis accent colors (vivid; used by nav pills + map legend)
+    axis: {
+      opacity: "#E53E3E",
+      enforcementDiscretion: "#3B82F6",
+      paternalism: "#F97316",
+      problemSalience: "#8B5CF6",
+    },
   },
   // 4px base spacing scale
   space: (n: number) => `${n * 4}px`,
