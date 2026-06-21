@@ -3,6 +3,7 @@
 // Top navigation: brand, the axis selector (with a framer-motion shared-layout
 // active indicator), and the About trigger.
 import styled from "styled-components";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import { AXES } from "@/lib/types";
@@ -61,7 +62,7 @@ const ActivePill = styled(motion.span)`
   border-radius: ${({ theme }) => theme.radius.pill};
 `;
 
-const AboutLink = styled(motion.button)`
+const AboutLink = styled(Link)`
   background: transparent;
   color: ${({ theme }) => theme.colors.g64};
   border: 0;
@@ -69,6 +70,10 @@ const AboutLink = styled(motion.button)`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
   white-space: nowrap;
+  transition: color ${({ theme }) => theme.motion.fast}s ease;
+  &:hover {
+    color: ${({ theme }) => theme.colors.fg};
+  }
 `;
 
 export function TopNav() {
@@ -97,14 +102,7 @@ export function TopNav() {
           );
         })}
       </Axes>
-      <AboutLink
-        type="button"
-        onClick={() => dispatch({ type: "setAbout", open: true })}
-        whileHover={{ color: "#fff" }}
-        whileTap={{ scale: 0.96 }}
-      >
-        About
-      </AboutLink>
+      <AboutLink href="/about">About</AboutLink>
     </Bar>
   );
 }

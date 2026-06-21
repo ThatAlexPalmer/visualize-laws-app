@@ -78,8 +78,8 @@ pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 ## Project Structure
 
 ```text
-app/                                # Next.js App Router: layout, page, api/*
-components/                         # nav, sidebar, map, results, jurisdiction, modal, about
+app/                                # Next.js App Router: layout, page, about/, api/*
+components/                         # nav, sidebar, map, results, jurisdiction, modal
 lib/                                # store, theme, styled-components registry, types re-export
 data/
   prisma/                           # schema.prisma + migrations (tsvector/GIN)
@@ -128,7 +128,7 @@ is generated automatically and never written by the seeder.
 - `DATABASE_URL` — Postgres connection (pooled in production).
 - `DIRECT_URL` — direct/non-pooled connection used by Prisma migrations (same as `DATABASE_URL`
   locally).
-- `NEXT_PUBLIC_TWEET_URL` — optional announcement link; the About modal shows it only when set.
+- `NEXT_PUBLIC_TWEET_URL` — optional announcement link; the `/about` page shows it only when set.
 
 ## Git Workflow
 

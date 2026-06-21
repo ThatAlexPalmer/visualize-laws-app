@@ -7,7 +7,6 @@ import { MapPanel } from "@/components/map/MapPanel";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
 import { JurisdictionPanel } from "@/components/jurisdiction/JurisdictionPanel";
 import { LawModal } from "@/components/modal/LawModal";
-import { AboutModal } from "@/components/about/AboutModal";
 
 const Shell = styled.div`
   display: flex;
@@ -59,7 +58,6 @@ export default function Page() {
         </Main>
       </Body>
       <LawModal />
-      <AboutModal />
     </Shell>
   );
 }

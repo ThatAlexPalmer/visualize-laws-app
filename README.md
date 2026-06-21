@@ -77,7 +77,7 @@ Copy `.env.example` to `.env`. The variables are:
 - `DATABASE_URL` — Postgres connection string used by the app (pooled in production).
 - `DIRECT_URL` — direct (non-pooled) connection string used by Prisma for migrations. Locally
   this is identical to `DATABASE_URL`.
-- `NEXT_PUBLIC_TWEET_URL` — optional announcement tweet/X URL. The About modal renders the
+- `NEXT_PUBLIC_TWEET_URL` — optional announcement tweet/X URL. The `/about` page renders the
   "Announcement" link only when this is set.
 
 ## Seeding
@@ -116,7 +116,8 @@ app/                                # Next.js App Router
   api/jurisdictions/route.ts        # GET /api/jurisdictions -> getJurisdictions
   api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]
   layout.tsx, page.tsx              # root layout + single-page shell
-components/                         # nav, sidebar, map, results, jurisdiction, modal, about
+  about/page.tsx                    # /about — local-ordinance primer + attribution
+components/                         # nav, sidebar, map, results, jurisdiction, modal
 lib/                                # store, theme, styled-components registry, types re-export
 data/
   prisma/                           # schema.prisma + migrations (tsvector/GIN)

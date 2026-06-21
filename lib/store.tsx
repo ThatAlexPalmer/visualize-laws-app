@@ -12,7 +12,6 @@ export interface ExplorerState {
   filters: LawFilters;
   selectedState: string | null;
   selectedLaw: LawRecord | null;
-  aboutOpen: boolean;
 }
 
 export const DEFAULT_PAGE_SIZE = 25;
@@ -28,7 +27,6 @@ const initialState: ExplorerState = {
   filters: initialFilters,
   selectedState: null,
   selectedLaw: null,
-  aboutOpen: false,
 };
 
 export type ExplorerAction =
@@ -38,8 +36,7 @@ export type ExplorerAction =
   | { type: "resetFilters" }
   | { type: "selectState"; state: string | null }
   | { type: "openLaw"; law: LawRecord }
-  | { type: "closeLaw" }
-  | { type: "setAbout"; open: boolean };
+  | { type: "closeLaw" };
 
 function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
   switch (action.type) {
@@ -69,8 +66,6 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
       return { ...state, selectedLaw: action.law };
     case "closeLaw":
       return { ...state, selectedLaw: null };
-    case "setAbout":
-      return { ...state, aboutOpen: action.open };
     default:
       return state;
   }
