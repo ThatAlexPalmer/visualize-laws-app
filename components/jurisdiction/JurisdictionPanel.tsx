@@ -13,6 +13,7 @@ import {
   stateName,
   type JurisdictionDetailResponse,
 } from "@/lib/types";
+import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
 import {
   Card,
@@ -164,7 +165,7 @@ function clampPct(v: number): number {
 
 export function JurisdictionPanel() {
   const { state, dispatch } = useExplorer();
-  const { selectedState } = state;
+  const { selectedState, unhinged } = state;
 
   const [data, setData] = useState<JurisdictionDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -201,7 +202,7 @@ export function JurisdictionPanel() {
   if (!selectedState) {
     return (
       <Panel as="aside">
-        <Empty>Select a state on the map to see its profile.</Empty>
+        <Empty>{ui("Select a state on the map to see its profile.", unhinged)}</Empty>
       </Panel>
     );
   }
@@ -248,14 +249,14 @@ export function JurisdictionPanel() {
                 </Stat>
               </CountRow>
 
-              <SectionLabel>Average scores</SectionLabel>
+              <SectionLabel>{ui("Average scores", unhinged)}</SectionLabel>
               <Stack $gap={3}>
                 {AXES.map((a) => {
                   const value = agg[AVG_BY_AXIS[a.key]];
                   return (
                     <Stack key={a.key} $gap={1.5}>
                       <AvgTop>
-                        <span>{a.label}</span>
+                        <span>{resolveAxisCopy(a.key, unhinged).label}</span>
                         <AvgNum>{value.toFixed(2)}</AvgNum>
                       </AvgTop>
                       <Meter>
@@ -272,7 +273,7 @@ export function JurisdictionPanel() {
 
               {topLaws.length > 0 && (
                 <>
-                  <SectionLabel>Notable laws</SectionLabel>
+                  <SectionLabel>{ui("Notable laws", unhinged)}</SectionLabel>
                   <TopLaws>
                     {topLaws.map((law) => (
                       <LawRow

@@ -14,6 +14,7 @@ import {
   type LawRecord,
   type LawsResponse,
 } from "@/lib/types";
+import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
 import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
 import { Kicker, Mono } from "@/components/ui/text";
@@ -205,7 +206,7 @@ function fmt(n: number): string {
 
 export function ResultsPanel() {
   const { state, dispatch } = useExplorer();
-  const { filters } = state;
+  const { filters, unhinged } = state;
   const query = useMemo(() => buildQuery(filters), [filters]);
 
   // `data` holds the last successful response and is intentionally NOT cleared
@@ -256,8 +257,10 @@ export function ResultsPanel() {
       <Toolbar $gap={3}>
         <Kicker>
           {isInitialLoading
-            ? "Loading…"
-            : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
+            ? ui("Loading…", unhinged)
+            : unhinged
+              ? `${total.toLocaleString()} ORDINANCES FROM THE VOID`
+              : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
           {isRevalidating && (
             <Updating
               animate={{ opacity: [0.5, 1, 0.5] }}
@@ -281,9 +284,9 @@ export function ResultsPanel() {
                     filters: { sort: nextSort(filters.sort, a.key) },
                   })
                 }
-                title={`Sort by ${a.label}`}
+                title={`Sort by ${resolveAxisCopy(a.key, unhinged).label}`}
               >
-                {a.label.split(" ")[0]}
+                {resolveAxisCopy(a.key, unhinged).label.split(" ")[0]}
                 {arrow}
               </SortButton>
             );
@@ -312,7 +315,7 @@ export function ResultsPanel() {
         ) : showError ? (
           <Centered>Could not load results. Is the database seeded?</Centered>
         ) : rows.length === 0 ? (
-          <Centered>No laws match these filters.</Centered>
+          <Centered>{ui("No laws match these filters.", unhinged)}</Centered>
         ) : (
           <AnimatePresence initial={false}>
             {rows.map((law: LawRecord, i) => (
@@ -336,7 +339,7 @@ export function ResultsPanel() {
                 <Scores>
                   {AXES.map((a) => (
                     <Score key={a.key} $active={state.axis === a.key}>
-                      <ScoreKey>{a.label.slice(0, 3).toUpperCase()}</ScoreKey>
+                      <ScoreKey>{resolveAxisCopy(a.key, unhinged).label.slice(0, 3).toUpperCase()}</ScoreKey>
                       <ScoreVal>{fmt(law[a.key])}</ScoreVal>
                     </Score>
                   ))}
@@ -355,7 +358,7 @@ export function ResultsPanel() {
           disabled={page <= 1 || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page - 1 })}
         >
-          ← Prev
+          {unhinged ? "← RETREAT" : "← Prev"}
         </PageButton>
         <PageInfo>
           Page {page} of {totalPages}
@@ -367,7 +370,7 @@ export function ResultsPanel() {
           disabled={page >= totalPages || isFetching}
           onClick={() => dispatch({ type: "setPage", page: page + 1 })}
         >
-          Next →
+          {unhinged ? "CONTINUE SUFFERING →" : "Next →"}
         </PageButton>
       </Pager>
     </Panel>

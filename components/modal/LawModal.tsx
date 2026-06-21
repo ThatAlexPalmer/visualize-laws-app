@@ -7,6 +7,7 @@ import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import { AXES, DEFAULT_SCORE_RANGE, stateName } from "@/lib/types";
+import { resolveAxisCopy } from "@/lib/copy";
 import { IconButton } from "@/components/ui/buttons";
 import { Card as CardBase, Cluster, Stack } from "@/components/ui/containers";
 import { Heading, Mono } from "@/components/ui/text";
@@ -124,6 +125,7 @@ function clampPct(v: number): number {
 
 export function LawModal() {
   const { state, dispatch } = useExplorer();
+  const { unhinged } = state;
   const law = state.selectedLaw;
   const close = () => dispatch({ type: "closeLaw" });
 
@@ -183,7 +185,7 @@ export function LawModal() {
                 return (
                   <Stack key={a.key} $gap={1.5}>
                     <ScoreTop>
-                      <span>{a.label}</span>
+                      <span>{resolveAxisCopy(a.key, unhinged).label}</span>
                       <ScoreNum>{value.toFixed(2)}</ScoreNum>
                     </ScoreTop>
                     <Meter>

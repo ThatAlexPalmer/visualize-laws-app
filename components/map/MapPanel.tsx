@@ -8,12 +8,12 @@ import { geoAlbersUsa, geoPath } from "d3-geo";
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
-  AXIS_BY_KEY,
   stateName,
   type Axis,
   type JurisdictionAgg,
   type JurisdictionsResponse,
 } from "@/lib/types";
+import { resolveAxisCopy } from "@/lib/copy";
 
 import { stateFeatureCollection, stateFeatures } from "./geo";
 import {
@@ -391,7 +391,8 @@ export function MapPanel() {
     [pick, dispatch, selectedState],
   );
 
-  const axisMeta = AXIS_BY_KEY[axis];
+  const { unhinged } = state;
+  const axisCopy = resolveAxisCopy(axis, unhinged);
 
   return (
     <Wrap ref={wrapRef}>
@@ -412,7 +413,7 @@ export function MapPanel() {
           awaiting aggregates
         </Hint>
       )}
-      <MapLegend axis={axis} axisLabel={axisMeta.label} blurb={axisMeta.blurb} domain={domain} />
+      <MapLegend axis={axis} axisLabel={axisCopy.label} blurb={axisCopy.blurb} domain={domain} />
       <AnimatePresence>
         {(hovered ?? selectedState) && (
           <StateLabel

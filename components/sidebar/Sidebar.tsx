@@ -17,6 +17,7 @@ import {
   type JurisdictionsResponse,
   type ScoreRange,
 } from "@/lib/types";
+import { resolveAxisCopy, ui } from "@/lib/copy";
 import { RangeSlider } from "./RangeSlider";
 import { Button } from "@/components/ui/buttons";
 import {
@@ -109,7 +110,7 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
 
 export function Sidebar() {
   const { state, dispatch } = useExplorer();
-  const { filters } = state;
+  const { filters, unhinged } = state;
 
   const [bounds, setBounds] = useState<AxisBounds | null>(null);
   const [q, setQ] = useState(filters.q ?? "");
@@ -205,7 +206,7 @@ export function Sidebar() {
   return (
     <Aside variants={container} initial="hidden" animate="show">
       <Row as={motion.div} variants={item} $justify="space-between" $gap={0}>
-        <SectionLabel>Search &amp; Filters</SectionLabel>
+        <SectionLabel>{ui("Search & Filters", unhinged)}</SectionLabel>
         <ResetButton
           type="button"
           $variant="ghost"
@@ -213,7 +214,7 @@ export function Sidebar() {
           $size="sm"
           onClick={onReset}
         >
-          Reset
+          {ui("Reset", unhinged)}
         </ResetButton>
       </Row>
 
@@ -232,14 +233,14 @@ export function Sidebar() {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <SectionLabel>Scores</SectionLabel>
+        <SectionLabel>{ui("Scores", unhinged)}</SectionLabel>
         <Stack $gap={4}>
           {AXES.map((a) => {
             const d = domainFor(a.key);
             return (
               <RangeSlider
                 key={a.key}
-                label={a.label}
+                label={resolveAxisCopy(a.key, unhinged).label}
                 domainMin={d.min}
                 domainMax={d.max}
                 value={ranges[a.key] ?? d}
@@ -297,7 +298,7 @@ export function Sidebar() {
             })
           }
         >
-          <option value="">Any function</option>
+          <option value="">{ui("Any function", unhinged)}</option>
           {FUNCTIONS.map((f) => (
             <option key={f} value={f}>
               {f}
@@ -318,7 +319,7 @@ export function Sidebar() {
             })
           }
         >
-          <option value="">Any topic</option>
+          <option value="">{ui("Any topic", unhinged)}</option>
           {TOPICS.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -350,7 +351,7 @@ export function Sidebar() {
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
-                {opt.label}
+                {ui(opt.label, unhinged)}
               </SegItem>
             );
           })}
