@@ -18,6 +18,17 @@ import {
   type ScoreRange,
 } from "@/lib/types";
 import { RangeSlider } from "./RangeSlider";
+import { Button } from "@/components/ui/buttons";
+import {
+  Field,
+  FieldLabel,
+  Input,
+  PillHighlight,
+  SegItem,
+  Segmented,
+  Select,
+} from "@/components/ui/forms";
+import { Row, SectionLabel, Stack } from "@/components/ui/containers";
 
 // A debounced wrapper around a callback. `cancel` lets the reset action drop any
 // pending dispatch so a late timer can't re-apply a just-cleared filter.
@@ -63,127 +74,19 @@ const Aside = styled(motion.aside)`
   flex-direction: column;
   gap: ${({ theme }) => theme.space(5)};
 
-  @media (max-width: 720px) {
+  @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
     display: none;
   }
 `;
 
-const TopRow = styled(motion.div)`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const Heading = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
-`;
-
-const ResetButton = styled(motion.button)`
-  background: transparent;
-  border: 1px solid ${({ theme }) => theme.colors.g20};
+// The Reset control reuses the Button primitive (ghost variant); it only dims
+// the resting label to g64 and keeps a subtle press affordance.
+const ResetButton = styled(Button)`
   color: ${({ theme }) => theme.colors.g64};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(2.5)};
-  cursor: pointer;
-`;
 
-const Group = styled(motion.div)`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(2)};
-`;
-
-const FieldLabel = styled.label`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g48};
-`;
-
-const baseField = `
-  width: 100%;
-  background: ${"transparent"};
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
-  outline: none;
-`;
-
-const Input = styled.input`
-  ${baseField}
-  background: ${({ theme }) => theme.colors.g04};
-  border: 1px solid ${({ theme }) => theme.colors.g12};
-  color: ${({ theme }) => theme.colors.fg};
-  font-family: ${({ theme }) => theme.font.sans};
-
-  &::placeholder {
-    color: ${({ theme }) => theme.colors.g32};
+  &:active {
+    transform: scale(0.94);
   }
-  &:focus {
-    border-color: ${({ theme }) => theme.colors.g48};
-  }
-`;
-
-const Select = styled.select`
-  ${baseField}
-  background: ${({ theme }) => theme.colors.g04};
-  border: 1px solid ${({ theme }) => theme.colors.g12};
-  color: ${({ theme }) => theme.colors.fg};
-  font-family: ${({ theme }) => theme.font.sans};
-  cursor: pointer;
-  appearance: none;
-
-  &:focus {
-    border-color: ${({ theme }) => theme.colors.g48};
-  }
-  option {
-    background: ${({ theme }) => theme.colors.bg};
-    color: ${({ theme }) => theme.colors.fg};
-  }
-`;
-
-const Sliders = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(4)};
-`;
-
-const Segmented = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: ${({ theme }) => theme.space(1)};
-  border: 1px solid ${({ theme }) => theme.colors.g12};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  padding: 3px;
-`;
-
-const Seg = styled.button<{ $active: boolean }>`
-  position: relative;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  z-index: 1;
-  padding: ${({ theme }) => theme.space(1.5)} 0;
-  border-radius: ${({ theme }) => theme.radius.pill};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g64)};
-  transition: color ${({ theme }) => theme.motion.fast}s ease;
-`;
-
-const SegPill = styled(motion.span)`
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.pill};
 `;
 
 const container = {
@@ -301,19 +204,20 @@ export function Sidebar() {
 
   return (
     <Aside variants={container} initial="hidden" animate="show">
-      <TopRow variants={item}>
-        <Heading>Search &amp; Filters</Heading>
+      <Row as={motion.div} variants={item} $justify="space-between" $gap={0}>
+        <SectionLabel>Search &amp; Filters</SectionLabel>
         <ResetButton
           type="button"
+          $variant="ghost"
+          $pill
+          $size="sm"
           onClick={onReset}
-          whileTap={{ scale: 0.94 }}
-          whileHover={{ borderColor: "rgba(255,255,255,0.48)", color: "#fff" }}
         >
           Reset
         </ResetButton>
-      </TopRow>
+      </Row>
 
-      <Group variants={item}>
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor="q">Keyword</FieldLabel>
         <Input
           id="q"
@@ -325,11 +229,11 @@ export function Sidebar() {
             qDeb.run(e.target.value);
           }}
         />
-      </Group>
+      </Field>
 
-      <Group variants={item}>
-        <Heading>Scores</Heading>
-        <Sliders>
+      <Field as={motion.div} variants={item}>
+        <SectionLabel>Scores</SectionLabel>
+        <Stack $gap={4}>
           {AXES.map((a) => {
             const d = domainFor(a.key);
             return (
@@ -346,10 +250,10 @@ export function Sidebar() {
               />
             );
           })}
-        </Sliders>
-      </Group>
+        </Stack>
+      </Field>
 
-      <Group variants={item}>
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor="state">State</FieldLabel>
         <Select
           id="state"
@@ -365,9 +269,9 @@ export function Sidebar() {
             </option>
           ))}
         </Select>
-      </Group>
+      </Field>
 
-      <Group variants={item}>
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor="county">County</FieldLabel>
         <Input
           id="county"
@@ -379,9 +283,9 @@ export function Sidebar() {
             countyDeb.run(e.target.value);
           }}
         />
-      </Group>
+      </Field>
 
-      <Group variants={item}>
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor="function">Function</FieldLabel>
         <Select
           id="function"
@@ -400,9 +304,9 @@ export function Sidebar() {
             </option>
           ))}
         </Select>
-      </Group>
+      </Field>
 
-      <Group variants={item}>
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor="topic">Topic</FieldLabel>
         <Select
           id="topic"
@@ -421,15 +325,15 @@ export function Sidebar() {
             </option>
           ))}
         </Select>
-      </Group>
+      </Field>
 
-      <Group variants={item}>
-        <Heading>Type</Heading>
+      <Field as={motion.div} variants={item}>
+        <SectionLabel>Type</SectionLabel>
         <Segmented>
           {SUBSTANTIVE_OPTS.map((opt) => {
             const active = filters.isSubstantive === opt.value;
             return (
-              <Seg
+              <SegItem
                 key={opt.label}
                 type="button"
                 $active={active}
@@ -441,17 +345,17 @@ export function Sidebar() {
                 }
               >
                 {active && (
-                  <SegPill
+                  <PillHighlight
                     layoutId="substantive-pill"
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
                 {opt.label}
-              </Seg>
+              </SegItem>
             );
           })}
         </Segmented>
-      </Group>
+      </Field>
     </Aside>
   );
 }

@@ -5,6 +5,14 @@
 // capture pointer events. Pure monochrome to match the strict aesthetic.
 import styled from "styled-components";
 import type { ScoreRange } from "@/lib/types";
+import { Row, Stack } from "@/components/ui/containers";
+import { Kicker, Mono } from "@/components/ui/text";
+import {
+  SliderFill,
+  SliderInput,
+  SliderRail,
+  SliderTrack,
+} from "@/components/ui/forms";
 
 interface Props {
   label: string;
@@ -16,110 +24,12 @@ interface Props {
   format?: (n: number) => string;
 }
 
-const Wrap = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(2)};
-`;
-
-const Head = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: ${({ theme }) => theme.space(2)};
-`;
-
-const Name = styled.span`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g64};
-`;
-
-const Vals = styled.span`
-  font-family: ${({ theme }) => theme.font.mono};
+// The numeric readout reuses the Mono primitive; everything else (track, rail,
+// fill, thumbs) now lives in components/ui/forms as reusable slider chrome.
+const Vals = styled(Mono)`
   font-size: ${({ theme }) => theme.fontSize.xs};
   color: ${({ theme }) => theme.colors.fg};
   white-space: nowrap;
-`;
-
-const Track = styled.div`
-  position: relative;
-  height: 24px;
-  display: flex;
-  align-items: center;
-`;
-
-const Rail = styled.div`
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: ${({ theme }) => theme.colors.g20};
-  border-radius: ${({ theme }) => theme.radius.pill};
-`;
-
-const Fill = styled.div`
-  position: absolute;
-  height: 2px;
-  background: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.pill};
-`;
-
-const Range = styled.input<{ $z: number }>`
-  position: absolute;
-  left: 0;
-  right: 0;
-  width: 100%;
-  margin: 0;
-  height: 24px;
-  background: transparent;
-  pointer-events: none;
-  -webkit-appearance: none;
-  appearance: none;
-  z-index: ${({ $z }) => $z};
-
-  &::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    pointer-events: auto;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: ${({ theme }) => theme.colors.fg};
-    border: 1px solid ${({ theme }) => theme.colors.bg};
-    cursor: pointer;
-  }
-
-  &::-moz-range-thumb {
-    pointer-events: auto;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: ${({ theme }) => theme.colors.fg};
-    border: 1px solid ${({ theme }) => theme.colors.bg};
-    cursor: pointer;
-  }
-
-  &::-webkit-slider-runnable-track {
-    background: transparent;
-  }
-  &::-moz-range-track {
-    background: transparent;
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
-  &:focus-visible::-webkit-slider-thumb {
-    outline: 2px solid ${({ theme }) => theme.colors.g48};
-    outline-offset: 2px;
-  }
-  &:focus-visible::-moz-range-thumb {
-    outline: 2px solid ${({ theme }) => theme.colors.g48};
-    outline-offset: 2px;
-  }
 `;
 
 export function RangeSlider({
@@ -143,22 +53,22 @@ export function RangeSlider({
   const minZ = lo > domainMin + span * 0.5 ? 4 : 3;
 
   return (
-    <Wrap>
-      <Head>
-        <Name>{label}</Name>
+    <Stack $gap={2}>
+      <Row $justify="space-between" $align="baseline" $gap={2}>
+        <Kicker $tone="g64">{label}</Kicker>
         <Vals>
           {format(lo)} — {format(hi)}
         </Vals>
-      </Head>
-      <Track>
-        <Rail />
-        <Fill
+      </Row>
+      <SliderTrack>
+        <SliderRail />
+        <SliderFill
           style={{
             left: `${pct(lo)}%`,
             width: `${Math.max(0, pct(hi) - pct(lo))}%`,
           }}
         />
-        <Range
+        <SliderInput
           type="range"
           min={domainMin}
           max={domainMax}
@@ -171,7 +81,7 @@ export function RangeSlider({
             onChange({ min: next, max: hi });
           }}
         />
-        <Range
+        <SliderInput
           type="range"
           min={domainMin}
           max={domainMax}
@@ -184,7 +94,7 @@ export function RangeSlider({
             onChange({ min: lo, max: next });
           }}
         />
-      </Track>
-    </Wrap>
+      </SliderTrack>
+    </Stack>
   );
 }
