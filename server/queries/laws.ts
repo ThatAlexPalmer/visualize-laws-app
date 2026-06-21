@@ -1,20 +1,17 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../data/db";
 import {
   AXES,
   AXIS_BY_KEY,
   type Axis,
   type LawRecord,
   type LawsResponse,
-} from "@/lib/types";
-
-export const dynamic = "force-dynamic";
+} from "../../data/types";
 
 // Server-side filter / sort / pagination over the `laws` table.
 //
 // SECURITY: every user-supplied value is bound through a parameter placeholder
 // ($1, $2, ...) — never string-interpolated. The only interpolated fragments are
-// column names and the sort direction, which are taken from the trusted `AXES`
+// column names and the sort direction, which come from the trusted `AXES`
 // constant and an asc/desc whitelist (Postgres cannot parameterize identifiers).
 
 function parseFloatOrNull(raw: string | null): number | null {
@@ -41,9 +38,10 @@ const SELECT_COLUMNS = `
   problem_salience AS "problemSalience"
 `;
 
-export async function GET(req: Request): Promise<NextResponse<LawsResponse>> {
-  const { searchParams } = new URL(req.url);
-
+/** Run a filtered/sorted/paginated query for laws from URL search params. */
+export async function queryLaws(
+  searchParams: URLSearchParams,
+): Promise<LawsResponse> {
   const page = Math.max(1, Math.floor(Number(searchParams.get("page")) || 1));
   const pageSize = Math.min(
     100,
@@ -113,11 +111,16 @@ export async function GET(req: Request): Promise<NextResponse<LawsResponse>> {
   // params, so slice them off.
   const countParams = params.slice(0, params.length - 2);
 
-  const [rows, countRows] = await Promise.all([
-    prisma.$queryRawUnsafe<LawRecord[]>(rowsSql, ...params),
-    prisma.$queryRawUnsafe<{ total: number }[]>(countSql, ...countParams),
-  ]);
-
-  const total = countRows[0]?.total ?? 0;
-  return NextResponse.json({ rows, total, page, pageSize });
+  try {
+    const [rows, countRows] = await Promise.all([
+      prisma.$queryRawUnsafe<LawRecord[]>(rowsSql, ...params),
+      prisma.$queryRawUnsafe<{ total: number }[]>(countSql, ...countParams),
+    ]);
+    const total = countRows[0]?.total ?? 0;
+    return { rows, total, page, pageSize };
+  } catch (err) {
+    console.error("queryLaws failed:", err);
+    // Tolerate an empty / unavailable database.
+    return { rows: [], total: 0, page, pageSize };
+  }
 }

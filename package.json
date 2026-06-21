@@ -6,21 +6,23 @@
   "description": "Explore the complete LOCUS-v1 corpus of 2.2M U.S. local laws: search, filter, and an interactive canvas map.",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "seed": "tsx scripts/seed.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "db:up": "docker compose up -d",
+    "dev": "next dev app",
+    "build": "next build app",
+    "start": "next start app",
+    "lint": "next lint app",
+    "typecheck": "tsc --noEmit -p app/tsconfig.json",
+    "seed": "tsx data/seed.ts",
+    "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema data/prisma/schema.prisma",
+    "prisma:deploy": "prisma migrate deploy --schema data/prisma/schema.prisma",
+    "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "postinstall": "prisma generate"
+    "up": "docker compose up",
+    "up:build": "docker compose up --build",
+    "postinstall": "prisma generate --schema data/prisma/schema.prisma"
   },
   "prisma": {
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx data/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

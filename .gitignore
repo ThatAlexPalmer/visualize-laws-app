@@ -3,10 +3,10 @@
 /.pnp
 .pnp.*
 
-# next.js
-/.next/
-/out/
-next-env.d.ts
+# next.js (app lives in app/)
+/app/.next/
+/app/out/
+/app/next-env.d.ts
 
 # production
 /build
@@ -32,7 +32,7 @@ yarn-error.log*
 *.tsbuildinfo
 
 # prisma
-/prisma/*.db
+/data/prisma/*.db
 
 # data cache (downloaded parquet shards for seeding)
 /.locus-cache/

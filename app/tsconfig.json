@@ -14,10 +14,20 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@server/*": ["../server/*"],
+      "@data/*": ["../data/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "../server/**/*.ts",
+    "../data/**/*.ts"
+  ],
+  "exclude": ["node_modules", "../node_modules", "../data/prisma/migrations"]
 }

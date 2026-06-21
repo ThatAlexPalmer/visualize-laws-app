@@ -18,8 +18,8 @@
  *     row, so an interrupted run rolls back cleanly and a re-run resumes without
  *     duplicating rows. A `--limit` cutoff leaves the shard un-checkpointed
  *     (partial) — that is intentional for dev samples; use `--fresh` to reset.
- *   - This is a tsx script: shared code is imported via the relative `../lib`
- *     path (the `@/` alias only resolves inside the Next build).
+ *   - This is a tsx script run from the repo root: shared code is imported via
+ *     the sibling `./types` module (no `@/` alias outside the Next build).
  */
 import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
@@ -32,7 +32,7 @@ import { ParquetReader } from "@dsnp/parquetjs";
 import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
-import { STATE_NAMES } from "../lib/types";
+import { STATE_NAMES } from "./types";
 
 // --- Configuration ---------------------------------------------------------
 
