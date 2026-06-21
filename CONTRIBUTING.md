@@ -32,6 +32,6 @@ Add server-side keyword search to the laws endpoint
 
 ## About
 
-LOCUS Explorer is a fast, fork-friendly web app for searching and visualizing the complete
+visualizelaws.app is a fast, fork-friendly web app for searching and visualizing the complete
 [LOCUS-v1](https://huggingface.co/datasets/LocalLaws/LOCUS-v1) corpus of ~2.2M U.S. local laws.
 It is MIT-licensed — fork it, run it locally, and build on it.

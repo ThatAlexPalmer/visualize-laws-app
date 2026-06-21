@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-LOCUS Explorer is a fast, fork-friendly web app for searching and visualizing the complete
+visualizelaws.app is a fast, fork-friendly web app for searching and visualizing the complete
 [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws. It ships
 full-text search, server-side filtering/pagination, an interactive HTML5 Canvas choropleth
 map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)
@@ -23,12 +23,15 @@ The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getJu
 ## One-command DevEx
 
 ```bash
-docker compose up        # or: pnpm up
+docker compose up        # or: pnpm up      (25k-row sample on first run)
+pnpm up:full             # SEED_LIMIT=0 — load the ENTIRE ~2.2M-row corpus
 ```
 
-Starts Postgres + the app, applies migrations, sample-seeds (~25k rows) on first run, and
-serves the app at http://localhost:3000 with hot reload. The seed is skipped on later runs once
-the `laws` table is non-empty (see `docker/entrypoint.sh`).
+Starts Postgres 18 (the `pgvector/pgvector:pg18` image — stock PG18 with pgvector available but
+dormant) + the app, applies migrations, seeds on first run, and serves the app at
+http://localhost:3000 with hot reload. The seed is skipped on later runs once the `laws` table is
+non-empty (see `docker/entrypoint.sh`). Inspect the DB with Postgres.app or `npx prisma studio`
+against `localhost:5432`.
 
 ## Architecture
 
@@ -64,8 +67,9 @@ pnpm start              # next start
 pnpm lint               # next lint
 pnpm typecheck          # tsc --noEmit
 
-pnpm up                 # docker compose up (full stack)
+pnpm up                 # docker compose up (full stack; 25k sample first run)
 pnpm up:build           # docker compose up --build
+pnpm up:full            # full ~2.2M corpus on first boot (SEED_LIMIT=0)
 pnpm db:up / db:down    # start / stop local Postgres only
 
 pnpm prisma:deploy      # apply migrations (data/prisma/schema.prisma)
