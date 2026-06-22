@@ -47,7 +47,7 @@ const RightNav = styled.div`
   flex-shrink: 0;
 `;
 
-const ChaosButton = styled.button<{ $active: boolean }>`
+const FunnyButton = styled.button<{ $active: boolean }>`
   background: ${({ $active }) => ($active ? "#E53E3E" : "transparent")};
   border: 1px solid
     ${({ $active, theme }) => ($active ? "#E53E3E" : theme.colors.g12)};
@@ -114,14 +114,14 @@ export function TopNav() {
         })}
       </Axes>
       <RightNav>
-        <ChaosButton
+        <FunnyButton
           type="button"
           $active={unhinged}
           onClick={() => dispatch({ type: "toggleUnhinged" })}
-          title="Toggle unhinged mode"
+          title="Toggle funny mode"
         >
-          CHAOS
-        </ChaosButton>
+          FUNNY
+        </FunnyButton>
         <MonoLink as={Link} href="/about">
           {ui("About", unhinged)}
         </MonoLink>

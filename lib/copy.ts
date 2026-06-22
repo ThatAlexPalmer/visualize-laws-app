@@ -1,16 +1,16 @@
-// Unhinged mode copy — replaces normal axis labels/blurbs and static UI strings
+// Funny mode copy — replaces normal axis labels/blurbs and static UI strings
 // when `state.unhinged` is true. Generated with Grok assistance.
 import type { Axis } from "@/lib/types";
 import { AXIS_BY_KEY } from "@/lib/types";
 
-/** Funny axis labels + blurbs shown in unhinged mode. */
+/** Funny axis labels + blurbs shown in funny mode. */
 export const UNHINGED_AXES: Record<Axis, { label: string; blurb: string }> = {
   opacity: {
     label: "HUH? FACTOR",
     blurb: "Legal text that reads like a terms of service nobody agreed to.",
   },
   enforcementDiscretion: {
-    label: "COP VIBES",
+    label: "WIGGLE ROOM",
     blurb: "How much the officer can just... decide.",
   },
   paternalism: {
