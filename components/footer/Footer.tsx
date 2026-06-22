@@ -3,7 +3,7 @@
 // App credit footer: this app is by thatalexpalmer / PALMER.EARTH CORP — distinct
 // from the LOCUS dataset + research it builds on (credited on /about).
 import styled from "styled-components";
-import { APP_AUTHOR, APP_AUTHOR_URL, COPYRIGHT, AUTHOR_NAME, AUTHOR_URL } from "@/lib/attribution";
+import { APP_AUTHOR, APP_AUTHOR_URL, COPYRIGHT, AUTHOR_NAME, TWEET_URL } from "@/lib/attribution";
 import { MonoLink } from "@/components/ui/text";
 
 const Bar = styled.footer`
@@ -24,7 +24,7 @@ export function Footer() {
     <Bar>
       <span>
         data by{" "}
-        <MonoLink href={AUTHOR_URL} target="_blank" rel="noreferrer" $size="xs">
+        <MonoLink href={TWEET_URL} target="_blank" rel="noreferrer" $size="xs">
           {AUTHOR_NAME} ↗
         </MonoLink>
         {" · "}
