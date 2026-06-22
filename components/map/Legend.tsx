@@ -18,7 +18,7 @@ const Box = styled(motion.div)`
   left: ${({ theme }) => theme.space(4)};
   bottom: ${({ theme }) => theme.space(4)};
   z-index: 3;
-  width: 200px;
+  width: 260px;
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.space(2)};
@@ -32,15 +32,15 @@ const Box = styled(motion.div)`
 
 const Label = styled.div`
   font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.1em;
+  font-size: ${({ theme }) => theme.fontSize.sm};
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: ${({ theme }) => theme.colors.fg};
 `;
 
 const Blurb = styled.div`
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  line-height: 1.35;
+  font-size: ${({ theme }) => theme.fontSize.sm};
+  line-height: 1.4;
   color: ${({ theme }) => theme.colors.g68};
 `;
 
