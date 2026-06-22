@@ -176,12 +176,6 @@ data/
 next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 ```
-
-## Deployment and SEO runbooks
-
-Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally maintained outside this
-README to avoid drift. Use plan `cec5df35-4596-4df4-bc1c-7b470b069bba` as the source of truth.
-
 ## Attribution
 
 visualizelaws.app is built on the LOCUS-v1 corpus.
