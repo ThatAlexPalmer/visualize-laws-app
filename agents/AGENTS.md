@@ -4,7 +4,7 @@ Durable context for agents working in `visualize-laws-app`.
 
 ## Scope
 
-This file is intentionally development-focused. Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally excluded to avoid staleness; use plan `cec5df35-4596-4df4-bc1c-7b470b069bba` when those details are needed.
+This file is intentionally development-focused. Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally excluded to avoid staleness.
 
 ## Project snapshot
 
@@ -40,6 +40,7 @@ This file is intentionally development-focused. Deployment, CI/CD, DNS, and SEO 
 - State codes are lowercase two-letter codes in data/UI.
 - Full-text search is Postgres `tsvector` + GIN index.
 - `data/queries/laws.ts` uses parameterized SQL; only whitelisted sort fields are interpolated.
+- `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand. Jurisdiction routes are cached (`force-static`, `revalidate = 3600`).
 - Seed is resumable through `SeedCheckpoint`; aggregate rows are recomputed into `Jurisdiction`.
 
 ## Working conventions
