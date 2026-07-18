@@ -19,9 +19,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# local env files (never commit; .env.example is the tracked template)
 .env
-.env*.local
+.env.*
+!.env.example
 
 # editor / os
 .vscode/*

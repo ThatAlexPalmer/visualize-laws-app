@@ -124,7 +124,7 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - **Standard root app**: the Next.js app is at the repo root (`next dev`), so Next auto-loads the
   root `.env` and compiles `data/` normally — no `externalDir` or custom env loader. In Docker
   the DB URLs come from compose `environment:`.
-- **One `.env` at the repo root** serves the app, the seed, and the Prisma CLI.
+- **Env files**: `.env.local` (local dev, auto-loaded by Next) and `.env.prod` (remote admin: migrate/seed), both gitignored; `.env.example` is the tracked template. The DB/seed scripts choose the file via `dotenv-cli` (`pnpm prisma:deploy`/`pnpm seed` use `.env.local`; `pnpm prisma:deploy:prod`/`pnpm seed:prod` use `.env.prod`).
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
   and `data/queries/*` import the client/types via relative paths.
 - **Parameterized SQL only** in `data/queries/laws.ts` — user input is always bound; only
