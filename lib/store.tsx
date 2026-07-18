@@ -13,6 +13,7 @@ export interface ExplorerState {
   selectedState: string | null;
   selectedLaw: LawRecord | null;
   unhinged: boolean;
+  filtersOpen: boolean;
 }
 
 export const DEFAULT_PAGE_SIZE = 25;
@@ -29,6 +30,7 @@ const initialState: ExplorerState = {
   selectedState: null,
   selectedLaw: null,
   unhinged: false,
+  filtersOpen: false,
 };
 
 export type ExplorerAction =
@@ -39,7 +41,9 @@ export type ExplorerAction =
   | { type: "selectState"; state: string | null }
   | { type: "openLaw"; law: LawRecord }
   | { type: "closeLaw" }
-  | { type: "toggleUnhinged" };
+  | { type: "toggleUnhinged" }
+  | { type: "toggleFilters" }
+  | { type: "closeFilters" };
 
 function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
   switch (action.type) {
@@ -71,6 +75,10 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
       return { ...state, selectedLaw: null };
     case "toggleUnhinged":
       return { ...state, unhinged: !state.unhinged };
+    case "toggleFilters":
+      return { ...state, filtersOpen: !state.filtersOpen };
+    case "closeFilters":
+      return { ...state, filtersOpen: false };
     default:
       return state;
   }

@@ -60,6 +60,12 @@ const Toolbar = styled(Row)`
   justify-content: space-between;
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border-bottom: 1px solid ${({ theme }) => theme.colors.g08};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    align-items: stretch;
+    flex-direction: column;
+    gap: ${({ theme }) => theme.space(2)};
+  }
 `;
 
 // Subtle "updating…" affordance shown during stale-while-revalidate refreshes.
@@ -72,6 +78,11 @@ const Updating = styled(motion.span)`
 
 const SortBar = styled(Cluster)`
   justify-content: flex-end;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 `;
 
 const SortButton = styled.button<{ $active: boolean }>`
@@ -84,6 +95,10 @@ const SortButton = styled.button<{ $active: boolean }>`
   padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(1.5)};
   cursor: pointer;
   white-space: nowrap;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    min-height: 32px;
+  }
 `;
 
 const Scroll = styled(ScrollArea)<{ $stale?: boolean }>`
@@ -107,6 +122,11 @@ const ResultRow = styled(motion.button)`
 
   &:hover {
     background: ${({ theme }) => theme.colors.g04};
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    gap: ${({ theme }) => theme.space(2)};
+    padding: ${({ theme }) => theme.space(3)};
   }
 `;
 
@@ -143,6 +163,10 @@ const Score = styled.div<{ $active: boolean }>`
   gap: 2px;
   min-width: 34px;
   color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    display: ${({ $active }) => ($active ? "flex" : "none")};
+  }
 `;
 
 const ScoreKey = styled.span`

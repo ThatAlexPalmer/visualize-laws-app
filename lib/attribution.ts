@@ -12,6 +12,7 @@ export const AUTHOR_URL = "https://x.com/barrowjoseph";
 // This app (distinct from the LOCUS dataset + research).
 export const APP_AUTHOR = "thatalexpalmer";
 export const APP_AUTHOR_URL = "https://x.com/thatalexpalmer";
+export const REPOSITORY_URL = "https://github.com/ThatAlexPalmer/visualize-laws-app";
 export const COPYRIGHT = "\u00a9 2026 PALMER.EARTH CORP";
 
 export const BIBTEX = `@article{peskoff2026freeing,

@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-visualizelaws.app is a fast, fork-friendly web app for searching and visualizing the complete
+visualizelaws.com is a fast, fork-friendly web app for searching and visualizing the complete
 [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws. It ships
 full-text search, server-side filtering/pagination, an interactive HTML5 Canvas choropleth
 map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)

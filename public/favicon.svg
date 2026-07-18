@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Visualize Laws">
+  <rect width="512" height="512" fill="#000000"/>
+  <path d="M112 112h224l64 64H176z" fill="#4D4D4D"/>
+  <path d="M112 208h224l64 64H176z" fill="#999999"/>
+  <path d="M112 304h224l64 64H176z" fill="#FFFFFF"/>
+  <path d="M304 304h32l64 64h-32z" fill="#E53E3E"/>
+</svg>

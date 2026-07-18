@@ -20,7 +20,7 @@ import { Cluster, Row, SectionLabel, Stack } from "@/components/ui/containers";
 import { Heading, Kicker as UiKicker, MonoLink, Muted } from "@/components/ui/text";
 
 const Page = styled.div`
-  height: 100vh;
+  height: 100%;
   overflow-y: auto;
   background: ${({ theme }) => theme.colors.bg};
 `;
@@ -30,11 +30,20 @@ const Inner = styled(motion.main)`
   margin: 0 auto;
   padding: ${({ theme }) => theme.space(8)} ${({ theme }) => theme.space(5)}
     ${({ theme }) => theme.space(16)};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    padding: ${({ theme }) => theme.space(6)} ${({ theme }) => theme.space(4)}
+      ${({ theme }) => theme.space(12)};
+  }
 `;
 
 const TopRow = styled(Row)`
   justify-content: space-between;
   margin-bottom: ${({ theme }) => theme.space(8)};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    display: none;
+  }
 `;
 
 // Same mono micro-label as the rest of the app, with the wider /about tracking.
@@ -51,6 +60,10 @@ const H1 = styled(Heading)`
   line-height: 1.05;
   letter-spacing: -0.02em;
   font-weight: ${({ theme }) => theme.fontWeights.bold};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    font-size: clamp(2rem, 11vw, 2.7rem);
+  }
 `;
 
 const Lede = styled(Muted)`
@@ -322,7 +335,7 @@ export default function AboutPage() {
           <Body>
             The catch: these laws are public, but they&rsquo;re scattered across
             thousands of clunky vendor sites. LOCUS rounded up ~2.2&nbsp;million of
-            them into a single corpus, and visualizelaws.app lets you actually search and
+            them into a single corpus, and visualizelaws.com lets you actually search and
             map them &mdash; each scored along four axes: opacity, enforcement
             discretion, paternalism, and problem salience.
           </Body>

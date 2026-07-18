@@ -1,7 +1,6 @@
 "use client";
 
 import styled from "styled-components";
-import { TopNav } from "@/components/nav/TopNav";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { MapPanel } from "@/components/map/MapPanel";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
@@ -12,7 +11,7 @@ import { Footer } from "@/components/footer/Footer";
 const Shell = styled.div`
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   width: 100vw;
   overflow: hidden;
   background: ${({ theme }) => theme.colors.bg};
@@ -35,6 +34,10 @@ const Main = styled.main`
      map; without this the scrollbar's appearance would shrink the content width
      and re-fit the geoAlbersUsa projection, making the canvas visibly jump. */
   scrollbar-gutter: stable;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    scrollbar-gutter: auto;
+  }
 `;
 
 const Lower = styled.div`
@@ -46,13 +49,14 @@ const Lower = styled.div`
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     grid-template-columns: 1fr;
+    gap: ${({ theme }) => theme.space(3)};
+    padding: ${({ theme }) => theme.space(3)};
   }
 `;
 
 export default function Page() {
   return (
     <Shell>
-      <TopNav />
       <Body>
         <Sidebar />
         <Main>

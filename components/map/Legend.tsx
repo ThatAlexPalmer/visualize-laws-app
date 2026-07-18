@@ -28,6 +28,13 @@ const Box = styled(motion.div)`
   border-radius: ${({ theme }) => theme.radius.md};
   backdrop-filter: blur(6px);
   pointer-events: none;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    left: ${({ theme }) => theme.space(3)};
+    bottom: ${({ theme }) => theme.space(3)};
+    width: calc(100% - ${({ theme }) => theme.space(6)});
+    padding: ${({ theme }) => theme.space(2.5)};
+  }
 `;
 
 const Label = styled.div`
