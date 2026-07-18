@@ -1,4 +1,4 @@
-# visualizelaws.app
+# visualizelaws.com
 
 Explore the complete [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local
 laws: full-text search, server-side filtering, an interactive HTML5 Canvas choropleth map, and
@@ -180,7 +180,7 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
 ```
 ## Attribution
 
-visualizelaws.app is built on the LOCUS-v1 corpus.
+visualizelaws.com is built on the LOCUS-v1 corpus.
 
 ```bibtex
 @article{peskoff2026freeing,

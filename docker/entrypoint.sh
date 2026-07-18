@@ -1,5 +1,5 @@
 #!/bin/sh
-# visualizelaws.app container entrypoint:
+# visualizelaws.com container entrypoint:
 #   0. sanity-check the /workspace bind mount (fail fast with the real cause)
 #   1. wait for Postgres to accept TCP connections
 #   2. apply migrations, then sample-seed only if the laws table is empty

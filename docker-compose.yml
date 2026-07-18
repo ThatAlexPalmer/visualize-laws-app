@@ -1,4 +1,4 @@
-# visualizelaws.app — full local stack.
+# visualizelaws.com — full local stack.
 #   One command:  docker compose up   (or: pnpm up / pnpm up:build)
 #     Full ~2.2M-row corpus:  pnpm up:full   (SEED_LIMIT=0)
 #     -> Postgres (pg18) + the Next.js app (auto-migrate, seed, hot reload) on :3000

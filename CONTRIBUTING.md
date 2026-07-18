@@ -1,6 +1,6 @@
 # Contributing
 
-No contribution is too small, and we welcome your help. You can help make this project better by:
+Help make this project better by:
 
 - Reporting and fixing bugs
 - Improving documentation
@@ -32,6 +32,6 @@ Add server-side keyword search to the laws endpoint
 
 ## About
 
-visualizelaws.app is a fast, fork-friendly web app for searching and visualizing the complete
+visualizelaws.com is a fast, fork-friendly web app for searching and visualizing the complete
 [LOCUS-v1](https://huggingface.co/datasets/LocalLaws/LOCUS-v1) corpus of ~2.2M U.S. local laws.
 It is licensed under Business Source License 1.1 (BUSL-1.1) — see `LICENSE` for terms.

@@ -64,7 +64,7 @@ const SUBSTANTIVE_OPTS: { label: string; value: boolean | undefined }[] = [
   { label: "Procedural", value: false },
 ];
 
-const Aside = styled(motion.aside)`
+const Aside = styled(motion.aside)<{ $open: boolean }>`
   width: 320px;
   flex-shrink: 0;
   border-right: 1px solid ${({ theme }) => theme.colors.g12};
@@ -75,9 +75,52 @@ const Aside = styled(motion.aside)`
   flex-direction: column;
   gap: ${({ theme }) => theme.space(5)};
 
-  @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
-    display: none;
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    position: fixed;
+    inset: 59px 0 auto;
+    width: 100%;
+    max-height: calc(100dvh - 59px);
+    padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
+    padding-right: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
+    background: ${({ theme }) => theme.colors.bg};
+    border-right: 0;
+    border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+    z-index: 92;
+    visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
+    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+    transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
+    will-change: transform;
+    transition:
+      transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear ${({ $open }) => ($open ? "0s" : "240ms")};
   }
+`;
+
+const Backdrop = styled.button<{ $open: boolean }>`
+  display: none;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    display: block;
+    position: fixed;
+    inset: 59px 0 0;
+    z-index: 91;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.72);
+    opacity: ${({ $open }) => ($open ? 1 : 0)};
+    visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
+    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+    transition:
+      opacity ${({ theme }) => theme.motion.fast}s ease,
+      visibility ${({ $open }) => ($open ? "0s" : "0s 0.18s")};
+  }
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.space(2)};
 `;
 
 // The Reset control reuses the Button primitive (ghost variant); it only dims
@@ -110,14 +153,23 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
 
 export function Sidebar() {
   const { state, dispatch } = useExplorer();
-  const { filters, unhinged } = state;
+  const { filters, unhinged, filtersOpen } = state;
 
   const [bounds, setBounds] = useState<AxisBounds | null>(null);
+  const [isCompact, setIsCompact] = useState(false);
   const [q, setQ] = useState(filters.q ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
   );
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 900px)");
+    const sync = () => setIsCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   const domainFor = (axis: Axis): ScoreRange => {
     const b = bounds?.[axis];
@@ -203,19 +255,46 @@ export function Sidebar() {
     dispatch({ type: "resetFilters" });
   };
 
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dispatch({ type: "closeFilters" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filtersOpen, dispatch]);
+
   return (
-    <Aside variants={container} initial="hidden" animate="show">
+    <>
+      <Backdrop
+        type="button"
+        $open={filtersOpen}
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => dispatch({ type: "closeFilters" })}
+      />
+      <Aside
+        id="filters-panel"
+        $open={filtersOpen}
+        aria-hidden={isCompact && !filtersOpen}
+        inert={isCompact && !filtersOpen}
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
       <Row as={motion.div} variants={item} $justify="space-between" $gap={0}>
         <SectionLabel>{ui("Search & Filters", unhinged)}</SectionLabel>
-        <ResetButton
-          type="button"
-          $variant="ghost"
-          $pill
-          $size="sm"
-          onClick={onReset}
-        >
-          {ui("Reset", unhinged)}
-        </ResetButton>
+        <HeaderActions>
+          <ResetButton
+            type="button"
+            $variant="ghost"
+            $pill
+            $size="sm"
+            onClick={onReset}
+          >
+            {ui("Reset", unhinged)}
+          </ResetButton>
+        </HeaderActions>
       </Row>
 
       <Field as={motion.div} variants={item}>
@@ -357,6 +436,7 @@ export function Sidebar() {
           })}
         </Segmented>
       </Field>
-    </Aside>
+      </Aside>
+    </>
   );
 }

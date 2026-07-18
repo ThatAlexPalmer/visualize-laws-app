@@ -57,6 +57,20 @@ const Wrap = styled.div`
   overflow: hidden;
   background: ${({ theme }) => theme.colors.bg};
   z-index: ${({ theme }) => theme.z.map};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    height: min(52dvh, 480px);
+    min-height: 380px;
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    min-height: 340px;
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) and (max-height: 500px) {
+    height: 300px;
+    min-height: 300px;
+  }
 `;
 
 // Base layer: opaque state fills + base separators. Repainted ONLY when the
@@ -102,6 +116,12 @@ const StateLabel = styled(motion.div)`
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: ${({ theme }) => theme.colors.fg};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    top: ${({ theme }) => theme.space(3)};
+    left: ${({ theme }) => theme.space(3)};
+    font-size: ${({ theme }) => theme.fontSize.lg};
+  }
 `;
 
 const Hint = styled(motion.div)`
@@ -115,6 +135,10 @@ const Hint = styled(motion.div)`
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: ${({ theme }) => theme.colors.g60};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    display: none;
+  }
 `;
 
 /** Size a canvas backing store to its DPR-scaled pixel box (clears on change). */
