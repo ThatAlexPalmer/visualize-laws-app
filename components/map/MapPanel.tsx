@@ -44,8 +44,8 @@ const SIZE_REFIT_THRESHOLD_PX = 8;
 const Wrap = styled.div`
   position: relative;
   width: 100%;
-  height: 56vh;
-  min-height: 420px;
+  height: clamp(360px, 44vh, 520px);
+  min-height: 360px;
   /* The map is a flex child of the scrolling <Main> column. Without this it
      keeps the default flex-shrink: 1, so when selecting a state grows the
      panels below (results + jurisdiction) the flexbox shrinks this box between

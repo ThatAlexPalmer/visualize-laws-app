@@ -1,10 +1,13 @@
 "use client";
 
 import styled from "styled-components";
-import { Sidebar } from "@/components/sidebar/Sidebar";
+import { DesktopFilters, Sidebar } from "@/components/sidebar/Sidebar";
 import { MapPanel } from "@/components/map/MapPanel";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
-import { JurisdictionPanel } from "@/components/jurisdiction/JurisdictionPanel";
+import {
+  AggregateRail,
+  JurisdictionPanel,
+} from "@/components/jurisdiction/JurisdictionPanel";
 import { LawModal } from "@/components/modal/LawModal";
 import { Footer } from "@/components/footer/Footer";
 
@@ -42,13 +45,16 @@ const Main = styled.main`
 
 const Lower = styled.div`
   display: grid;
-  grid-template-columns: 1fr minmax(280px, 360px);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-auto-rows: minmax(640px, auto);
+  align-items: stretch;
   gap: ${({ theme }) => theme.space(4)};
   padding: ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     grid-template-columns: 1fr;
+    grid-auto-rows: auto;
     gap: ${({ theme }) => theme.space(3)};
     padding: ${({ theme }) => theme.space(3)};
   }
@@ -58,12 +64,14 @@ export default function Page() {
   return (
     <Shell>
       <Body>
+        <AggregateRail />
         <Sidebar />
         <Main>
           <MapPanel />
+          <JurisdictionPanel />
           <Lower>
             <ResultsPanel />
-            <JurisdictionPanel />
+            <DesktopFilters />
           </Lower>
         </Main>
       </Body>

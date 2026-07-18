@@ -29,7 +29,13 @@ import {
   Segmented,
   Select,
 } from "@/components/ui/forms";
-import { Row, SectionLabel, Stack } from "@/components/ui/containers";
+import {
+  Panel as PanelBase,
+  Row,
+  ScrollArea,
+  SectionLabel,
+  Stack,
+} from "@/components/ui/containers";
 
 // A debounced wrapper around a callback. `cancel` lets the reset action drop any
 // pending dispatch so a late timer can't re-apply a just-cleared filter.
@@ -64,36 +70,71 @@ const SUBSTANTIVE_OPTS: { label: string; value: boolean | undefined }[] = [
   { label: "Procedural", value: false },
 ];
 
-const Aside = styled(motion.aside)<{ $open: boolean }>`
-  width: 320px;
-  flex-shrink: 0;
-  border-right: 1px solid ${({ theme }) => theme.colors.g12};
+const MobileAside = styled(motion.aside)<{ $open: boolean }>`
+  position: fixed;
+  inset: 59px 0 auto;
+  width: 100%;
+  max-height: calc(100dvh - 59px);
   padding: ${({ theme }) => theme.space(4)};
+  padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
+  padding-right: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
   overflow-y: auto;
-  z-index: ${({ theme }) => theme.z.sidebar};
+  background: ${({ theme }) => theme.colors.bg};
+  border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+  z-index: 92;
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.space(5)};
+  visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
+  pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+  transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
+  will-change: transform;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear ${({ $open }) => ($open ? "0s" : "240ms")};
+`;
 
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    position: fixed;
-    inset: 59px 0 auto;
-    width: 100%;
-    max-height: calc(100dvh - 59px);
-    padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
-    padding-right: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
-    background: ${({ theme }) => theme.colors.bg};
-    border-right: 0;
-    border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
-    z-index: 92;
-    visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
-    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
-    transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
-    will-change: transform;
-    transition:
-      transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      visibility 0s linear ${({ $open }) => ($open ? "0s" : "240ms")};
+const DesktopPanel = styled(PanelBase)`
+  min-height: 640px;
+  height: auto;
+  align-self: stretch;
+`;
+
+const DesktopScroll = styled(ScrollArea)`
+  /* On desktop the full form defines the shared workspace row height. Keeping
+     this content in normal flow avoids a nested scrollbar, while the adjacent
+     results panel stretches to the same bottom edge and scrolls only its laws. */
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.space(3)};
+  padding: ${({ theme }) => theme.space(3)};
+
+  /* The desktop column is intentionally denser than the touch drawer. This
+     keeps every control visible in the shared 640px workspace without
+     shrinking tap targets on compact layouts. */
+  ${Field} {
+    gap: ${({ theme }) => theme.space(1.5)};
+  }
+
+  ${Stack} {
+    gap: ${({ theme }) => theme.space(2.5)};
+  }
+
+  ${Input},
+  ${Select} {
+    padding: 8px 10px;
+  }
+
+  ${Segmented} {
+    padding: 2px;
+  }
+
+  ${SegItem} {
+    padding: ${({ theme }) => theme.space(1)} 0;
   }
 `;
 
@@ -145,31 +186,34 @@ const item = {
   show: { opacity: 1, y: 0 },
 };
 
+function useCompactLayout() {
+  const [isCompact, setIsCompact] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1100px)");
+    const sync = () => setIsCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return isCompact;
+}
+
 function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
   return Object.fromEntries(
     AXES.map((a) => [a.key, domainFor(a.key)]),
   ) as Record<Axis, ScoreRange>;
 }
 
-export function Sidebar() {
+function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { state, dispatch } = useExplorer();
-  const { filters, unhinged, filtersOpen } = state;
+  const { filters, unhinged } = state;
 
   const [bounds, setBounds] = useState<AxisBounds | null>(null);
-  const [isCompact, setIsCompact] = useState(false);
   const [q, setQ] = useState(filters.q ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
   );
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 900px)");
-    const sync = () => setIsCompact(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
 
   const domainFor = (axis: Axis): ScoreRange => {
     const b = bounds?.[axis];
@@ -255,33 +299,8 @@ export function Sidebar() {
     dispatch({ type: "resetFilters" });
   };
 
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dispatch({ type: "closeFilters" });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [filtersOpen, dispatch]);
-
   return (
     <>
-      <Backdrop
-        type="button"
-        $open={filtersOpen}
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => dispatch({ type: "closeFilters" })}
-      />
-      <Aside
-        id="filters-panel"
-        $open={filtersOpen}
-        aria-hidden={isCompact && !filtersOpen}
-        inert={isCompact && !filtersOpen}
-        variants={container}
-        initial="hidden"
-        animate="show"
-      >
       <Row as={motion.div} variants={item} $justify="space-between" $gap={0}>
         <SectionLabel>{ui("Search & Filters", unhinged)}</SectionLabel>
         <HeaderActions>
@@ -298,9 +317,9 @@ export function Sidebar() {
       </Row>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="q">Keyword</FieldLabel>
+        <FieldLabel htmlFor={`${idPrefix}-q`}>Keyword</FieldLabel>
         <Input
-          id="q"
+          id={`${idPrefix}-q`}
           type="search"
           placeholder="Search law text…"
           value={q}
@@ -334,9 +353,9 @@ export function Sidebar() {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="state">State</FieldLabel>
+        <FieldLabel htmlFor={`${idPrefix}-state`}>State</FieldLabel>
         <Select
-          id="state"
+          id={`${idPrefix}-state`}
           value={filters.state ?? ""}
           onChange={(e) =>
             dispatch({ type: "selectState", state: e.target.value || null })
@@ -352,9 +371,9 @@ export function Sidebar() {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="county">County</FieldLabel>
+        <FieldLabel htmlFor={`${idPrefix}-county`}>County</FieldLabel>
         <Input
-          id="county"
+          id={`${idPrefix}-county`}
           type="text"
           placeholder="e.g. Cook"
           value={county}
@@ -366,9 +385,9 @@ export function Sidebar() {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="function">Function</FieldLabel>
+        <FieldLabel htmlFor={`${idPrefix}-function`}>Function</FieldLabel>
         <Select
-          id="function"
+          id={`${idPrefix}-function`}
           value={filters.function ?? ""}
           onChange={(e) =>
             dispatch({
@@ -387,9 +406,9 @@ export function Sidebar() {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="topic">Topic</FieldLabel>
+        <FieldLabel htmlFor={`${idPrefix}-topic`}>Topic</FieldLabel>
         <Select
-          id="topic"
+          id={`${idPrefix}-topic`}
           value={filters.topic ?? ""}
           onChange={(e) =>
             dispatch({
@@ -426,7 +445,7 @@ export function Sidebar() {
               >
                 {active && (
                   <PillHighlight
-                    layoutId="substantive-pill"
+                      layoutId={`${idPrefix}-substantive-pill`}
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
@@ -436,7 +455,57 @@ export function Sidebar() {
           })}
         </Segmented>
       </Field>
-      </Aside>
+    </>
+  );
+}
+
+export function DesktopFilters() {
+  const isCompact = useCompactLayout();
+  if (isCompact) return null;
+  return (
+    <DesktopPanel as="aside" aria-label="Search and filters">
+      <DesktopScroll as={motion.div} variants={container} initial="hidden" animate="show">
+        <FilterControls idPrefix="desktop-filter" />
+      </DesktopScroll>
+    </DesktopPanel>
+  );
+}
+
+/** Compact-only filter drawer controlled by the top-navigation FILTERS action. */
+export function Sidebar() {
+  const { state, dispatch } = useExplorer();
+  const isCompact = useCompactLayout();
+
+  useEffect(() => {
+    if (!isCompact || !state.filtersOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dispatch({ type: "closeFilters" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isCompact, state.filtersOpen, dispatch]);
+
+  if (!isCompact) return null;
+  return (
+    <>
+      <Backdrop
+        type="button"
+        $open={state.filtersOpen}
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => dispatch({ type: "closeFilters" })}
+      />
+      <MobileAside
+        id="filters-panel"
+        $open={state.filtersOpen}
+        aria-hidden={!state.filtersOpen}
+        inert={!state.filtersOpen}
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
+        <FilterControls idPrefix="mobile-filter" />
+      </MobileAside>
     </>
   );
 }

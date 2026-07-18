@@ -53,7 +53,14 @@ function nextSort(
 }
 
 const Panel = styled(PanelBase)`
-  min-height: 320px;
+  min-height: 640px;
+  height: auto;
+  align-self: stretch;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    min-height: 320px;
+    height: min(72dvh, 720px);
+  }
 `;
 
 const Toolbar = styled(Row)`

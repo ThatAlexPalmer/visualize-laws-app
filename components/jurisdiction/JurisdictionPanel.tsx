@@ -11,7 +11,10 @@ import {
   AXES,
   DEFAULT_SCORE_RANGE,
   stateName,
+  type JurisdictionAgg,
   type JurisdictionDetailResponse,
+  type JurisdictionsResponse,
+  type LawSummary,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
@@ -25,8 +28,24 @@ import {
 } from "@/components/ui/containers";
 import { Heading } from "@/components/ui/text";
 
-const Panel = styled(PanelBase)`
+const Panel = styled(PanelBase)<{ $placement: "rail" | "mobile" }>`
   min-height: 320px;
+
+  ${({ $placement, theme }) =>
+    $placement === "rail"
+      ? `
+        width: 320px;
+        flex-shrink: 0;
+        min-height: 0;
+        border: 0;
+        border-right: 1px solid ${theme.colors.g12};
+        border-radius: 0;
+        @media (max-width: ${theme.breakpoints.lg}) { display: none; }
+      `
+      : `
+        margin: 12px 12px 0;
+        min-height: 280px;
+      `}
 `;
 
 const Header = styled(Row)`
@@ -50,8 +69,12 @@ const Inner = styled(ScrollArea)`
 
 const CountRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: ${({ theme }) => theme.space(3)};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    grid-template-columns: 1fr 1fr;
+  }
 `;
 
 const Stat = styled(Card)`
@@ -166,33 +189,63 @@ function clampPct(v: number): number {
   return Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
 }
 
-export function JurisdictionPanel() {
+function useCompactLayout() {
+  const [isCompact, setIsCompact] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1100px)");
+    const sync = () => setIsCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return isCompact;
+}
+
+interface AggregateState {
+  aggregate: JurisdictionAgg | null;
+  topLaws: LawSummary[];
+}
+
+function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const { state, dispatch } = useExplorer();
   const { selectedState, unhinged } = state;
 
-  const [data, setData] = useState<JurisdictionDetailResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<AggregateState>({ aggregate: null, topLaws: [] });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!selectedState) {
-      setData(null);
-      return;
-    }
     let ignore = false;
     const ctrl = new AbortController();
     setLoading(true);
-    fetch(`/api/jurisdictions/${encodeURIComponent(selectedState)}`, {
+    const url = selectedState
+      ? `/api/jurisdictions/${encodeURIComponent(selectedState)}`
+      : "/api/jurisdictions";
+    fetch(url, {
       signal: ctrl.signal,
     })
-      .then((r) => (r.ok ? (r.json() as Promise<JurisdictionDetailResponse>) : null))
+      .then((r) =>
+        r.ok
+          ? (r.json() as Promise<JurisdictionDetailResponse | JurisdictionsResponse>)
+          : null,
+      )
       .then((json) => {
         if (ignore) return;
-        setData(json);
+        if (!json) {
+          setData({ aggregate: null, topLaws: [] });
+        } else if (selectedState) {
+          const detail = json as JurisdictionDetailResponse;
+          setData({ aggregate: detail.jurisdiction, topLaws: detail.topLaws });
+        } else {
+          setData({
+            aggregate: (json as JurisdictionsResponse).national,
+            topLaws: [],
+          });
+        }
         setLoading(false);
       })
       .catch(() => {
         if (ignore || ctrl.signal.aborted) return;
-        setData(null);
+        setData({ aggregate: null, topLaws: [] });
         setLoading(false);
       });
     return () => {
@@ -201,43 +254,38 @@ export function JurisdictionPanel() {
     };
   }, [selectedState]);
 
-  if (!selectedState) {
-    return (
-      <Panel as="aside">
-        <Empty>{ui("Select a state on the map to see its profile.", unhinged)}</Empty>
-      </Panel>
-    );
-  }
-
-  const agg = data?.jurisdiction ?? null;
-  const topLaws = data?.topLaws ?? [];
+  const agg = data.aggregate;
+  const topLaws = data.topLaws;
+  const label = selectedState ? stateName(selectedState) : "United States";
 
   return (
-    <Panel as="aside">
+    <Panel as="aside" $placement={placement} aria-label={`${label} aggregate insights`}>
       <Header $align="baseline" $gap={2}>
-        <Heading $size="lg">{stateName(selectedState)}</Heading>
-        <Clear
-          type="button"
-          $variant="subtle"
-          $size="sm"
-          onClick={() => dispatch({ type: "selectState", state: null })}
-        >
-          Clear
-        </Clear>
+        <Heading $size="lg">{label}</Heading>
+        {selectedState && (
+          <Clear
+            type="button"
+            $variant="subtle"
+            $size="sm"
+            onClick={() => dispatch({ type: "selectState", state: null })}
+          >
+            Clear
+          </Clear>
+        )}
       </Header>
       <AnimatePresence mode="wait">
         <Inner
           as={motion.div}
-          key={selectedState}
+          key={selectedState ?? "national"}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          {loading && !agg ? (
+          {loading ? (
             <Empty>Loading…</Empty>
           ) : !agg ? (
-            <Empty>No aggregate data yet for {stateName(selectedState)}.</Empty>
+            <Empty>No aggregate data yet for {label}.</Empty>
           ) : (
             <>
               <CountRow>
@@ -296,4 +344,18 @@ export function JurisdictionPanel() {
       </AnimatePresence>
     </Panel>
   );
+}
+
+export function AggregateRail() {
+  const isCompact = useCompactLayout();
+  if (isCompact) return null;
+  return <AggregatePanel placement="rail" />;
+}
+
+/** Selected/national aggregate profile inserted between map and results on compact screens. */
+export function JurisdictionPanel() {
+  const isCompact = useCompactLayout();
+  const { state } = useExplorer();
+  if (!isCompact || !state.selectedState) return null;
+  return <AggregatePanel placement="mobile" />;
 }
