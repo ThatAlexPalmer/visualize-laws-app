@@ -55,7 +55,9 @@ const RETRY_BACKOFF_MS = 2_000;
 // Fail-fast on hung COPY batches (Prisma Postgres stalls have been silent).
 // Aggregates over ~2.2M rows need a long/disabled timeout separately.
 const LOAD_STATEMENT_TIMEOUT_MS = 45_000;
-const LOAD_QUERY_TIMEOUT_MS = 60_000;
+// Client watchdog slightly above statement_timeout so PG can cancel first;
+// still short enough that silent stalls recover quickly.
+const LOAD_QUERY_TIMEOUT_MS = 90_000;
 const AGG_STATEMENT_TIMEOUT_MS = 0; // 0 = disabled
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PROGRESS_PATH = resolve(CACHE_DIR, "seed-progress.json");
@@ -608,6 +610,11 @@ async function main(): Promise<void> {
       connectionTimeoutMillis: 30_000,
       statement_timeout: LOAD_STATEMENT_TIMEOUT_MS,
     });
+    // Destroying the socket on COPY stall emits Client 'error'. Without a
+    // listener Node treats it as uncaught and kills the process before retry.
+    c.on("error", (err) => {
+      console.warn(`  pg client error (will reconnect if in retry path): ${err.message}`);
+    });
     await c.connect();
     await c.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
     // Avoid idle-in-transaction stalls on managed Postgres during long loads.
@@ -637,7 +644,14 @@ async function main(): Promise<void> {
     }
 
     const completed = await getCompletedShards(client);
-    let total = 0;
+    // Prefer DB law count so resume runs have a sensible "alreadyLoaded" baseline.
+    const priorCount = await client.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM laws",
+    );
+    let total = priorCount.rows[0]?.n ?? 0;
+    if (total > 0) {
+      console.log(`Existing laws rows: ${fmt(total)} (resume baseline)`);
+    }
     let stoppedAtLimit = false;
 
     for (const n of opts.shards) {
@@ -676,9 +690,9 @@ async function main(): Promise<void> {
           client = await connect();
         }
       }
-      if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
-      // shardTotal includes rows committed on earlier failed attempts of this shard.
-      total += result.shardTotal;
+if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
+      // newlyCommitted this call only — prior progress / other shards already in `total`.
+      total += result.rows;
       console.log(
         `shard ${n + 1}/${SHARD_COUNT}: ` +
           `${result.complete ? "complete" : "partial (limit)"} — ` +
