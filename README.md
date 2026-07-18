@@ -23,6 +23,8 @@ Every law in LOCUS-v1 is scored along four axes:
   and animated loading skeletons.
 - **Law detail modal**: full text, all four scores, and function / topic / jurisdiction metadata.
 - **Jurisdiction dashboard**: aggregate counts and average scores per state, plus notable laws.
+- **Cached jurisdiction APIs**: map and state aggregates are cached for one hour; after reseeding,
+  allow up to one hour for refreshed aggregates to appear without a redeploy.
 - **Motion throughout** via framer-motion, with `prefers-reduced-motion` respected.
 
 ## Tech stack

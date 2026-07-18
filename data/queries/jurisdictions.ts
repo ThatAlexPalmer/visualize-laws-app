@@ -22,7 +22,6 @@ const AGG_SELECT = {
 const LAW_SELECT = {
   id: true,
   header: true,
-  content: true,
   isSubstantive: true,
   function: true,
   topic: true,

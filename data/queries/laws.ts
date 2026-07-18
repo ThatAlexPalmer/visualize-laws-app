@@ -1,9 +1,11 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import {
   AXES,
   AXIS_BY_KEY,
   type Axis,
   type LawRecord,
+  type LawSummary,
   type LawsResponse,
 } from "../types";
 
@@ -90,11 +92,11 @@ async function estimateFilteredRows(
   }
 }
 
-// Columns we select, aliased to the camelCase shape of LawRecord.
-const SELECT_COLUMNS = `
+// Summary columns returned by list endpoints. Full content is fetched only when
+// a user opens a law, keeping filter/page responses small.
+const SUMMARY_SELECT_COLUMNS = `
   id,
   header,
-  content,
   is_substantive AS "isSubstantive",
   "function",
   topic,
@@ -107,6 +109,21 @@ const SELECT_COLUMNS = `
   paternalism,
   problem_salience AS "problemSalience"
 `;
+
+const DETAIL_SELECT_COLUMNS = `
+  ${SUMMARY_SELECT_COLUMNS},
+  content
+`;
+
+export async function getLawById(id: number): Promise<LawRecord | null> {
+  const rows = await prisma.$queryRaw<LawRecord[]>`
+    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS)}
+    FROM laws
+    WHERE id = ${id}
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
 
 /** Run a filtered/sorted/paginated query for laws from URL search params. */
 export async function queryLaws(
@@ -184,7 +201,7 @@ export async function queryLaws(
   const offsetParam = `$${params.length + 2}`;
   const rowsParams = [...params, pageSize, offset];
   const rowsSql = `
-    SELECT ${SELECT_COLUMNS}
+    SELECT ${SUMMARY_SELECT_COLUMNS}
     FROM laws
     ${whereSql}
     ${orderSql}
@@ -204,7 +221,7 @@ export async function queryLaws(
         : estimateFilteredRows(whereSql, params);
 
     const [rows, estimate] = await Promise.all([
-      prisma.$queryRawUnsafe<LawRecord[]>(rowsSql, ...rowsParams),
+      prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),
       estimatePromise,
     ]);
 

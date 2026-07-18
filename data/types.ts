@@ -58,10 +58,9 @@ export interface LawFilters {
   sort?: { axis: Axis; dir: "asc" | "desc" } | null;
 }
 
-export interface LawRecord {
+export interface LawSummary {
   id: number;
   header: string | null;
-  content: string;
   isSubstantive: boolean;
   function: string | null;
   topic: string | null;
@@ -75,8 +74,12 @@ export interface LawRecord {
   problemSalience: number;
 }
 
+export interface LawRecord extends LawSummary {
+  content: string;
+}
+
 export interface LawsResponse {
-  rows: LawRecord[];
+  rows: LawSummary[];
   total: number;
   page: number;
   pageSize: number;
@@ -104,7 +107,15 @@ export interface JurisdictionsResponse {
 
 export interface JurisdictionDetailResponse {
   jurisdiction: JurisdictionAgg | null;
-  topLaws: LawRecord[];
+  topLaws: LawSummary[];
+}
+
+export interface LawDetailResponse {
+  law: LawRecord;
+}
+
+export interface ApiErrorResponse {
+  error: string;
 }
 
 /** Lowercase 2-letter state code -> display name (matches LOCUS `state` values). */
