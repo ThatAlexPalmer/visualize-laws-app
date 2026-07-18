@@ -52,7 +52,7 @@ Start only Postgres in Docker and run Next.js locally:
 
 ```bash
 pnpm install            # postinstall runs `prisma generate`
-cp .env.example .env
+cp .env.example .env.local
 pnpm db:up              # local Postgres only (port 5432)
 pnpm prisma:deploy      # tables + tsvector/GIN index
 pnpm seed --limit 25000 # fast sample
@@ -64,8 +64,8 @@ finishes.
 
 ## Environment variables
 
-`docker compose up` wires these automatically; you only set them for host/production
-(`cp .env.example .env`):
+`docker compose up` wires these automatically; you only set them for host/production —
+copy `.env.example` to `.env.local` (and add a `.env.prod` for remote admin tasks):
 
 - `DATABASE_URL` — app connection (pooled in production).
 - `DIRECT_URL` — direct/non-pooled connection for Prisma migrations (same as `DATABASE_URL`
