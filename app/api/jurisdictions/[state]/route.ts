@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getJurisdictionDetail } from "@/data/queries/jurisdictions";
 import type { JurisdictionDetailResponse } from "@/data/types";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
+export const revalidate = 3600;
 
 // Per-state aggregate + top laws for the jurisdiction dashboard.
 export async function GET(

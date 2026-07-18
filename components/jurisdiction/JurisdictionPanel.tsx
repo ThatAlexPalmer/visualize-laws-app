@@ -183,7 +183,6 @@ export function JurisdictionPanel() {
     setLoading(true);
     fetch(`/api/jurisdictions/${encodeURIComponent(selectedState)}`, {
       signal: ctrl.signal,
-      cache: "no-store",
     })
       .then((r) => (r.ok ? (r.json() as Promise<JurisdictionDetailResponse>) : null))
       .then((json) => {
