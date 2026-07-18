@@ -36,3 +36,6 @@ yarn-error.log*
 
 # data cache (downloaded parquet shards for seeding)
 /.locus-cache/
+
+# local planning docs (not committed)
+/plans/

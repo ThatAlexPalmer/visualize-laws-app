@@ -17,8 +17,10 @@ It is a standard single Next.js app at the repo root with a dedicated **data lay
 - `data/` — the data layer: Prisma schema + migrations, the Prisma client singleton, shared
   domain types, the seed pipeline, and the data-access query functions (`data/queries/*`).
 
-The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getJurisdictions`,
-`getJurisdictionDetail`), which use the Prisma client from `data/db.ts`.
+The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getLawById`,
+`getJurisdictions`, `getJurisdictionDetail`), which use the Prisma client from `data/db.ts`.
+`/api/laws` returns row *summaries* and `/api/laws/[id]` returns the full law on demand; the
+jurisdiction routes are cached (`force-static`, `revalidate = 3600`).
 
 ## One-command DevEx
 
@@ -144,8 +146,7 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 ## Deployment and SEO runbooks
 
 Deployment, CI/CD, domain, and SEO execution details are intentionally kept out of this file to
-avoid staleness. Use plan `cec5df35-4596-4df4-bc1c-7b470b069bba` as the runbook source of truth,
-and use `agents/AGENTS.md` for durable agent/developer context.
+avoid staleness. See `agents/AGENTS.md` for durable agent/developer context.
 
 ## Git Workflow
 

@@ -1,186 +1,123 @@
 # visualizelaws.com
 
-Explore the complete [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local
-laws: full-text search, server-side filtering, an interactive HTML5 Canvas choropleth map, and
+Explore the complete [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws:
+full-text search, server-side filtering, an interactive HTML5 Canvas choropleth map, and
 per-jurisdiction statistics — in a strict black-and-white interface.
 
-Every law in LOCUS-v1 is scored along four axes:
-
-- **Opacity** — how hard the text is to read / understand.
-- **Enforcement Discretion** — latitude granted to enforcers.
-- **Paternalism** — degree to which the rule restricts personal choice.
-- **Problem Salience** — how pressing the underlying problem is.
+Every law is scored on four axes: **Opacity** (how hard the text is to read), **Enforcement
+Discretion** (latitude granted to enforcers), **Paternalism** (how much it restricts personal
+choice), and **Problem Salience** (how pressing the underlying problem is).
 
 ## Features
 
-- **Full-text search** over law headers and content, powered by a Postgres `tsvector` + GIN
-  index and `websearch_to_tsquery`.
-- **Faceted filtering**: keyword, four dual-handle score-range sliders, state, county, function,
-  topic, and substantive/procedural type. Text and slider inputs are debounced.
-- **Interactive map**: an HTML5 Canvas choropleth (d3-geo + us-atlas) colored by the selected
-  axis; click a state to filter and open its profile.
-- **Results list**: high-performance, server-side paginated results with sortable score columns
-  and animated loading skeletons.
-- **Law detail modal**: full text, all four scores, and function / topic / jurisdiction metadata.
-- **Jurisdiction dashboard**: aggregate counts and average scores per state, plus notable laws.
-- **Cached jurisdiction APIs**: map and state aggregates are cached for one hour; after reseeding,
-  allow up to one hour for refreshed aggregates to appear without a redeploy.
-- **Motion throughout** via framer-motion, with `prefers-reduced-motion` respected.
+- **Full-text search** over headers and content via Postgres `tsvector` + GIN and
+  `websearch_to_tsquery`.
+- **Faceted filtering**: keyword, four score-range sliders, state, county, function, topic, and
+  substantive/procedural type (text + slider inputs debounced).
+- **Interactive map**: HTML5 Canvas choropleth (d3-geo + us-atlas) colored by the selected axis;
+  click a state to filter and open its profile.
+- **Results + law detail**: server-side paginated list with sortable scores; the modal fetches the
+  full law text on demand from `GET /api/laws/[id]`.
+- **Jurisdiction dashboard**: per-state aggregate counts and average scores, plus notable laws. The
+  jurisdiction APIs are cached for one hour, so allow up to an hour for reseeded aggregates to
+  appear.
+- **Motion throughout** via framer-motion, honoring `prefers-reduced-motion`.
 
 ## Tech stack
 
-- [Next.js 15](https://nextjs.org/) (App Router, React 19, TypeScript strict)
-- [Prisma](https://www.prisma.io/) + [PostgreSQL](https://www.postgresql.org/)
-- [styled-components](https://styled-components.com/) for all styling (SSR registry)
-- [framer-motion](https://www.framer.com/motion/) for all animation
-- Pure HTML5 Canvas map: [d3-geo](https://github.com/d3/d3-geo),
-  [us-atlas](https://github.com/topojson/us-atlas), [topojson-client](https://github.com/topojson/topojson-client)
-- Seed pipeline: [@dsnp/parquetjs](https://github.com/LedgerHQ/parquetjs) + `pg` COPY streaming
-- Package manager: [pnpm](https://pnpm.io/)
-
-## Prerequisites
-
-- **Docker** — the only thing you need for the one-command stack below.
-- Node.js >= 20 and pnpm — only if you'd rather run the app on the host.
+Next.js 15 (App Router, React 19, TypeScript strict) · Prisma + PostgreSQL · styled-components
+(SSR registry) · framer-motion · pure HTML5 Canvas map (d3-geo, us-atlas, topojson-client) · seed
+via `@dsnp/parquetjs` + `pg` COPY streaming · pnpm.
 
 ## Quick start (one command)
 
-With Docker running, a fresh clone becomes a full local app in one command:
+With Docker running, a fresh clone becomes a full local app:
 
 ```bash
-docker compose up        # or: pnpm up          (25k-row sample on first run)
-pnpm up:full             # the ENTIRE ~2.2M-row corpus (SEED_LIMIT=0)
+docker compose up    # or: pnpm up    — 25k-row sample on first run
+pnpm up:full         # SEED_LIMIT=0 — load the ENTIRE ~2.2M-row corpus
 ```
 
-This builds the app image, starts Postgres 18 (the `pgvector/pgvector:pg18` image — stock PG18
-with pgvector available but dormant), applies migrations, seeds the database on first run, and
-serves the app at http://localhost:3000 with hot reload. Re-running is fast — the seed is skipped
-once data already exists. Inspect the DB with Postgres.app or `npx prisma studio` at
-`localhost:5432`.
+This starts Postgres 18 (`pgvector/pgvector:pg18`; pgvector available but dormant) + the app,
+applies migrations, seeds on first run (skipped once data exists), and serves
+http://localhost:3000 with hot reload.
 
-## Troubleshooting
+> Moved or renamed the folder? The app container's `/workspace` bind mount (an absolute host path
+> captured at create time) goes stale and the entrypoint exits with a FATAL message. Recreate with
+> `docker compose up -d --force-recreate` — data is preserved in the named volume.
 
-If you rename or move the project folder, the app container's `/workspace` bind mount (an absolute
-host path captured when the container was created) goes stale and the entrypoint exits with a clear
-FATAL message. Recreate the stack from the current folder — data is preserved:
+## Run on the host instead
+
+Start only Postgres in Docker and run Next.js locally:
 
 ```bash
-docker compose up -d --force-recreate
+pnpm install            # postinstall runs `prisma generate`
+cp .env.example .env
+pnpm db:up              # local Postgres only (port 5432)
+pnpm prisma:deploy      # tables + tsvector/GIN index
+pnpm seed --limit 25000 # fast sample
+pnpm dev                # http://localhost:3000
 ```
 
-## Alternative: run on the host
-
-Prefer running Next.js on the host instead of in the container? Start only Postgres in Docker:
-
-```bash
-pnpm install              # installs deps; postinstall runs `prisma generate`
-cp .env.example .env      # then adjust values if needed
-pnpm db:up                # start local Postgres only (Docker, port 5432)
-pnpm prisma:deploy        # apply migrations (creates tables + tsvector/GIN index)
-pnpm seed --limit 25000   # fast sample seed for development
-pnpm dev                  # http://localhost:3000
-```
-
-The app tolerates an empty database — panels render empty states and skeletons until data is
-seeded, so you can start `pnpm dev` before seeding finishes.
+The app tolerates an empty DB (empty states + skeletons), so you can `pnpm dev` before seeding
+finishes.
 
 ## Environment variables
 
-`docker compose up` wires these automatically — you don't set anything. They're only needed for
-the host path or production, where you copy `.env.example` to `.env`:
+`docker compose up` wires these automatically; you only set them for host/production
+(`cp .env.example .env`):
 
-- `DATABASE_URL` — Postgres connection string used by the app (pooled in production).
-- `DIRECT_URL` — direct (non-pooled) connection string used by Prisma for migrations. Locally
-  this is identical to `DATABASE_URL`.
-- `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000); set to 0
-  for the full corpus (see the Seeding section).
+- `DATABASE_URL` — app connection (pooled in production).
+- `DIRECT_URL` — direct/non-pooled connection for Prisma migrations (same as `DATABASE_URL`
+  locally).
+- `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000; `0` = full
+  corpus).
 
-## Seeding (getting the data)
+## Seeding
 
-The corpus is **not** committed to git — it's ~1.77 GB of Postgres data. A fresh clone +
-`docker compose up` loads a fast **~25k-row sample** so the app is immediately usable, but the
-map only shows the handful of states in that sample.
-
-To load the **entire ~2.2M-row corpus** (every state):
+The ~1.77 GB corpus is **not** in git. A fresh `docker compose up` loads a ~25k-row sample; to load
+the full ~2.2M-row corpus (every state):
 
 ```bash
-# host, against the Docker Postgres:
-pnpm db:up && pnpm seed
-
-# or inside the running container:
-docker compose exec app pnpm seed
-
-# or one command on a fresh DB (full corpus on first boot):
-pnpm up:full        # = SEED_LIMIT=0 docker compose up
+pnpm db:up && pnpm seed              # host, against Docker Postgres
+docker compose exec app pnpm seed    # or inside the container
+pnpm up:full                         # or full corpus on first boot
 ```
 
-The seeder streams the 8 parquet shards from Hugging Face, bulk-loads them via Postgres `COPY`,
-records completed shards in `seed_checkpoints` for resumability, and recomputes the
-`jurisdictions` aggregates (national + per-state) with the per-axis `[min, max]` bounds used for
-the slider domains and map color scale. It's checkpointed, so an interrupted `pnpm seed` resumes
-safely; `pnpm seed --fresh` resets and reseeds. Other flags: `--limit 25000` (sample),
-`--shards 0,1` (specific shards).
+The seeder streams the 8 parquet shards from Hugging Face, bulk-loads via `COPY`, checkpoints each
+shard in `seed_checkpoints` (resumable), and recomputes the `jurisdictions` aggregates. Flags:
+`--fresh` (reset + reseed), `--limit N` (sample), `--shards 0,1`.
 
-## Inspecting the database (Prisma Studio)
+Browse the DB with `pnpm db:studio` (Prisma Studio at http://localhost:5555). The generated
+`search_vector` column is hidden as an `Unsupported(...)` type — expected, and search is unaffected.
 
-[Prisma Studio](https://www.prisma.io/studio) is a local GUI for browsing and editing the
-database. Start the database first (`pnpm db:up`, or the full stack with `docker compose up`),
-then launch Studio:
+## Scripts
 
-```bash
-pnpm db:studio        # = prisma studio --schema data/prisma/schema.prisma
-```
-
-It opens at <http://localhost:5555> and reads `DATABASE_URL` from `.env`, so it points at the
-local Docker Postgres on `localhost:5432`. From there you can browse:
-
-- **laws** — the ~2.2M-row corpus (paginated; filter and sort in the UI).
-- **jurisdictions** — the 51 pre-computed national + per-state aggregate rows.
-- **seed_checkpoints** — one row per completed parquet shard.
-
-The generated `search_vector` (`tsvector`) column is an `Unsupported(...)` type in Prisma, so it
-is intentionally hidden in Studio — that is expected and does not affect search. Studio can edit
-and delete rows, so treat it as a development tool and be careful pointing it at any production
-database.
-
-## Available scripts
-
-- `pnpm dev` — start the dev server.
-- `pnpm build` / `pnpm start` — production build / serve.
-- `pnpm typecheck` — `tsc --noEmit`.
-- `pnpm lint` — Next.js ESLint.
-- `pnpm up` / `pnpm up:build` — run the full stack (Postgres + app) via Docker Compose.
-- `pnpm up:full` — same, but seed the full ~2.2M-row corpus on first boot (`SEED_LIMIT=0`).
-- `pnpm db:up` / `pnpm db:down` — start / stop local Postgres only (Docker).
-- `pnpm db:studio` — open Prisma Studio to browse the DB (<http://localhost:5555>).
-- `pnpm prisma:deploy` — apply migrations (production-safe).
-- `pnpm prisma:migrate` — create/apply a dev migration.
-- `pnpm seed` — run the seed pipeline (see above).
+`pnpm dev` · `pnpm build` / `pnpm start` · `pnpm lint` · `pnpm typecheck` · `pnpm up` /
+`pnpm up:build` / `pnpm up:full` · `pnpm db:up` / `pnpm db:down` / `pnpm db:studio` ·
+`pnpm prisma:deploy` / `pnpm prisma:migrate` · `pnpm seed`.
 
 ## Project structure
 
 ```text
-app/                                # Next.js App Router
-  api/laws/route.ts                 # GET /api/laws -> data/queries.queryLaws
-  api/jurisdictions/route.ts        # GET /api/jurisdictions -> getJurisdictions
-  api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]
-  layout.tsx, page.tsx              # root layout + single-page shell
-  about/page.tsx                    # /about — local-ordinance primer + attribution
-components/                         # nav, sidebar, map, results, jurisdiction, modal
-lib/                                # store, theme, styled-components registry, types re-export
+app/
+  api/laws/route.ts                   # GET /api/laws        -> queryLaws (summaries)
+  api/laws/[id]/route.ts              # GET /api/laws/[id]   -> getLawById (full detail)
+  api/jurisdictions/route.ts          # GET /api/jurisdictions (cached 1h) -> getJurisdictions
+  api/jurisdictions/[state]/route.ts  # GET /api/jurisdictions/[state]     -> getJurisdictionDetail
+  layout.tsx, page.tsx, about/        # root layout, single-page shell, /about
+components/                           # nav, sidebar, map, results, jurisdiction, modal
+lib/                                  # store, theme, styled-components registry, types re-export
 data/
-  prisma/                           # schema.prisma + migrations (tsvector/GIN)
-  queries/                          # data-access layer: laws.ts, jurisdictions.ts
-  db.ts                             # Prisma client singleton
-  types.ts                          # shared domain types (axes, filters, records)
-  seed.ts                           # parquet -> Postgres seed pipeline
-  db-count.ts                       # row-count probe for the Docker entrypoint
-next.config.ts, tsconfig.json
-Dockerfile, docker-compose.yml, docker/entrypoint.sh   # one-command full stack
+  prisma/                             # schema.prisma + migrations (tsvector/GIN)
+  queries/                            # data-access: laws.ts, jurisdictions.ts
+  db.ts, types.ts, seed.ts, db-count.ts
+next.config.ts, tsconfig.json, Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
+
 ## Attribution
 
-visualizelaws.com is built on the LOCUS-v1 corpus.
+Built on the LOCUS-v1 corpus.
 
 ```bibtex
 @article{peskoff2026freeing,
@@ -191,10 +128,9 @@ visualizelaws.com is built on the LOCUS-v1 corpus.
 }
 ```
 
-- Paper: <https://arxiv.org/abs/2606.19334>
-- Models & dataset: <https://huggingface.co/LocalLaws>
+Paper: <https://arxiv.org/abs/2606.19334> · Models & dataset: <https://huggingface.co/LocalLaws>
 
 ## Contributing & license
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution workflow. Licensed under
-Business Source License 1.1 (BUSL-1.1); see [LICENSE](./LICENSE).
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Licensed under Business Source License 1.1 (BUSL-1.1);
+see [LICENSE](./LICENSE).
