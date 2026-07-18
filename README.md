@@ -1,5 +1,7 @@
 # visualizelaws.com
 
+**Live at [visualizelaws.com](https://visualizelaws.com).**
+
 Explore the complete [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws:
 full-text search, server-side filtering, an interactive HTML5 Canvas choropleth map, and
 per-jurisdiction statistics — in a strict black-and-white interface.
@@ -129,6 +131,14 @@ Built on the LOCUS-v1 corpus.
 ```
 
 Paper: <https://arxiv.org/abs/2606.19334> · Models & dataset: <https://huggingface.co/LocalLaws>
+
+## Production
+
+Deployed on [Vercel](https://vercel.com) at [visualizelaws.com](https://visualizelaws.com): the
+Next.js app + `/api/*` route handlers, **Prisma Postgres** for the database, and **Cloudflare** DNS.
+The production database is migrated + seeded from a workstation (`pnpm prisma:deploy:prod`,
+`pnpm seed:prod`) — never in the build or CI. See `.env.example` for the `.env.local` (local) vs
+`.env.prod` (remote admin) convention.
 
 ## Contributing & license
 

@@ -10,6 +10,8 @@ full-text search, server-side filtering/pagination, an interactive HTML5 Canvas 
 map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)
 interface with framer-motion throughout. Business Source License 1.1 (BUSL-1.1).
 
+Deployed in production on Vercel at https://visualizelaws.com (Prisma Postgres + Cloudflare DNS).
+
 It is a standard single Next.js app at the repo root with a dedicated **data layer**:
 
 - `app/` — the App Router (`app/layout.tsx`, `app/page.tsx`, `app/api/*`).
@@ -121,8 +123,8 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 
 ## Important Patterns & Gotchas
 
-- **Standard root app**: the Next.js app is at the repo root (`next dev`), so Next auto-loads the
-  root `.env` and compiles `data/` normally — no `externalDir` or custom env loader. In Docker
+- **Standard root app**: the Next.js app is at the repo root (`next dev`), so Next auto-loads
+  `.env.local` and compiles `data/` normally — no `externalDir` or custom env loader. In Docker
   the DB URLs come from compose `environment:`.
 - **Env files**: `.env.local` (local dev, auto-loaded by Next) and `.env.prod` (remote admin: migrate/seed), both gitignored; `.env.example` is the tracked template. The DB/seed scripts choose the file via `dotenv-cli` (`pnpm prisma:deploy`/`pnpm seed` use `.env.local`; `pnpm prisma:deploy:prod`/`pnpm seed:prod` use `.env.prod`).
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
@@ -143,10 +145,13 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - `DIRECT_URL` — direct/non-pooled connection used by Prisma migrations (same as `DATABASE_URL`
   locally).
 - `SEED_LIMIT` — rows `docker compose up` sample-seeds on first boot (default 25000); 0 = full corpus.
-## Deployment and SEO runbooks
+## Deployment
 
-Deployment, CI/CD, domain, and SEO execution details are intentionally kept out of this file to
-avoid staleness. See `agents/AGENTS.md` for durable agent/developer context.
+Live in production on Vercel at https://visualizelaws.com (Prisma Postgres + Cloudflare DNS). CI runs
+`verify` (lint + typecheck) on PRs; Vercel builds and deploys on merge to `main`. The production
+database is migrated + seeded from a workstation (`pnpm prisma:deploy:prod`, `pnpm seed:prod`) —
+never in the build or CI. Detailed CI/CD, domain, and SEO runbook steps are intentionally kept out of
+this file to avoid staleness; see `agents/AGENTS.md` for durable agent/developer context.
 
 ## Git Workflow
 
