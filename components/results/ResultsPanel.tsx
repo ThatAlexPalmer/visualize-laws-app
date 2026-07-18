@@ -11,7 +11,7 @@ import {
   stateName,
   type Axis,
   type LawFilters,
-  type LawRecord,
+  type LawSummary,
   type LawsResponse,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
@@ -320,7 +320,7 @@ export function ResultsPanel() {
           <Centered>{ui("No laws match these filters.", unhinged)}</Centered>
         ) : (
           <AnimatePresence initial={false}>
-            {rows.map((law: LawRecord, i) => (
+            {rows.map((law: LawSummary, i) => (
               <ResultRow
                 key={law.id}
                 type="button"

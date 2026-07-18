@@ -1,14 +1,20 @@
 "use client";
 
-// Animated detail modal for a single law. Driven by store.selectedLaw /
-// closeLaw. Closes on overlay click or Escape.
-import { useEffect } from "react";
+// Animated detail modal for a single law. Summary metadata comes from the list
+// response; the full body is fetched on demand after the modal opens.
+import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
-import { AXES, DEFAULT_SCORE_RANGE, stateName } from "@/lib/types";
+import {
+  AXES,
+  DEFAULT_SCORE_RANGE,
+  stateName,
+  type LawDetailResponse,
+  type LawRecord,
+} from "@/lib/types";
 import { resolveAxisCopy } from "@/lib/copy";
-import { IconButton } from "@/components/ui/buttons";
+import { Button, IconButton } from "@/components/ui/buttons";
 import { Card as CardBase, Cluster, Stack } from "@/components/ui/containers";
 import { Heading, Mono } from "@/components/ui/text";
 
@@ -117,6 +123,16 @@ const Body = styled.div`
   font-size: ${({ theme }) => theme.fontSize.md};
 `;
 
+const BodyStatus = styled(Body)`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: ${({ theme }) => theme.space(3)};
+  color: ${({ theme }) => theme.colors.g68};
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
 function clampPct(v: number): number {
   const { min, max } = DEFAULT_SCORE_RANGE;
   const p = ((v - min) / (max - min)) * 100;
@@ -127,7 +143,42 @@ export function LawModal() {
   const { state, dispatch } = useExplorer();
   const { unhinged } = state;
   const law = state.selectedLaw;
+  const [detail, setDetail] = useState<LawRecord | null>(null);
+  const [detailError, setDetailError] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const close = () => dispatch({ type: "closeLaw" });
+
+  useEffect(() => {
+    if (!law) {
+      setDetail(null);
+      setDetailError(false);
+      return;
+    }
+
+    const ctrl = new AbortController();
+    let active = true;
+    setDetail(null);
+    setDetailError(false);
+
+    fetch(`/api/laws/${law.id}`, { signal: ctrl.signal, cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<LawDetailResponse>;
+      })
+      .then(({ law: fullLaw }) => {
+        if (!active) return;
+        setDetail(fullLaw);
+      })
+      .catch(() => {
+        if (!active || ctrl.signal.aborted) return;
+        setDetailError(true);
+      });
+
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
+  }, [law, retryAttempt]);
 
   useEffect(() => {
     if (!law) return;
@@ -153,7 +204,7 @@ export function LawModal() {
             as={motion.div}
             role="dialog"
             aria-modal="true"
-            aria-label={law.header ?? "Law detail"}
+            aria-label={(detail ?? law).header ?? "Law detail"}
             initial={{ opacity: 0, scale: 0.96, y: 14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
@@ -164,24 +215,26 @@ export function LawModal() {
               ×
             </Close>
             <Title as="h3" $size="xl">
-              {law.header?.trim() || "Untitled provision"}
+              {(detail ?? law).header?.trim() || "Untitled provision"}
             </Title>
             <Sub>
-              {stateName(law.state)}
-              {law.county ? ` · ${law.county}` : ""}
-              {law.city ? ` · ${law.city}` : ""}
-              {law.sourceJurisdictionType ? ` · ${law.sourceJurisdictionType}` : ""}
+              {stateName((detail ?? law).state)}
+              {(detail ?? law).county ? ` · ${(detail ?? law).county}` : ""}
+              {(detail ?? law).city ? ` · ${(detail ?? law).city}` : ""}
+              {(detail ?? law).sourceJurisdictionType
+                ? ` · ${(detail ?? law).sourceJurisdictionType}`
+                : ""}
             </Sub>
 
             <Chips>
-              <Chip>{law.isSubstantive ? "Substantive" : "Procedural"}</Chip>
-              {law.function && <Chip>{law.function}</Chip>}
-              {law.topic && <Chip>{law.topic}</Chip>}
+              <Chip>{(detail ?? law).isSubstantive ? "Substantive" : "Procedural"}</Chip>
+              {(detail ?? law).function && <Chip>{(detail ?? law).function}</Chip>}
+              {(detail ?? law).topic && <Chip>{(detail ?? law).topic}</Chip>}
             </Chips>
 
             <ScoreGrid>
               {AXES.map((a) => {
-                const value = law[a.key];
+                const value = (detail ?? law)[a.key];
                 return (
                   <Stack key={a.key} $gap={1.5}>
                     <ScoreTop>
@@ -200,7 +253,23 @@ export function LawModal() {
               })}
             </ScoreGrid>
 
-            <Body>{law.content}</Body>
+            {detail ? (
+              <Body>{detail.content}</Body>
+            ) : detailError ? (
+              <BodyStatus role="alert">
+                <span>Could not load the full law text.</span>
+                <Button
+                  type="button"
+                  $variant="ghost"
+                  $size="sm"
+                  onClick={() => setRetryAttempt((attempt) => attempt + 1)}
+                >
+                  Retry
+                </Button>
+              </BodyStatus>
+            ) : (
+              <BodyStatus aria-live="polite">Loading full law text…</BodyStatus>
+            )}
           </Card>
         </Overlay>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
-import type { Axis, LawFilters, LawRecord } from "./types";
+import type { Axis, LawFilters, LawSummary } from "./types";
 
 /**
  * Global UI state shared across the map, sidebar, results, and modal.
@@ -11,7 +11,7 @@ export interface ExplorerState {
   axis: Axis;
   filters: LawFilters;
   selectedState: string | null;
-  selectedLaw: LawRecord | null;
+  selectedLaw: LawSummary | null;
   unhinged: boolean;
 }
 
@@ -37,7 +37,7 @@ export type ExplorerAction =
   | { type: "setPage"; page: number }
   | { type: "resetFilters" }
   | { type: "selectState"; state: string | null }
-  | { type: "openLaw"; law: LawRecord }
+  | { type: "openLaw"; law: LawSummary }
   | { type: "closeLaw" }
   | { type: "toggleUnhinged" };
 
