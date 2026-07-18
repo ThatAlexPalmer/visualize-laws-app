@@ -49,8 +49,8 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0
       '@types/node':
-        specifier: ^22.10.2
-        version: 22.20.0
+        specifier: ^26.1.1
+        version: 26.1.1
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.0
@@ -705,8 +705,11 @@ packages:
   '@types/node-int64@0.4.32':
     resolution: {integrity: sha512-xf/JsSlnXQ+mzvc0IpXemcrO4BrCfpgNpMco+GLcXkFk01k/gW9lGJu+Vof0ZSvHK6DsHJDPSbjFPs36QkWXqw==}
 
-  '@types/node@22.20.0':
-    resolution: {integrity: sha512-QWlFW2wf3nTjC13/DqRnBpR4ZO36VJH/JVBkA/vcnmbTBNQIlnObqyqZE1tUR7+Ni23Lda8R1BxMfbXRpCUx5g==}
+  '@types/node@22.20.1':
+    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+
+  '@types/node@26.1.1':
+    resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
   '@types/pg-copy-streams@1.2.5':
     resolution: {integrity: sha512-7D6/GYW2uHIaVU6S/5omI+6RZnwlZBpLQDZAH83xX1rjxAOK0f6/deKyyUTewxqts145VIGn6XWYz1YGf50G5g==}
@@ -2338,6 +2341,9 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  undici-types@8.3.0:
+    resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
+
   unrs-resolver@1.12.2:
     resolution: {integrity: sha512-dmlRxBJJayXjqTwC+JtF1HhJmgf3ftQ3YejFcZrf4+KKtJv0qDsK1pjqaaVjG7wJ5NJ6UVP1OqRMQ71Z4C3rxQ==}
 
@@ -3056,20 +3062,24 @@ snapshots:
 
   '@types/node-int64@0.4.32':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 26.1.1
 
-  '@types/node@22.20.0':
+  '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@26.1.1':
+    dependencies:
+      undici-types: 8.3.0
+
   '@types/pg-copy-streams@1.2.5':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 26.1.1
       '@types/pg': 8.20.0
 
   '@types/pg@8.20.0':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 26.1.1
       pg-protocol: 1.15.0
       pg-types: 2.2.0
 
@@ -3085,7 +3095,7 @@ snapshots:
 
   '@types/thrift@0.10.17':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 26.1.1
       '@types/node-int64': 0.4.32
       '@types/q': 1.5.8
 
@@ -3266,7 +3276,7 @@ snapshots:
 
   '@zenfs/core@1.11.4':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 22.20.1
       buffer: 6.0.3
       eventemitter3: 5.0.4
       readable-stream: 4.7.0
@@ -4962,6 +4972,8 @@ snapshots:
       which-boxed-primitive: 1.1.1
 
   undici-types@6.21.0: {}
+
+  undici-types@8.3.0: {}
 
   unrs-resolver@1.12.2:
     dependencies:
