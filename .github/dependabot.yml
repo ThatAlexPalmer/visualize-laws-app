@@ -1,0 +1,14 @@
+# Keep dependencies up to date. Single root package (no monorepo workspaces).
+version: 2
+updates:
+  # Application + tooling dependencies.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions used by workflows in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
