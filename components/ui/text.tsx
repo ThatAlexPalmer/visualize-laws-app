@@ -34,7 +34,7 @@ export const Kicker = styled.span<{ $tone?: "g68" | "g76" }>`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g68"]};
+  color: ${({ theme, $tone }) => theme.colors[$tone ?? "g76"]};
 `;
 
 /** Subtle mono text link (g64 → fg on hover). Render as a Next `<Link>` via `as`. */

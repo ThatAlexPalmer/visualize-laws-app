@@ -10,6 +10,7 @@ import {
 } from "@/components/jurisdiction/JurisdictionPanel";
 import { LawModal } from "@/components/modal/LawModal";
 import { Footer } from "@/components/footer/Footer";
+import { QuickSearch } from "@/components/search/QuickSearch";
 
 const Shell = styled.div`
   display: flex;
@@ -31,7 +32,7 @@ const Main = styled.main`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   /* Reserve the scrollbar gutter so the map's width stays constant whether or
      not this column is scrollable. Selecting a state grows the panels below the
      map; without this the scrollbar's appearance would shrink the content width
@@ -39,25 +40,47 @@ const Main = styled.main`
   scrollbar-gutter: stable;
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    overflow-y: auto;
     scrollbar-gutter: auto;
   }
 `;
 
 const Lower = styled.div`
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
-  grid-auto-rows: minmax(640px, auto);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
-  gap: ${({ theme }) => theme.space(4)};
-  padding: ${({ theme }) => theme.space(4)};
+  gap: 0;
+  padding: 0;
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
 
+  > * {
+    border-top: 0;
+    border-bottom: 0;
+  }
+
+  > * + * {
+    border-left: 0;
+  }
+
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    flex: none;
     grid-template-columns: 1fr;
-    grid-auto-rows: auto;
+    grid-template-rows: auto;
     gap: ${({ theme }) => theme.space(3)};
     padding: ${({ theme }) => theme.space(3)};
+
+    > * {
+      border: 1px solid ${({ theme }) => theme.colors.g08};
+    }
   }
+`;
+
+const MapRegion = styled.div`
+  position: relative;
+  flex-shrink: 0;
 `;
 
 export default function Page() {
@@ -67,7 +90,10 @@ export default function Page() {
         <AggregateRail />
         <Sidebar />
         <Main>
-          <MapPanel />
+          <MapRegion>
+            <QuickSearch />
+            <MapPanel />
+          </MapRegion>
           <JurisdictionPanel />
           <Lower>
             <ResultsPanel />

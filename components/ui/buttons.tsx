@@ -29,7 +29,7 @@ const buttonBase = css<ButtonProps>`
     $size === "md"
       ? `${theme.space(2)} ${theme.space(4)}`
       : `${theme.space(1)} ${theme.space(2.5)}`};
-  border-radius: ${({ theme, $pill }) => ($pill ? theme.radius.pill : theme.radius.sm)};
+  border-radius: ${({ theme, $pill }) => ($pill ? theme.radius.pill : theme.radius.md)};
   transition: ${({ theme }) => theme.transitions.default};
 
   background: ${({ theme, $variant }) => ($variant === "primary" ? theme.colors.fg : "transparent")};

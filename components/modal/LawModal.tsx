@@ -30,8 +30,8 @@ const Overlay = styled(motion.div)`
   z-index: ${({ theme }) => theme.z.modal};
 `;
 
-// The dialog surface builds on the Card primitive; it only emphasizes the
-// border (g20), enlarges the radius, and adds the modal-specific sizing.
+// The dialog surface uses the same square structural treatment as the explorer
+// panels while retaining rounded chips and compact actions inside it.
 const Card = styled(CardBase)`
   position: relative;
   max-width: 720px;
@@ -39,7 +39,7 @@ const Card = styled(CardBase)`
   max-height: 84vh;
   overflow-y: auto;
   border-color: ${({ theme }) => theme.colors.g20};
-  border-radius: ${({ theme }) => theme.radius.lg};
+  border-radius: 0;
   padding: ${({ theme }) => theme.space(6)};
 `;
 

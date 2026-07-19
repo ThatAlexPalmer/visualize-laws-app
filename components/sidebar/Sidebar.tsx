@@ -1,8 +1,8 @@
 "use client";
 
-// Search + filter rail. All controls are wired to the store's `filters`; text /
-// slider inputs are debounced (~300ms) before dispatching to avoid query spam.
-import { useEffect, useRef, useState } from "react";
+// Advanced filter rail. All controls are wired to the store's `filters`; text
+// and slider inputs are debounced (~300ms) before dispatching to avoid query spam.
+import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
@@ -18,6 +18,7 @@ import {
   type ScoreRange,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
+import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { RangeSlider } from "./RangeSlider";
 import { Button } from "@/components/ui/buttons";
 import {
@@ -36,29 +37,6 @@ import {
   SectionLabel,
   Stack,
 } from "@/components/ui/containers";
-
-// A debounced wrapper around a callback. `cancel` lets the reset action drop any
-// pending dispatch so a late timer can't re-apply a just-cleared filter.
-function useDebouncedCallback<A extends unknown[]>(
-  cb: (...args: A) => void,
-  delay: number,
-) {
-  const cbRef = useRef(cb);
-  cbRef.current = cb;
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancel = () => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-  };
-  useEffect(() => cancel, []);
-  const run = (...args: A) => {
-    cancel();
-    timer.current = setTimeout(() => cbRef.current(...args), delay);
-  };
-  return { run, cancel };
-}
 
 const STATE_ENTRIES = Object.entries(STATE_NAMES).sort((a, b) =>
   a[1].localeCompare(b[1]),
@@ -96,18 +74,18 @@ const MobileAside = styled(motion.aside)<{ $open: boolean }>`
 `;
 
 const DesktopPanel = styled(PanelBase)`
-  min-height: 640px;
-  height: auto;
+  min-height: 0;
+  height: 100%;
   align-self: stretch;
 `;
 
 const DesktopScroll = styled(ScrollArea)`
-  /* On desktop the full form defines the shared workspace row height. Keeping
-     this content in normal flow avoids a nested scrollbar, while the adjacent
-     results panel stretches to the same bottom edge and scrolls only its laws. */
-  flex: 0 0 auto;
-  min-height: auto;
-  overflow-y: visible;
+  /* The form fills the remaining viewport band. At ordinary desktop heights
+     every control is visible; short windows gain an internal scrollbar instead
+     of pushing the pager and footer below the viewport. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.space(3)};
@@ -209,7 +187,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { filters, unhinged } = state;
 
   const [bounds, setBounds] = useState<AxisBounds | null>(null);
-  const [q, setQ] = useState(filters.q ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
@@ -253,9 +230,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bounds]);
 
-  const qDeb = useDebouncedCallback((v: string) => {
-    dispatch({ type: "patchFilters", filters: { q: v.trim() || undefined } });
-  }, 300);
   const countyDeb = useDebouncedCallback((v: string) => {
     dispatch({
       type: "patchFilters",
@@ -273,9 +247,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
 
   // Keep local inputs in sync if filters are cleared elsewhere (e.g. reset).
   useEffect(() => {
-    if (filters.q === undefined) setQ("");
-  }, [filters.q]);
-  useEffect(() => {
     if (filters.county === undefined) setCounty("");
   }, [filters.county]);
   useEffect(() => {
@@ -290,10 +261,8 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   ]);
 
   const onReset = () => {
-    qDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
-    setQ("");
     setCounty("");
     setRanges(makeFullRanges(domainFor));
     dispatch({ type: "resetFilters" });
@@ -302,7 +271,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   return (
     <>
       <Row as={motion.div} variants={item} $justify="space-between" $gap={0}>
-        <SectionLabel>{ui("Search & Filters", unhinged)}</SectionLabel>
+        <SectionLabel>{ui("Filters", unhinged)}</SectionLabel>
         <HeaderActions>
           <ResetButton
             type="button"
@@ -315,20 +284,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
           </ResetButton>
         </HeaderActions>
       </Row>
-
-      <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-q`}>Keyword</FieldLabel>
-        <Input
-          id={`${idPrefix}-q`}
-          type="search"
-          placeholder="Search law text…"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            qDeb.run(e.target.value);
-          }}
-        />
-      </Field>
 
       <Field as={motion.div} variants={item}>
         <SectionLabel>{ui("Scores", unhinged)}</SectionLabel>

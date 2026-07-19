@@ -12,14 +12,14 @@ export const Panel = styled.section`
   flex-direction: column;
   overflow: hidden;
   border: 1px solid ${({ theme }) => theme.colors.g08};
-  border-radius: ${({ theme }) => theme.radius.md};
+  border-radius: 0;
 `;
 
 /** Generic bordered card surface. */
 export const Card = styled.div`
   background: ${({ theme }) => theme.colors.bg};
   border: 1px solid ${({ theme }) => theme.colors.g08};
-  border-radius: ${({ theme }) => theme.radius.sm};
+  border-radius: 0;
 `;
 
 /** Vertical flexbox with a token-based gap (defaults to space(4)). */
@@ -66,5 +66,5 @@ export const SectionLabel = styled.div`
   font-size: ${({ theme }) => theme.fontSize.xs};
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g68};
+  color: ${({ theme }) => theme.colors.g76};
 `;
