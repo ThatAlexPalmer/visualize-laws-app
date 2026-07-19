@@ -82,7 +82,10 @@ pnpm prisma:migrate     # create/apply a dev migration
 pnpm seed --limit 25000 # fast dev sample
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
 pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
+pnpm seed:prod …        # same flags against .env.prod (remote admin only)
 ```
+
+Full agent seed runbook (timings, remote stalls, verify queries): `agents/AGENTS.md`.
 
 ## Project Structure
 
@@ -114,12 +117,27 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ## Seeding
 
 `data/seed.ts` streams the 8 LOCUS-v1 parquet shards (`@dsnp/parquetjs`), bulk-loads `laws` via
-Postgres `COPY` (`pg` + `pg-copy-streams`) in ~10k-row batches, checkpoints each shard inside a
-transaction (crash-safe resume), then recomputes the `jurisdictions` aggregates. `search_vector`
-is generated automatically and never written by the seeder.
+Postgres `COPY` (`pg` + `pg-copy-streams`) in **5k-row batches** (commit per batch), tracks
+intra-shard progress in `.locus-cache/seed-progress.json`, writes a `seed_checkpoints` row when a
+shard finishes, then recomputes `jurisdictions`. `search_vector` is generated automatically and
+never written by the seeder. Remote/managed Postgres can stall mid-COPY; the seeder uses short
+load-phase timeouts + a COPY watchdog + reconnect retries (see `agents/AGENTS.md`).
+
 The corpus is **not** in git (~1.77 GB). `docker compose up` sample-seeds `SEED_LIMIT` rows
 (default 25000) only when `laws` is empty; set `SEED_LIMIT=0` for the full ~2.2M-row corpus. Or
 seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compose exec app pnpm seed`.
+
+### Realistic duration (order of magnitude)
+
+- Local sample (`--limit 25000` / default compose): **~1–5 min**
+- Local full corpus (Docker Postgres, shards cached): **~15–40 min**
+- Remote full fresh (`pnpm seed:prod --fresh` from laptop → managed Postgres): **~30–60+ min**,
+  with occasional silent stalls; resume without `--fresh` is expected
+- Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 + one
+  row per state (~50)
+
+Maintainer/agent detail (single-writer, background logs, verify SQL): **`agents/AGENTS.md`**.
+Do not expand public `README.md` with remote DB / internal agent ops.
 
 ## Important Patterns & Gotchas
 
@@ -150,8 +168,9 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 Live in production on Vercel at https://visualizelaws.com (Prisma Postgres + Cloudflare DNS). CI runs
 `verify` (lint + typecheck) on PRs; Vercel builds and deploys on merge to `main`. The production
 database is migrated + seeded from a workstation (`pnpm prisma:deploy:prod`, `pnpm seed:prod`) —
-never in the build or CI. Detailed CI/CD, domain, and SEO runbook steps are intentionally kept out of
-this file to avoid staleness; see `agents/AGENTS.md` for durable agent/developer context.
+never in the build or CI. Detailed CI/CD, domain, SEO, and seed operator steps are intentionally
+kept out of this file to avoid staleness; see `agents/AGENTS.md` for durable agent/maintainer
+context. Keep internal operator notes out of public README content.
 
 ## Git Workflow
 
