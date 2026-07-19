@@ -4,7 +4,14 @@ Durable context for agents working in `visualize-laws-app`.
 
 ## Scope
 
-This file is intentionally development-focused. Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally excluded to avoid staleness.
+This file is **agent/maintainer-facing** (not end-user product docs). Prefer putting
+operator runbooks, timing expectations, and remote-DB notes here or in `WARP.md`.
+Keep `README.md` public/fork-friendly: high-level features + generic local quick start
+only — **do not** document maintainer-only remote DB ops, credentials layout, or
+internal agent workflow in GitHub-facing README content.
+
+Deployment, CI/CD, DNS, and SEO execution runbooks are intentionally thin here to
+avoid staleness; expand only when durable.
 
 ## Project snapshot
 
@@ -21,30 +28,166 @@ This file is intentionally development-focused. Deployment, CI/CD, DNS, and SEO 
 - `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations.
 - `data/db.ts` — Prisma client singleton.
 - `data/queries/laws.ts` and `data/queries/jurisdictions.ts` — data-access logic.
-- `data/seed.ts` — parquet → Postgres ingest with checkpoints.
+- `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
+- `WARP.md` — Warp project rules (loaded automatically in this repo).
 
 ## Local development commands
 
-- `pnpm install`
-- `pnpm dev`
-- `pnpm build`
-- `pnpm lint`
-- `pnpm typecheck`
+- `pnpm install` (prefer pnpm; **no corepack**)
+- `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck`
 - `pnpm up` / `pnpm up:build` / `pnpm up:full`
 - `pnpm db:up` / `pnpm db:down` / `pnpm db:studio`
 - `pnpm prisma:deploy` / `pnpm prisma:migrate`
 - `pnpm seed` / `pnpm seed --limit 25000` / `pnpm seed --fresh`
+- Remote admin (gitignored env): `pnpm seed:prod` / `pnpm seed:prod --fresh` /
+  `pnpm prisma:deploy:prod` / `pnpm db:studio:prod`
+
+## Env files (agents)
+
+- `.env.local` — local Next + host scripts (`pnpm seed`, `pnpm prisma:deploy`).
+- `.env.prod` — remote admin only (`pnpm seed:prod`, migrate/studio against prod).
+  Never print, commit, or paste `DATABASE_URL` / `DIRECT_URL` values.
+- `.env.example` — tracked template only.
 
 ## Data and querying notes
 
 - State codes are lowercase two-letter codes in data/UI.
 - Full-text search is Postgres `tsvector` + GIN index.
 - `data/queries/laws.ts` uses parameterized SQL; only whitelisted sort fields are interpolated.
-- `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand. Jurisdiction routes are cached (`force-static`, `revalidate = 3600`).
-- Seed is resumable through `SeedCheckpoint`; aggregate rows are recomputed into `Jurisdiction`.
+- `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand.
+  Jurisdiction routes are cached (`force-static`, `revalidate = 3600`) — allow up to ~1h after
+  re-aggregating before map/dashboard APIs reflect new aggregates in production.
+- Seed is resumable; see **Seeding runbook** below.
 
 ## Working conventions
 
-- Keep changes scoped and logically grouped.
-- Do not commit directly to `main`; follow `CONTRIBUTING.md`.
+- Keep changes scoped and logically grouped (atomic commits).
+- Do not commit directly to `main`; branch + PR; Conventional Commits. See `CONTRIBUTING.md`.
 - Prefer `pnpm` (no corepack).
+- Do not run the app/deploy unless the task asks for it.
+- Never stage `.env*`, credentials, or parquet cache (`.locus-cache/`).
+
+---
+
+## Seeding runbook (agents)
+
+Canonical seeder: `data/seed.ts`. Scripts:
+
+| Command | Target |
+| --- | --- |
+| `pnpm seed …` | `.env.local` (local Docker/host Postgres) |
+| `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
+
+Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local progress),
+`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`.
+
+### What the seeder does
+
+1. Streams 8 LOCUS-v1 parquet shards (Hugging Face); caches under `.locus-cache/` (~1.77 GB total).
+2. Bulk-loads via Postgres `COPY` in **5k-row batches**, **commit per batch**.
+3. Local mid-shard progress: `.locus-cache/seed-progress.json` (skip already-committed rows on retry).
+4. Whole-shard resume: `seed_checkpoints` (one row per finished shard `0000`…`0007`).
+5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty state code).
+6. `search_vector` is GENERATED — never written by the seeder.
+
+### Resilience (remote-aware)
+
+Managed Postgres (Prisma) can **silently stall** mid-COPY with no error. The seeder:
+
+- Sets a short load-phase `statement_timeout` (~45s) and a client COPY watchdog (~90s) that
+  destroys the socket on hang.
+- Retries the current shard up to 8 times with reconnect/backoff.
+- **Must** attach a `pg` Client `error` listener so socket destroy does not crash Node before retry.
+- Disables/long-timeouts for TRUNCATE and `computeAggregates` (full-table scans over 2.2M rows).
+
+Always ensure a **single writer**:
+
+```bash
+pkill -9 -f 'data/seed.ts' 2>/dev/null || true
+pgrep -fl 'data/seed.ts' || echo 'no seed'
+```
+
+### How to run (agent pattern)
+
+1. Confirm no orphan seeders (above).
+2. Prefer background + log so the session stays usable:
+
+```bash
+mkdir -p /tmp/viz-seed
+nohup pnpm seed:prod --fresh </dev/null >/tmp/viz-seed/seed-prod.log 2>&1 &
+echo $! > /tmp/viz-seed/seed.pid
+# monitor: tail -f /tmp/viz-seed/seed-prod.log
+# resume after stall (do NOT --fresh unless intentional wipe):
+# nohup pnpm seed:prod </dev/null >/tmp/viz-seed/seed-prod.log 2>&1 &
+```
+
+3. If editing `data/seed.ts`, run `pnpm typecheck`, branch off `main`, PR only the seeder/docs change.
+4. Do **not** re-run migrations on prod unless schema work is in scope (tables/indexes are durable).
+
+### Expected duration (realistic)
+
+Parquet must be cached or downloaded once (~1.77 GB). Times below assume a modern laptop and
+cached shards; first download adds wall clock.
+
+| Scenario | What | Realistic wall clock |
+| --- | --- | --- |
+| **Local sample** | `pnpm seed --limit 25000` or `pnpm up` default | **~1–5 min** |
+| **Local full corpus** | `pnpm seed` / `pnpm up:full` → Docker Postgres on localhost | **~15–40 min** once cached (often multi‑k rows/s; no WAN DB RTT) |
+| **Remote full fresh** | `pnpm seed:prod --fresh` → Prisma Postgres (`db.prisma.io`) from laptop | **~30–60+ min** typical; sustained ~0.8–3k rows/s with occasional silent stalls |
+| **Remote resume** | `pnpm seed:prod` after checkpoints/progress exist | **minutes to tens of minutes** depending on remaining rows + retries |
+| **Aggregates only** | after all laws loaded | **a few minutes** on remote; faster locally |
+
+Notes:
+
+- Remote is dominated by **network RTT + managed DB COPY behavior**, not CPU. Stalls are normal;
+  success means retries resume and finish, not a perfect stall-free log.
+- A clean remote run that hit ~1.9M then stalled early on the last shard still finished after
+  resume; plan for **watchdog timeouts + reconnect**, not a single uninterrupted process.
+- Local full load is the right default for day-to-day dev. Remote full seed is **maintainer-only**
+  (effectively one operator) and should be delegated to a long-running agent/session so the main
+  chat stays free.
+
+### Verification (after any full seed)
+
+Expect:
+
+- `laws` count **≈ 2,211,516** (exact corpus size)
+- `seed_checkpoints` **= 8**
+- `jurisdictions`: **1** `national` + **one `state` row per distinct non-empty state** (50 in current corpus)
+- `national.law_count` should match `count(*)` on `laws`
+
+Read-only check pattern (never echo connection strings):
+
+```bash
+pnpm exec dotenv -e .env.prod -- node --input-type=module -e '
+import pg from "pg";
+const c = new pg.Client({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL });
+await c.connect();
+const q = async (sql) => (await c.query(sql)).rows;
+console.log({
+  laws: (await q("select count(*)::bigint n from laws"))[0].n,
+  checkpoints: (await q("select count(*)::int n from seed_checkpoints"))[0].n,
+  juris: await q("select level, count(*)::int n from jurisdictions group by level order by level"),
+});
+await c.end();
+'
+```
+
+For local, use `.env.local` the same way (or `pnpm db:studio`).
+
+### Agent behavior for long seeds
+
+- Own the job end-to-end: single writer → run → monitor → retry/resume → verify counts.
+- Send short progress updates (shard complete / stall+retry / final counts); do not block the
+  user on interactive confirmation for each batch.
+- On storage/quota or unrecoverable remote errors, stop and report immediately.
+- Prefer a dedicated child/background agent for full remote loads so the primary session stays free.
+
+## Doc surface guide
+
+| Surface | Audience | Put here |
+| --- | --- | --- |
+| `README.md` | Public / forks | Product pitch, generic local quick start, license |
+| `WARP.md` | Warp agents in-repo | Architecture, commands, seed summary + gotchas |
+| `agents/AGENTS.md` | Agents + maintainer | Runbooks, timings, remote ops, conventions |
+| Warp **Global Rules** | All Warp sessions | Cross-repo prefs (pnpm, no secrets in logs, long jobs in background) |
