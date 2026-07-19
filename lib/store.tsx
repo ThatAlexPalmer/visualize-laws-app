@@ -14,9 +14,12 @@ export interface ExplorerState {
   selectedLaw: LawSummary | null;
   unhinged: boolean;
   filtersOpen: boolean;
+  filterResetVersion: number;
 }
 
-export const DEFAULT_PAGE_SIZE = 25;
+// A short page keeps the explorer feeling like a focused control surface while
+// pagination still provides access to the complete corpus.
+export const DEFAULT_PAGE_SIZE = 8;
 
 const initialFilters: LawFilters = {
   page: 1,
@@ -31,6 +34,7 @@ const initialState: ExplorerState = {
   selectedLaw: null,
   unhinged: false,
   filtersOpen: false,
+  filterResetVersion: 0,
 };
 
 export type ExplorerAction =
@@ -62,7 +66,12 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
     case "setPage":
       return { ...state, filters: { ...state.filters, page: action.page } };
     case "resetFilters":
-      return { ...state, filters: { ...initialFilters }, selectedState: null };
+      return {
+        ...state,
+        filters: { ...initialFilters },
+        selectedState: null,
+        filterResetVersion: state.filterResetVersion + 1,
+      };
     case "selectState":
       return {
         ...state,

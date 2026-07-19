@@ -53,7 +53,7 @@ export const theme = {
     spring: "0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55)",
   },
   // min-width breakpoints matching the app's existing media queries.
-  breakpoints: { xs: "520px", sm: "560px", md: "720px", lg: "900px" },
+  breakpoints: { xs: "520px", sm: "560px", md: "720px", lg: "1100px" },
   // Subtle monochrome elevation + focus ring (white-on-black aesthetic).
   shadows: {
     none: "none",

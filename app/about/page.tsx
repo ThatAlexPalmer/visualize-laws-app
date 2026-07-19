@@ -1,23 +1,20 @@
 "use client";
 
-// /about — a quick, slightly cheeky primer on what a local ordinance actually
-// is, plus the LOCUS-v1 attribution. Reached from the nav "About" link.
+// /about — product mission, current LOCUS-v1 coverage, legal-layer roadmap,
+// and dataset attribution. Reached from the nav "About" link.
 import Link from "next/link";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 import { Footer } from "@/components/footer/Footer";
 import {
-  APP_AUTHOR_URL,
-  AUTHOR_NAME,
-  AUTHOR_URL,
   BIBTEX,
   DATASET_URL,
   PAPER_URL,
-  TWEET_URL,
 } from "@/lib/attribution";
 import { ButtonLink } from "@/components/ui/buttons";
 import { Cluster, Row, SectionLabel, Stack } from "@/components/ui/containers";
 import { Heading, Kicker as UiKicker, MonoLink, Muted } from "@/components/ui/text";
+import { useExplorer } from "@/lib/store";
 
 const Page = styled.div`
   height: 100%;
@@ -89,7 +86,7 @@ const Tier = styled.div<{ $active?: boolean }>`
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border: 1px solid
     ${({ theme, $active }) => ($active ? theme.colors.fg : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.md};
+  border-radius: 0;
   background: ${({ theme, $active }) => ($active ? theme.colors.fg : "transparent")};
   color: ${({ theme, $active }) => ($active ? theme.colors.bg : theme.colors.fg)};
 `;
@@ -141,33 +138,6 @@ const CoverItem = styled.li`
   }
 `;
 
-const Table = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: ${({ theme }) => theme.fontSize.sm};
-
-  th,
-  td {
-    text-align: left;
-    padding: ${({ theme }) => theme.space(2)} ${({ theme }) => theme.space(3)};
-    border: 1px solid ${({ theme }) => theme.colors.g12};
-    vertical-align: top;
-  }
-  th {
-    font-family: ${({ theme }) => theme.font.mono};
-    font-size: ${({ theme }) => theme.fontSize.xs};
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: ${({ theme }) => theme.colors.g76};
-  }
-  td b {
-    font-weight: 600;
-  }
-  td span {
-    color: ${({ theme }) => theme.colors.g76};
-  }
-`;
-
 // The primary call-to-action reuses the primary ButtonLink (fg fill, pill).
 const Cta = styled(ButtonLink)`
   margin-top: ${({ theme }) => theme.space(5)};
@@ -186,7 +156,7 @@ const Cite = styled.pre`
   font-size: ${({ theme }) => theme.fontSize.xs};
   white-space: pre-wrap;
   border: 1px solid ${({ theme }) => theme.colors.g12};
-  border-radius: ${({ theme }) => theme.radius.sm};
+  border-radius: 0;
   padding: ${({ theme }) => theme.space(3)};
   color: ${({ theme }) => theme.colors.g90};
 `;
@@ -224,59 +194,141 @@ const COVERS: [string, string][] = [
   ["Property maintenance", "tall grass, junk cars, and the right to be annoyed by both"],
 ];
 
+const FUNNY_COVERS: [string, string][] = [
+  ["Zoning & land use", "the city deciding whether your dream project is a home or a paperwork event"],
+  ["Noise", "the exact hour your neighbor's leaf blower becomes a matter of law"],
+  ["Parking", "a municipal thriller starring permits, snow routes, and one missing sign"],
+  ["Building codes", "keeping the deck attached to the house and out of the evening news"],
+  ["Animal control", "leashes, pet limits, and the constitutional status of backyard chickens"],
+  ["Business licensing", "permission slips for restaurants, vendors, and the Airbnb next door"],
+  ["Public health & safety", "pool fences, smoking rules, and whether the food truck may park there"],
+  ["Property maintenance", "when tall grass stops being landscaping and becomes government business"],
+];
+
+const NORMAL_COPY = {
+  back: "← back to the map",
+  kicker: "ABOUT",
+  title: "Visualizing laws and their characteristics",
+  lede:
+    "Visualize Laws turns legal text into something you can map, search, sort, and compare. Each law is scored across opacity, enforcement discretion, paternalism, and problem salience — four ways of seeing how a rule reads, what it permits, and what problem it is trying to solve.",
+  layersTitle: "Three layers of U.S. law, starting local",
+  layersBody:
+    "U.S. law operates across federal, state, and local layers. This first version begins with local law because LOCUS-v1 provides a uniquely broad, structured corpus of ordinances from cities and counties across the country.",
+  federal: "FEDERAL",
+  federalMeta: "U.S. Congress · the whole country",
+  state: "STATE",
+  stateMeta: "state legislature · one entire state",
+  local: "LOCAL ← CURRENT COVERAGE",
+  localMeta: "city / county council · your town",
+  layersNote:
+    "A local ordinance is a law made by a city or county, applying inside that jurisdiction. It is the hyper-local fine print governing everything from zoning and business licensing to backyard chickens and late-night noise. Local rules remain subject to state and federal law.",
+  governsTitle: "What they actually govern",
+  governsBody: "Dull name, surprisingly personal reach. Local codes usually cover:",
+  whyTitle: "Why bother with them at all?",
+  whyBody:
+    "Because a dense city and a rural town want wildly different things. One needs rules for short-term rentals and 2 a.m. noise; the other cares about ATVs and livestock. Local ordinances let every community write its own fine print — as long as it doesn't break the bigger rules.",
+  coverageTitle: "Current coverage: LOCUS-v1",
+  coverageBody:
+    "The catch: these laws are public, but they're scattered across thousands of clunky vendor sites. LOCUS rounded up ~2.2 million of them into a single local-law corpus. That dataset is the starting point for Visualize Laws; state and federal laws are not included yet.",
+  cta: "Explore 2.2M laws →",
+  roadmapTitle: "Where the map goes next",
+  roadmapBody:
+    "The long-term goal is to make local, state, and federal law explorable through the same visual system. Planned coverage begins with financial regulation: securities laws, money-transmission laws, the Investment Company Act and related regulation, banking law, and adjacent areas of financial services.",
+  roadmapWhy:
+    "Starting there supports research and infrastructure for financial products and tokenized securities, where understanding how overlapping rules differ across jurisdictions is especially useful.",
+  roadmapNote:
+    "This is the roadmap, not current coverage. Today's searchable corpus remains LOCUS-v1 local ordinances.",
+  cite: "Built on LOCUS-v1",
+  paper: "Paper ↗",
+  dataset: "Models & Dataset ↗",
+  covers: COVERS,
+};
+
+const FUNNY_COPY = {
+  back: "← return to the legal panic",
+  kicker: "WHAT IS THIS",
+  title: "The fine print has a map now",
+  lede:
+    "America wrote millions of local laws and scattered them across the internet like a bureaucratic treasure hunt. Visualize Laws puts them on a map, makes them searchable, and scores their HUH? Factor, Wiggle Room, Nanny Index, and whether the problem Actually Matters.",
+  layersTitle: "Three levels of government walked into a database",
+  layersBody:
+    "Federal law covers the country, state law covers a state, and local law covers the place arguing about your fence. We started at the bottom of the stack because LOCUS-v1 assembled an unusually broad, structured corpus of city and county ordinances.",
+  federal: "FEDERAL",
+  federalMeta: "Congress · nationwide main quest",
+  state: "STATE",
+  stateMeta: "state legislature · fifty side quests",
+  local: "LOCAL ← CHAOS CURRENTLY MAPPED",
+  localMeta: "city / county council · extremely specific concerns",
+  layersNote:
+    "A local ordinance is a city or county law that applies inside that jurisdiction. It governs zoning, licenses, noise, parking, chickens, fences, and other matters that were apparently too important to leave to chance. State and federal law still outrank it.",
+  governsTitle: "Tiny rules, enormous opinions",
+  governsBody: "Local codes answer the questions nobody asked until two neighbors got involved:",
+  whyTitle: "Why are there so many of these?",
+  whyBody:
+    "A dense city, a beach town, and a rural county do not want the same rulebook. Local ordinances let each community customize the fine print for its own rentals, livestock, parking, noise, and recurring civic arguments — without overruling state or federal law.",
+  coverageTitle: "Current rabbit hole: LOCUS-v1",
+  coverageBody:
+    "The laws were public; finding them was the sport. LOCUS collected roughly 2.2 million local laws from thousands of scattered sources into one corpus. That is what you can search today. State and federal laws have not entered the arena yet.",
+  cta: "Enter the ordinance mines →",
+  roadmapTitle: "Next up: follow the money",
+  roadmapBody:
+    "The long-term plan is one visual system for local, state, and federal law. The first planned expansion is financial regulation: securities laws, money-transmission laws, the Investment Company Act and related regulation, banking law, and adjacent financial-services rules.",
+  roadmapWhy:
+    "That priority supports research and infrastructure for financial products and tokenized securities, where overlapping jurisdictional rules are less a fun surprise and more an engineering requirement.",
+  roadmapNote:
+    "Roadmap, not magic trick: the searchable corpus today is still LOCUS-v1 local ordinances.",
+  cite: "Receipts: LOCUS-v1",
+  paper: "The paper ↗",
+  dataset: "The dataset ↗",
+  covers: FUNNY_COVERS,
+};
+
 export default function AboutPage() {
+  const { state } = useExplorer();
+  const copy = state.unhinged ? FUNNY_COPY : NORMAL_COPY;
+
   return (
     <Page>
       <Inner variants={container} initial="hidden" animate="show">
         <TopRow>
           <MonoLink as={Link} href="/">
-            ← back to the map
+            {copy.back}
           </MonoLink>
-          <Kicker>ABOUT</Kicker>
+          <Kicker>{copy.kicker}</Kicker>
         </TopRow>
 
         <Section variants={item}>
-          <H1 as="h1">So what is a local ordinance?</H1>
-          <Lede>
-            Short version: it&rsquo;s a law your city or county made up, and it only
-            applies inside those lines on the map. Not federal. Not state. It&rsquo;s
-            the hyper-local fine print that decides whether your backyard chickens,
-            your fence height, and your 11&nbsp;p.m. garage band are technically legal.
-          </Lede>
+          <H1 as="h1">{copy.title}</H1>
+          <Lede>{copy.lede}</Lede>
         </Section>
 
         <Section variants={item}>
-          <H2>The legal pecking order</H2>
-          <Body>U.S. law is a stack, and local ordinances sit at the very bottom:</Body>
+          <H2>{copy.layersTitle}</H2>
+          <Body>{copy.layersBody}</Body>
           <Note as="div" style={{ marginTop: 16 }}>
             <Stack $gap={2}>
               <Tier>
-                <TierName>FEDERAL</TierName>
-                <TierMeta>U.S. Congress &middot; the whole country</TierMeta>
+                <TierName>{copy.federal}</TierName>
+                <TierMeta>{copy.federalMeta}</TierMeta>
               </Tier>
               <Tier>
-                <TierName>STATE</TierName>
-                <TierMeta>state legislature &middot; one entire state</TierMeta>
+                <TierName>{copy.state}</TierName>
+                <TierMeta>{copy.stateMeta}</TierMeta>
               </Tier>
               <Tier $active>
-                <TierName>LOCAL ← you are here</TierName>
-                <TierMeta $active>city / county council &middot; your town</TierMeta>
+                <TierName>{copy.local}</TierName>
+                <TierMeta $active>{copy.localMeta}</TierMeta>
               </Tier>
             </Stack>
           </Note>
-          <Note>
-            Local rules can&rsquo;t pick a fight with the bigger ones. If an ordinance
-            conflicts with state or federal law, the higher law wins &mdash; lawyers
-            call it <em>preemption</em>; everyone else calls it &ldquo;nice try.&rdquo;
-            Cities only get the powers their state hands down.
-          </Note>
+          <Note>{copy.layersNote}</Note>
         </Section>
 
         <Section variants={item}>
-          <H2>What they actually govern</H2>
-          <Body>Dull name, surprisingly personal reach. Local codes usually cover:</Body>
+          <H2>{copy.governsTitle}</H2>
+          <Body>{copy.governsBody}</Body>
           <CoverList style={{ marginTop: 16 }}>
-            {COVERS.map(([term, quip]) => (
+            {copy.covers.map(([term, quip]) => (
               <CoverItem key={term}>
                 <b>{term}</b>
                 <span>{quip}</span>
@@ -286,66 +338,27 @@ export default function AboutPage() {
         </Section>
 
         <Section variants={item}>
-          <H2>Federal vs. state vs. local</H2>
-          <Table>
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>Who writes them</th>
-                <th>Where they apply</th>
-                <th>Classic examples</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><b>Federal</b></td>
-                <td><span>U.S. Congress</span></td>
-                <td><span>the whole country</span></td>
-                <td><span>immigration, interstate commerce</span></td>
-              </tr>
-              <tr>
-                <td><b>State</b></td>
-                <td><span>state legislature</span></td>
-                <td><span>one entire state</span></td>
-                <td><span>driver&rsquo;s licenses, criminal code</span></td>
-              </tr>
-              <tr>
-                <td><b>Local</b></td>
-                <td><span>city / county council</span></td>
-                <td><span>one city or county</span></td>
-                <td><span>zoning, noise, parking</span></td>
-              </tr>
-            </tbody>
-          </Table>
-          <Note>None of them may conflict downward: local can&rsquo;t override state, and state can&rsquo;t override federal.</Note>
+          <H2>{copy.whyTitle}</H2>
+          <Body>{copy.whyBody}</Body>
         </Section>
 
         <Section variants={item}>
-          <H2>Why bother with them at all?</H2>
-          <Body>
-            Because a dense city and a rural town want wildly different things. One
-            needs rules for short-term rentals and 2&nbsp;a.m. noise; the other cares
-            about ATVs and livestock. Local ordinances let every community write its
-            own fine print &mdash; as long as it doesn&rsquo;t break the bigger rules.
-          </Body>
-        </Section>
-
-        <Section variants={item}>
-          <H2>Where LOCUS comes in</H2>
-          <Body>
-            The catch: these laws are public, but they&rsquo;re scattered across
-            thousands of clunky vendor sites. LOCUS rounded up ~2.2&nbsp;million of
-            them into a single corpus, and visualizelaws.com lets you actually search and
-            map them &mdash; each scored along four axes: opacity, enforcement
-            discretion, paternalism, and problem salience.
-          </Body>
+          <H2>{copy.coverageTitle}</H2>
+          <Body>{copy.coverageBody}</Body>
           <Cta href="/" $variant="primary" $pill>
-            Explore 2.2M laws →
+            {copy.cta}
           </Cta>
         </Section>
 
         <Section variants={item}>
-          <CiteLabel>Built on LOCUS-v1</CiteLabel>
+          <H2>{copy.roadmapTitle}</H2>
+          <Body>{copy.roadmapBody}</Body>
+          <Body>{copy.roadmapWhy}</Body>
+          <Note>{copy.roadmapNote}</Note>
+        </Section>
+
+        <Section variants={item}>
+          <CiteLabel>{copy.cite}</CiteLabel>
           <Cite>{BIBTEX}</Cite>
           <Links $gap={3}>
             <LinkButton
@@ -356,7 +369,7 @@ export default function AboutPage() {
               $pill
               $size="sm"
             >
-              Paper ↗
+              {copy.paper}
             </LinkButton>
             <LinkButton
               href={DATASET_URL}
@@ -366,36 +379,9 @@ export default function AboutPage() {
               $pill
               $size="sm"
             >
-              Models &amp; Dataset ↗
-            </LinkButton>
-            <LinkButton
-              href={TWEET_URL}
-              target="_blank"
-              rel="noreferrer"
-              $variant="ghost"
-              $pill
-              $size="sm"
-            >
-              Announcement ↗
-            </LinkButton>
-            <LinkButton
-              href={AUTHOR_URL}
-              target="_blank"
-              rel="noreferrer"
-              $variant="ghost"
-              $pill
-              $size="sm"
-            >
-              {AUTHOR_NAME} ↗
+              {copy.dataset}
             </LinkButton>
           </Links>
-          <Note>
-            app by{" "}
-            <MonoLink href={APP_AUTHOR_URL} target="_blank" rel="noreferrer" $size="sm">
-              alex palmer ↗
-            </MonoLink>{" "}
-            just for fun
-          </Note>
         </Section>
       </Inner>
       <Footer />

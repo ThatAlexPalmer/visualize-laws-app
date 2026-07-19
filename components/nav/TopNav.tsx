@@ -242,10 +242,14 @@ const SheetInner = styled.div`
 `;
 
 const SheetLabel = styled(Mono)`
+  display: block;
+  width: 100%;
   margin-bottom: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g60};
+  color: ${({ theme }) => theme.colors.g76};
   font-size: 10px;
   letter-spacing: 0.16em;
+  line-height: 1.4;
+  text-align: center;
   text-transform: uppercase;
 `;
 
@@ -261,7 +265,7 @@ const SheetAxis = styled.button<{ $active: boolean; $accent: string }>`
   height: 52px;
   padding: ${({ theme }) => theme.space(3)};
   border: 1px solid ${({ $active, $accent, theme }) => ($active ? $accent : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.pill};
+  border-radius: ${({ theme }) => theme.radius.md};
   background: ${({ $active, $accent }) => ($active ? $accent : "transparent")};
   color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
   font-family: ${({ theme }) => theme.font.mono};
@@ -289,7 +293,7 @@ const SheetAction = styled.button<{ $active?: boolean }>`
   height: 52px;
   padding: 0 ${({ theme }) => theme.space(3)};
   border: 1px solid ${({ $active, theme }) => ($active ? "#E53E3E" : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.pill};
+  border-radius: ${({ theme }) => theme.radius.md};
   background: ${({ $active }) => ($active ? "#E53E3E" : "transparent")};
   color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.fg)};
   font-family: ${({ theme }) => theme.font.mono};

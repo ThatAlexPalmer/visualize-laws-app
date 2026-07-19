@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { getJurisdictionDetail } from "@/data/queries/jurisdictions";
 import type { JurisdictionDetailResponse } from "@/data/types";
 
-export const dynamic = "force-static";
-export const revalidate = 3600;
+// State aggregates can be absent while the seed job is still rebuilding them.
+// Always read current database state so a transient `jurisdiction: null` is not
+// cached for the next hour.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 // Per-state aggregate + top laws for the jurisdiction dashboard.
 export async function GET(

@@ -25,7 +25,7 @@ const Box = styled(motion.div)`
   padding: ${({ theme }) => theme.space(3)};
   background: ${({ theme }) => theme.colors.g04};
   border: 1px solid ${({ theme }) => theme.colors.g12};
-  border-radius: ${({ theme }) => theme.radius.md};
+  border-radius: 0;
   backdrop-filter: blur(6px);
   pointer-events: none;
 

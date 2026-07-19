@@ -53,7 +53,14 @@ function nextSort(
 }
 
 const Panel = styled(PanelBase)`
-  min-height: 320px;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    min-height: 320px;
+    height: min(72dvh, 720px);
+  }
 `;
 
 const Toolbar = styled(Row)`
@@ -72,7 +79,7 @@ const Toolbar = styled(Row)`
 // `text-transform: none` opts out of the uppercase Kicker it sits inside.
 const Updating = styled(motion.span)`
   margin-left: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g60};
+  color: ${({ theme }) => theme.colors.g76};
   text-transform: none;
 `;
 
@@ -89,7 +96,7 @@ const SortButton = styled.button<{ $active: boolean }>`
   background: ${({ $active, theme }) => ($active ? theme.colors.g12 : "transparent")};
   border: 1px solid ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g08)};
   color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
-  border-radius: ${({ theme }) => theme.radius.sm};
+  border-radius: ${({ theme }) => theme.radius.md};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
   padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(1.5)};
@@ -106,7 +113,17 @@ const Scroll = styled(ScrollArea)<{ $stale?: boolean }>`
   opacity: ${({ $stale }) => ($stale ? 0.6 : 1)};
 `;
 
+// Eight laws make up a page. Let those rows share the entire scroll viewport
+// instead of collecting at its top, while retaining a usable minimum row
+// height that naturally enables internal scrolling in short viewports.
+const ResultRows = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+`;
+
 const ResultRow = styled(motion.button)`
+  flex: 1 0 64px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: ${({ theme }) => theme.space(4)};
@@ -145,7 +162,7 @@ const RowMeta = styled.div`
   margin-top: ${({ theme }) => theme.space(1)};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g68};
+  color: ${({ theme }) => theme.colors.g76};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,7 +179,7 @@ const Score = styled.div<{ $active: boolean }>`
   align-items: flex-end;
   gap: 2px;
   min-width: 34px;
-  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g68)};
+  color: ${({ $active, theme }) => ($active ? theme.colors.fg : theme.colors.g76)};
 
   @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
     display: ${({ $active }) => ($active ? "flex" : "none")};
@@ -173,7 +190,7 @@ const ScoreKey = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 9px;
   letter-spacing: 0.08em;
-  color: ${({ theme }) => theme.colors.g68};
+  color: ${({ theme }) => theme.colors.g76};
 `;
 
 const ScoreVal = styled.span`
@@ -194,6 +211,7 @@ const Centered = styled.div`
 `;
 
 const SkeletonRow = styled(motion.div)`
+  flex: 1 0 64px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: ${({ theme }) => theme.space(4)};
@@ -322,7 +340,7 @@ export function ResultsPanel() {
 
       <Scroll $stale={isRevalidating}>
         {isInitialLoading ? (
-          <div>
+          <ResultRows>
             {Array.from({ length: 8 }).map((_, i) => (
               <SkeletonRow
                 key={i}
@@ -337,42 +355,44 @@ export function ResultsPanel() {
                 <Bar $w="140px" />
               </SkeletonRow>
             ))}
-          </div>
+          </ResultRows>
         ) : showError ? (
           <Centered>Could not load results. Is the database seeded?</Centered>
         ) : rows.length === 0 ? (
           <Centered>{ui("No laws match these filters.", unhinged)}</Centered>
         ) : (
-          <AnimatePresence initial={false}>
-            {rows.map((law: LawSummary, i) => (
-              <ResultRow
-                key={law.id}
-                type="button"
-                onClick={() => dispatch({ type: "openLaw", law })}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.22, delay: Math.min(i * 0.02, 0.2) }}
-              >
-                <RowMain>
-                  <RowTitle>{law.header?.trim() || "Untitled provision"}</RowTitle>
-                  <RowMeta>
-                    {stateName(law.state)}
-                    {law.city ? ` · ${law.city}` : ""}
-                    {law.function ? ` · ${law.function}` : ""}
-                    {law.topic ? ` · ${law.topic}` : ""}
-                  </RowMeta>
-                </RowMain>
-                <Scores>
-                  {AXES.map((a) => (
-                    <Score key={a.key} $active={state.axis === a.key}>
-                      <ScoreKey>{resolveAxisCopy(a.key, unhinged).label.slice(0, 3).toUpperCase()}</ScoreKey>
-                      <ScoreVal>{fmt(law[a.key])}</ScoreVal>
-                    </Score>
-                  ))}
-                </Scores>
-              </ResultRow>
-            ))}
-          </AnimatePresence>
+          <ResultRows>
+            <AnimatePresence initial={false}>
+              {rows.map((law: LawSummary, i) => (
+                <ResultRow
+                  key={law.id}
+                  type="button"
+                  onClick={() => dispatch({ type: "openLaw", law })}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, delay: Math.min(i * 0.02, 0.2) }}
+                >
+                  <RowMain>
+                    <RowTitle>{law.header?.trim() || "Untitled provision"}</RowTitle>
+                    <RowMeta>
+                      {stateName(law.state)}
+                      {law.city ? ` · ${law.city}` : ""}
+                      {law.function ? ` · ${law.function}` : ""}
+                      {law.topic ? ` · ${law.topic}` : ""}
+                    </RowMeta>
+                  </RowMain>
+                  <Scores>
+                    {AXES.map((a) => (
+                      <Score key={a.key} $active={state.axis === a.key}>
+                        <ScoreKey>{resolveAxisCopy(a.key, unhinged).label.slice(0, 3).toUpperCase()}</ScoreKey>
+                        <ScoreVal>{fmt(law[a.key])}</ScoreVal>
+                      </Score>
+                    ))}
+                  </Scores>
+                </ResultRow>
+              ))}
+            </AnimatePresence>
+          </ResultRows>
         )}
       </Scroll>
 
