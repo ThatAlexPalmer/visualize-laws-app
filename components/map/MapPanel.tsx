@@ -11,9 +11,9 @@ import {
   stateName,
   type Axis,
   type JurisdictionAgg,
-  type JurisdictionsResponse,
 } from "@/lib/types";
 import { resolveAxisCopy } from "@/lib/copy";
+import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { stateFeatureCollection, stateFeatures } from "./geo";
 import {
@@ -72,6 +72,32 @@ const Wrap = styled.div`
     min-height: 300px;
   }
 `;
+
+const RetryHint = styled(motion.button)`
+  position: absolute;
+  top: ${({ theme }) => theme.space(4)};
+  right: ${({ theme }) => theme.space(4)};
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.g60};
+  cursor: pointer;
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.fg};
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
+    display: none;
+  }
+`;
+
+const EMPTY_ROWS: JurisdictionAgg[] = [];
 
 // Base layer: opaque state fills + base separators. Repainted ONLY when the
 // size / axis / domain / aggregate data change — never on hover or selection.
@@ -151,8 +177,10 @@ function syncCanvasSize(canvas: HTMLCanvasElement, size: Size): void {
 
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
+  const { data, status, retry } = useJurisdictions();
   const axis = state.axis;
   const selectedState = state.selectedState;
+  const rows = data?.rows ?? EMPTY_ROWS;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -162,31 +190,11 @@ export function MapPanel() {
   const rafRef = useRef<number | null>(null);
 
   const [size, setSize] = useState<Size | null>(null);
-  const [rows, setRows] = useState<JurisdictionAgg[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
 
   const controls = useAnimationControls();
   const firstAxisRun = useRef(true);
-
-  // --- data: jurisdiction aggregates (tolerant of empty / failed responses) --
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/jurisdictions");
-        if (!res.ok) return;
-        const json: JurisdictionsResponse = await res.json();
-        if (cancelled) return;
-        setRows(Array.isArray(json.rows) ? json.rows : []);
-      } catch {
-        // Leave rows empty; the outline map still renders.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  // All map, rail, and filter consumers share the provider's response.
   const aggByUsps = useMemo(() => {
     const m = new Map<string, JurisdictionAgg>();
     for (const r of rows) if (r.state) m.set(r.state.toLowerCase(), r);
@@ -428,14 +436,25 @@ export function MapPanel() {
         onClick={handleClick}
         style={{ cursor: hovered ? "pointer" : "default" }}
       />
-      {rows.length === 0 && (
+      {status === "ready" && rows.length === 0 && (
         <Hint
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: theme.motion.slow }}
         >
-          awaiting aggregates
+          no map data
         </Hint>
+      )}
+      {status === "error" && (
+        <RetryHint
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: theme.motion.slow }}
+          onClick={retry}
+        >
+          map unavailable · retry
+        </RetryHint>
       )}
       <MapLegend axis={axis} axisLabel={axisCopy.label} blurb={axisCopy.blurb} domain={domain} />
       <AnimatePresence>

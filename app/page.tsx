@@ -8,6 +8,7 @@ import {
   AggregateRail,
   JurisdictionPanel,
 } from "@/components/jurisdiction/JurisdictionPanel";
+import { JurisdictionsProvider } from "@/components/jurisdiction/JurisdictionsProvider";
 import { LawModal } from "@/components/modal/LawModal";
 import { Footer } from "@/components/footer/Footer";
 import { QuickSearch } from "@/components/search/QuickSearch";
@@ -85,24 +86,26 @@ const MapRegion = styled.div`
 
 export default function Page() {
   return (
-    <Shell>
-      <Body>
-        <AggregateRail />
-        <Sidebar />
-        <Main>
-          <MapRegion>
-            <QuickSearch />
-            <MapPanel />
-          </MapRegion>
-          <JurisdictionPanel />
-          <Lower>
-            <ResultsPanel />
-            <DesktopFilters />
-          </Lower>
-        </Main>
-      </Body>
-      <Footer />
-      <LawModal />
-    </Shell>
+    <JurisdictionsProvider>
+      <Shell>
+        <Body>
+          <AggregateRail />
+          <Sidebar />
+          <Main>
+            <MapRegion>
+              <QuickSearch />
+              <MapPanel />
+            </MapRegion>
+            <JurisdictionPanel />
+            <Lower>
+              <ResultsPanel />
+              <DesktopFilters />
+            </Lower>
+          </Main>
+        </Body>
+        <Footer />
+        <LawModal />
+      </Shell>
+    </JurisdictionsProvider>
   );
 }

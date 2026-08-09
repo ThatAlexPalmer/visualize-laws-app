@@ -13,10 +13,10 @@ import {
   stateName,
   type JurisdictionAgg,
   type JurisdictionDetailResponse,
-  type JurisdictionsResponse,
   type LawSummary,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
+import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 import { Button } from "@/components/ui/buttons";
 import {
   Card,
@@ -177,6 +177,11 @@ const Empty = styled.div`
   margin: 0 auto;
 `;
 
+const RetryState = styled(Empty)`
+  flex-direction: column;
+  gap: ${({ theme }) => theme.space(2)};
+`;
+
 const AVG_BY_AXIS = {
   opacity: "avgOpacity",
   enforcementDiscretion: "avgEnforcementDiscretion",
@@ -208,45 +213,46 @@ interface AggregateState {
 
 function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const { state, dispatch } = useExplorer();
+  const {
+    data: jurisdictions,
+    status: jurisdictionsStatus,
+    retry,
+  } = useJurisdictions();
   const { selectedState, unhinged } = state;
 
   const [data, setData] = useState<AggregateState>({ aggregate: null, topLaws: [] });
-  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
+    if (!selectedState) {
+      setData({ aggregate: null, topLaws: [] });
+      setDetailLoading(false);
+      return;
+    }
     let ignore = false;
     const ctrl = new AbortController();
-    setLoading(true);
-    const url = selectedState
-      ? `/api/jurisdictions/${encodeURIComponent(selectedState)}`
-      : "/api/jurisdictions";
-    fetch(url, {
+    setDetailLoading(true);
+    fetch(`/api/jurisdictions/${encodeURIComponent(selectedState)}`, {
       signal: ctrl.signal,
     })
       .then((r) =>
         r.ok
-          ? (r.json() as Promise<JurisdictionDetailResponse | JurisdictionsResponse>)
+          ? (r.json() as Promise<JurisdictionDetailResponse>)
           : null,
       )
       .then((json) => {
         if (ignore) return;
         if (!json) {
           setData({ aggregate: null, topLaws: [] });
-        } else if (selectedState) {
-          const detail = json as JurisdictionDetailResponse;
-          setData({ aggregate: detail.jurisdiction, topLaws: detail.topLaws });
         } else {
-          setData({
-            aggregate: (json as JurisdictionsResponse).national,
-            topLaws: [],
-          });
+          setData({ aggregate: json.jurisdiction, topLaws: json.topLaws });
         }
-        setLoading(false);
+        setDetailLoading(false);
       })
       .catch(() => {
         if (ignore || ctrl.signal.aborted) return;
         setData({ aggregate: null, topLaws: [] });
-        setLoading(false);
+        setDetailLoading(false);
       });
     return () => {
       ignore = true;
@@ -254,8 +260,12 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
     };
   }, [selectedState]);
 
-  const agg = data.aggregate;
-  const topLaws = data.topLaws;
+  const agg = selectedState ? data.aggregate : (jurisdictions?.national ?? null);
+  const topLaws = selectedState ? data.topLaws : [];
+  const loading = selectedState
+    ? detailLoading
+    : jurisdictionsStatus === "loading";
+  const nationalError = !selectedState && jurisdictionsStatus === "error";
   const label = selectedState ? stateName(selectedState) : "United States";
 
   return (
@@ -282,7 +292,19 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          {loading ? (
+          {nationalError ? (
+            <RetryState>
+              <span>Aggregate data unavailable.</span>
+              <Clear
+                type="button"
+                $variant="subtle"
+                $size="sm"
+                onClick={retry}
+              >
+                Retry
+              </Clear>
+            </RetryState>
+          ) : loading ? (
             <Empty>Loading…</Empty>
           ) : !agg ? (
             <Empty>No aggregate data yet for {label}.</Empty>

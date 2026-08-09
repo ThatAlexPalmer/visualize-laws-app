@@ -13,12 +13,11 @@ import {
   STATE_NAMES,
   TOPICS,
   type Axis,
-  type AxisBounds,
-  type JurisdictionsResponse,
   type ScoreRange,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 import { RangeSlider } from "./RangeSlider";
 import { Button } from "@/components/ui/buttons";
 import {
@@ -184,9 +183,10 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
 
 function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { state, dispatch } = useExplorer();
+  const { data } = useJurisdictions();
   const { filters, unhinged } = state;
+  const bounds = data?.national?.bounds ?? null;
 
-  const [bounds, setBounds] = useState<AxisBounds | null>(null);
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
@@ -199,24 +199,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     }
     return DEFAULT_SCORE_RANGE;
   };
-
-  // Fetch national bounds once to set the slider domains. Tolerates an empty DB
-  // (national === null) by falling back to DEFAULT_SCORE_RANGE.
-  useEffect(() => {
-    let ignore = false;
-    const ctrl = new AbortController();
-    fetch("/api/jurisdictions", { signal: ctrl.signal, cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<JurisdictionsResponse>) : null))
-      .then((data) => {
-        if (ignore || !data?.national?.bounds) return;
-        setBounds(data.national.bounds);
-      })
-      .catch(() => {});
-    return () => {
-      ignore = true;
-      ctrl.abort();
-    };
-  }, []);
 
   // When bounds arrive, expand any still-unfiltered slider to the new domain.
   useEffect(() => {
