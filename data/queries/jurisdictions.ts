@@ -40,32 +40,26 @@ const LAW_SELECT = {
  * level='national' row, whose `bounds` JSON drives the color/slider domains.
  */
 export async function getJurisdictions(): Promise<JurisdictionsResponse> {
-  try {
-    const [rows, nat] = await Promise.all([
-      prisma.jurisdiction.findMany({
-        where: { level: "state" },
-        select: AGG_SELECT,
-        orderBy: { name: "asc" },
-      }),
-      prisma.jurisdiction.findFirst({
-        where: { level: "national" },
-        select: { ...AGG_SELECT, bounds: true },
-      }),
-    ]);
+  const [rows, nat] = await Promise.all([
+    prisma.jurisdiction.findMany({
+      where: { level: "state" },
+      select: AGG_SELECT,
+      orderBy: { name: "asc" },
+    }),
+    prisma.jurisdiction.findFirst({
+      where: { level: "national" },
+      select: { ...AGG_SELECT, bounds: true },
+    }),
+  ]);
 
-    const national: JurisdictionsResponse["national"] = nat
-      ? {
-          ...nat,
-          bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
-        }
-      : null;
+  const national: JurisdictionsResponse["national"] = nat
+    ? {
+        ...nat,
+        bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
+      }
+    : null;
 
-    return { rows, national };
-  } catch (err) {
-    console.error("getJurisdictions failed:", err);
-    // Tolerate an empty / unavailable database — the map renders outlines only.
-    return { rows: [], national: null };
-  }
+  return { rows, national };
 }
 
 /**
