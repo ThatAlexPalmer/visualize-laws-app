@@ -17,6 +17,11 @@ import {
 // column names and the sort direction, which come from the trusted `AXES`
 // constant and an asc/desc whitelist (Postgres cannot parameterize identifiers).
 
+/** Escape LIKE metacharacters so slug underscores are literal. */
+function escapeLike(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /** ILIKE both slug variants so "Pagosa Springs" matches `pagosa_springs`. */
 function placeIlikeSql(
   column: "city" | "county",
@@ -24,9 +29,9 @@ function placeIlikeSql(
   bind: (value: unknown) => string,
 ): string {
   const [a, b] = slugVariants(raw);
-  const likeA = bind(`%${a}%`);
-  if (a === b) return `${column} ILIKE ${likeA}`;
-  return `(${column} ILIKE ${likeA} OR ${column} ILIKE ${bind(`%${b}%`)})`;
+  const likeA = bind(`%${escapeLike(a)}%`);
+  if (a === b) return `${column} ILIKE ${likeA} ESCAPE '\\'`;
+  return `(${column} ILIKE ${likeA} ESCAPE '\\' OR ${column} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
 }
 
 function parseFloatOrNull(raw: string | null): number | null {
@@ -216,9 +221,11 @@ export async function queryLaws(
   const dir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
   let orderSql: string;
   if (qParam && slugAParam && slugBParam) {
+    // IS TRUE so NULL city/county (the usual LOCUS shape) do not sort first
+    // under DESC NULLS FIRST and bury the slug hits this clause exists to boost.
     orderSql =
-      `ORDER BY (city = ${slugAParam} OR city = ${slugBParam}` +
-      ` OR county = ${slugAParam} OR county = ${slugBParam}) DESC,` +
+      `ORDER BY ((city IN (${slugAParam}, ${slugBParam}))` +
+      ` OR (county IN (${slugAParam}, ${slugBParam}))) IS TRUE DESC,` +
       ` ts_rank_cd(search_vector, websearch_to_tsquery('english', ${qParam})) DESC, id ASC`;
   } else if (sortMeta) {
     orderSql = `ORDER BY ${sortMeta.column} ${dir}, id ASC`;
