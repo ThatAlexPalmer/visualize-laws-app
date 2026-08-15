@@ -66,11 +66,6 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
   return { rows, national };
 }
 
-/** Escape LIKE metacharacters so slug underscores are literal. */
-function escapeLike(raw: string): string {
-  return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
-
 /**
  * Resolve a typed city or county to candidate (state, place) rows.
  * Used by GET /api/jurisdictions?city= / ?county= — not the US map payload.
@@ -107,20 +102,15 @@ export async function resolvePlace(opts: {
   }
 
   if (city) {
+    // Equality only — substring ILIKE made "la" jump to Los Angeles / Lafayette.
     const [slugA, slugB] = slugVariants(city);
-    const likeA = `%${escapeLike(slugA)}%`;
-    const likeB = `%${escapeLike(slugB)}%`;
     const rows = await prisma.$queryRaw<
       Array<{ state: string; city: string; lawCount: number }>
     >`
       SELECT state, city, count(*)::int AS "lawCount"
       FROM laws
       WHERE city IS NOT NULL AND city <> ''
-        AND (
-          city IN (${slugA}, ${slugB})
-          OR city ILIKE ${likeA} ESCAPE '\\'
-          OR city ILIKE ${likeB} ESCAPE '\\'
-        )
+        AND city IN (${slugA}, ${slugB})
       GROUP BY state, city
       ORDER BY count(*) DESC
       LIMIT 8
