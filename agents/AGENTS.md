@@ -79,7 +79,18 @@ Canonical seeder: `data/seed.ts`. Scripts:
 | `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
 
 Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local progress),
-`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`.
+`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`,
+`--shards ''` (no COPY — recompute national/state/**county** aggregates only).
+
+Default `--limit 25000` is Alaska-only (shard 0). City/county QA needs Colorado:
+
+`pnpm seed --fresh --shards 1 --limit 25000`
+
+Existing DBs that already have `laws` rows skip docker seed. After the city-index
+migration they still need `pnpm seed --shards ''` (or `pnpm seed:prod --shards ''`)
+or the county choropleth stays empty. Do **not** run `pnpm prisma:migrate`
+(`migrate dev`) to “fix” generated `search_vector` drift — that would propose
+`DROP DEFAULT` and break FTS. Use `prisma:deploy` only.
 
 ### What the seeder does
 
@@ -87,7 +98,8 @@ Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local
 2. Bulk-loads via Postgres `COPY` in **5k-row batches**, **commit per batch**.
 3. Local mid-shard progress: `.locus-cache/seed-progress.json` (skip already-committed rows on retry).
 4. Whole-shard resume: `seed_checkpoints` (one row per finished shard `0000`…`0007`).
-5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty state code).
+5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty
+   state code + 1× `county` per `(state, county)` with a non-empty county slug).
 6. `search_vector` is GENERATED — never written by the seeder.
 
 ### Resilience (remote-aware)
