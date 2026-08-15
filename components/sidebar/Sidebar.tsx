@@ -18,7 +18,10 @@ import {
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
-import { lookupPlaces, pickPlace } from "@/components/jurisdiction/placeLookup";
+import {
+  MIN_PLACE_ZOOM_CHARS,
+  lookupPlaces,
+} from "@/components/jurisdiction/placeLookup";
 import {
   loadCountyFeatures,
   matchAtlasCounties,
@@ -190,10 +193,8 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
 function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { state, dispatch } = useExplorer();
   const { data } = useJurisdictions();
-  const { filters, unhinged, selectedState } = state;
+  const { filters, unhinged } = state;
   const bounds = data?.national?.bounds ?? null;
-  const selectedStateRef = useRef(selectedState);
-  selectedStateRef.current = selectedState;
   const placeLookupAbort = useRef<AbortController | null>(null);
 
   const [city, setCity] = useState(filters.city ?? "");
@@ -235,18 +236,21 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       dispatch({ type: "patchFilters", filters: { city: undefined } });
       return;
     }
+    if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
+      dispatch({ type: "patchFilters", filters: { city: trimmed } });
+      return;
+    }
     placeLookupAbort.current?.abort();
     const ac = new AbortController();
     placeLookupAbort.current = ac;
     try {
       const places = await lookupPlaces("city", trimmed, ac.signal);
       if (ac.signal.aborted) return;
-      const pick = pickPlace(places, selectedStateRef.current);
-      if (pick?.city && pick.state) {
+      if (places.length === 1 && places[0].city && places[0].state) {
         dispatch({
           type: "selectPlace",
-          state: pick.state,
-          city: pick.city,
+          state: places[0].state,
+          city: places[0].city,
         });
         return;
       }
@@ -262,6 +266,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       dispatch({ type: "patchFilters", filters: { county: undefined } });
       return;
     }
+    if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
+      dispatch({ type: "patchFilters", filters: { county: trimmed } });
+      return;
+    }
     placeLookupAbort.current?.abort();
     const ac = new AbortController();
     placeLookupAbort.current = ac;
@@ -269,26 +277,21 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     try {
       const places = await lookupPlaces("county", trimmed, ac.signal);
       if (ac.signal.aborted) return;
-      const pick = pickPlace(places, selectedStateRef.current);
-      if (pick?.county && pick.state) {
+      if (places.length === 1 && places[0].county && places[0].state) {
         dispatch({
           type: "selectPlace",
-          state: pick.state,
-          county: pick.county,
+          state: places[0].state,
+          county: places[0].county,
         });
         return;
       }
       const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
       if (ac.signal.aborted) return;
-      const here = selectedStateRef.current
-        ? atlas.find((m) => m.state === selectedStateRef.current)
-        : undefined;
-      const atlasPick = here ?? atlas[0];
-      if (atlasPick) {
+      if (atlas.length === 1) {
         dispatch({
           type: "selectPlace",
-          state: atlasPick.state,
-          atlasCountyName: atlasPick.name,
+          state: atlas[0].state,
+          atlasCountyName: atlas[0].name,
         });
         return;
       }
