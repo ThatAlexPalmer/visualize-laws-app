@@ -428,22 +428,8 @@ export function MapPanel() {
     const stateEntry = selectedState
       ? stateFeatures.find((f) => f.usps === selectedState)
       : undefined;
-    let fitTarget =
+    const fitTarget =
       selectedState && stateEntry ? stateEntry.geo : stateFeatureCollection;
-    if (selectedState && stateEntry && countyAtlas) {
-      const stateFips = stateEntry.fips || uspsToFips[selectedState];
-      const inState = countiesForState(countyAtlas, stateFips);
-      const fipsToSlug = joinCountySlugs(inState, countyRows);
-      const slug = selectedCounty;
-      const focusName = atlasCountyName ?? selectedCountyRaw;
-      const focus = inState.find((f) => {
-        const joined = fipsToSlug.get(f.fips);
-        if (slug && joined === slug) return true;
-        if (!focusName) return false;
-        return normalizePlaceKey(f.name) === normalizePlaceKey(focusName);
-      });
-      if (focus) fitTarget = focus.geo;
-    }
     const projection = geoAlbersUsa().fitExtent(
       [
         [pad, pad],
@@ -480,16 +466,7 @@ export function MapPanel() {
     }
     pathsRef.current = entries;
     setPathGen((n) => n + 1);
-  }, [
-    size,
-    selectedState,
-    selectedCounty,
-    selectedCountyRaw,
-    atlasCountyName,
-    countyViewReady,
-    countyAtlas,
-    countyRows,
-  ]);
+  }, [size, selectedState, countyViewReady, countyAtlas, countyRows]);
 
   // Repaint the base only when its inputs change (size/paths, data, axis). The
   // path-rebuild effect above runs first on a size change, so paths are fresh.
