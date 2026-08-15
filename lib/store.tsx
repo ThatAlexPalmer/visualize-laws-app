@@ -53,16 +53,23 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
   switch (action.type) {
     case "setAxis":
       return { ...state, axis: action.axis };
-    case "patchFilters":
+    case "patchFilters": {
       // Any filter change (other than page itself) resets to page 1.
-      return {
-        ...state,
-        filters: {
-          ...state.filters,
-          ...action.filters,
-          page: action.filters.page ?? 1,
-        },
+      // City and county are mutually exclusive: setting one clears the other.
+      const incoming = action.filters;
+      const filters = {
+        ...state.filters,
+        ...incoming,
+        page: incoming.page ?? 1,
       };
+      if (incoming.city && incoming.county === undefined) {
+        filters.county = undefined;
+      }
+      if (incoming.county && incoming.city === undefined) {
+        filters.city = undefined;
+      }
+      return { ...state, filters };
+    }
     case "setPage":
       return { ...state, filters: { ...state.filters, page: action.page } };
     case "resetFilters":
@@ -76,7 +83,13 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
       return {
         ...state,
         selectedState: action.state,
-        filters: { ...state.filters, state: action.state ?? undefined, page: 1 },
+        filters: {
+          ...state.filters,
+          state: action.state ?? undefined,
+          county: undefined,
+          city: undefined,
+          page: 1,
+        },
       };
     case "openLaw":
       return { ...state, selectedLaw: action.law };

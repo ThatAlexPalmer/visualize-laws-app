@@ -12,6 +12,7 @@ import {
   FUNCTIONS,
   STATE_NAMES,
   TOPICS,
+  prettySlug,
   type Axis,
   type ScoreRange,
 } from "@/lib/types";
@@ -187,6 +188,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { filters, unhinged } = state;
   const bounds = data?.national?.bounds ?? null;
 
+  const [city, setCity] = useState(filters.city ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
@@ -212,6 +214,12 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bounds]);
 
+  const cityDeb = useDebouncedCallback((v: string) => {
+    dispatch({
+      type: "patchFilters",
+      filters: { city: v.trim() || undefined },
+    });
+  }, 300);
   const countyDeb = useDebouncedCallback((v: string) => {
     dispatch({
       type: "patchFilters",
@@ -229,7 +237,12 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
 
   // Keep local inputs in sync if filters are cleared elsewhere (e.g. reset).
   useEffect(() => {
+    if (filters.city === undefined) setCity("");
+    else if (filters.city.includes("_")) setCity(prettySlug(filters.city));
+  }, [filters.city]);
+  useEffect(() => {
     if (filters.county === undefined) setCounty("");
+    else if (filters.county.includes("_")) setCounty(prettySlug(filters.county));
   }, [filters.county]);
   useEffect(() => {
     const anyAxis = AXES.some((a) => filters[a.key]);
@@ -243,8 +256,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   ]);
 
   const onReset = () => {
+    cityDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
+    setCity("");
     setCounty("");
     setRanges(makeFullRanges(domainFor));
     dispatch({ type: "resetFilters" });
@@ -308,15 +323,33 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
+        <FieldLabel htmlFor={`${idPrefix}-city`}>City</FieldLabel>
+        <Input
+          id={`${idPrefix}-city`}
+          type="text"
+          placeholder="e.g. Pagosa Springs"
+          value={city}
+          onChange={(e) => {
+            setCity(e.target.value);
+            setCounty("");
+            cityDeb.run(e.target.value);
+            countyDeb.cancel();
+          }}
+        />
+      </Field>
+
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor={`${idPrefix}-county`}>County</FieldLabel>
         <Input
           id={`${idPrefix}-county`}
           type="text"
-          placeholder="e.g. Cook"
+          placeholder="e.g. El Paso"
           value={county}
           onChange={(e) => {
             setCounty(e.target.value);
+            setCity("");
             countyDeb.run(e.target.value);
+            cityDeb.cancel();
           }}
         />
       </Field>

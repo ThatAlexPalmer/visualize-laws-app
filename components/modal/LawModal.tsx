@@ -9,6 +9,7 @@ import { useExplorer } from "@/lib/store";
 import {
   AXES,
   DEFAULT_SCORE_RANGE,
+  prettySlug,
   stateName,
   type LawDetailResponse,
   type LawRecord,
@@ -219,8 +220,12 @@ export function LawModal() {
             </Title>
             <Sub>
               {stateName((detail ?? law).state)}
-              {(detail ?? law).county ? ` · ${(detail ?? law).county}` : ""}
-              {(detail ?? law).city ? ` · ${(detail ?? law).city}` : ""}
+              {(detail ?? law).county
+                ? ` · ${prettySlug((detail ?? law).county)}`
+                : ""}
+              {(detail ?? law).city
+                ? ` · ${prettySlug((detail ?? law).city)}`
+                : ""}
               {(detail ?? law).sourceJurisdictionType
                 ? ` · ${(detail ?? law).sourceJurisdictionType}`
                 : ""}

@@ -1,8 +1,8 @@
 "use client";
 
-// Jurisdiction dashboard: aggregate stats + top laws from
-// GET /api/jurisdictions/[state] when a state is selected. Tolerates an empty DB
-// (jurisdiction === null) and shows an empty state when nothing is selected.
+// Jurisdiction dashboard: aggregate stats + top laws from the shared
+// JurisdictionsProvider cache (GET /api/jurisdictions/[state], optional ?county=).
+// Tolerates an empty DB and shows an empty state when nothing is selected.
 import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
@@ -10,10 +10,9 @@ import { useExplorer } from "@/lib/store";
 import {
   AXES,
   DEFAULT_SCORE_RANGE,
+  matchCountySlug,
+  prettySlug,
   stateName,
-  type JurisdictionAgg,
-  type JurisdictionDetailResponse,
-  type LawSummary,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
@@ -162,6 +161,31 @@ const LawVal = styled.span`
   color: ${({ theme }) => theme.colors.g68};
 `;
 
+const CityList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: ${({ theme }) => theme.space(1.5)};
+`;
+
+const CityChip = styled.button<{ $active: boolean }>`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  border: 1px solid
+    ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g20)};
+  background: ${({ $active, theme }) =>
+    $active ? theme.colors.g12 : "transparent"};
+  border-radius: ${({ theme }) => theme.radius.pill};
+  padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(2)};
+  color: ${({ $active, theme }) =>
+    $active ? theme.colors.fg : theme.colors.g90};
+  cursor: pointer;
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.fg};
+    border-color: ${({ theme }) => theme.colors.g60};
+  }
+`;
+
 const Empty = styled.div`
   flex: 1;
   display: flex;
@@ -206,67 +230,49 @@ function useCompactLayout() {
   return isCompact;
 }
 
-interface AggregateState {
-  aggregate: JurisdictionAgg | null;
-  topLaws: LawSummary[];
-}
-
 function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const { state, dispatch } = useExplorer();
   const {
     data: jurisdictions,
     status: jurisdictionsStatus,
     retry,
+    stateDetail,
+    stateDetailStatus,
+    countyDetail,
+    countyDetailStatus,
   } = useJurisdictions();
-  const { selectedState, unhinged } = state;
+  const { selectedState, unhinged, filters } = state;
+  const selectedCounty = filters.county;
+  const selectedCity = filters.city;
 
-  const [data, setData] = useState<AggregateState>({ aggregate: null, topLaws: [] });
-  const [detailLoading, setDetailLoading] = useState(false);
+  const scoped = Boolean(selectedState && selectedCounty);
+  const detail = scoped ? countyDetail : stateDetail;
+  const detailStatus = scoped ? countyDetailStatus : stateDetailStatus;
+  const countySlug =
+    selectedCounty && stateDetail
+      ? matchCountySlug(stateDetail.counties, selectedCounty)
+      : null;
+  const countyAggFromState = countySlug
+    ? (stateDetail?.counties.find((c) => c.county === countySlug) ?? null)
+    : null;
 
-  useEffect(() => {
-    if (!selectedState) {
-      setData({ aggregate: null, topLaws: [] });
-      setDetailLoading(false);
-      return;
-    }
-    let ignore = false;
-    const ctrl = new AbortController();
-    setDetailLoading(true);
-    fetch(`/api/jurisdictions/${encodeURIComponent(selectedState)}`, {
-      signal: ctrl.signal,
-    })
-      .then((r) =>
-        r.ok
-          ? (r.json() as Promise<JurisdictionDetailResponse>)
-          : null,
-      )
-      .then((json) => {
-        if (ignore) return;
-        if (!json) {
-          setData({ aggregate: null, topLaws: [] });
-        } else {
-          setData({ aggregate: json.jurisdiction, topLaws: json.topLaws });
-        }
-        setDetailLoading(false);
-      })
-      .catch(() => {
-        if (ignore || ctrl.signal.aborted) return;
-        setData({ aggregate: null, topLaws: [] });
-        setDetailLoading(false);
-      });
-    return () => {
-      ignore = true;
-      ctrl.abort();
-    };
-  }, [selectedState]);
-
-  const agg = selectedState ? data.aggregate : (jurisdictions?.national ?? null);
-  const topLaws = selectedState ? data.topLaws : [];
+  const agg = selectedState
+    ? (detail?.jurisdiction ?? countyAggFromState ?? null)
+    : (jurisdictions?.national ?? null);
+  const topLaws = selectedState ? (detail?.topLaws ?? []) : [];
+  const topCities = selectedState
+    ? (detail?.topCities ?? stateDetail?.topCities ?? [])
+    : [];
   const loading = selectedState
-    ? detailLoading
+    ? detailStatus === "loading" && !agg
     : jurisdictionsStatus === "loading";
   const nationalError = !selectedState && jurisdictionsStatus === "error";
-  const label = selectedState ? stateName(selectedState) : "United States";
+  const label = selectedCounty
+    ? prettySlug(selectedCounty)
+    : selectedState
+      ? stateName(selectedState)
+      : "United States";
+  const panelKey = `${selectedState ?? "national"}:${selectedCounty ?? ""}`;
 
   return (
     <Panel as="aside" $placement={placement} aria-label={`${label} aggregate insights`}>
@@ -286,7 +292,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
       <AnimatePresence mode="wait">
         <Inner
           as={motion.div}
-          key={selectedState ?? "national"}
+          key={panelKey}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
@@ -342,6 +348,34 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                   );
                 })}
               </Stack>
+
+              {topCities.length > 0 && (
+                <>
+                  <SectionLabel>{ui("Cities", unhinged)}</SectionLabel>
+                  <CityList>
+                    {topCities.map((c) => {
+                      const active = selectedCity === c.city;
+                      return (
+                        <CityChip
+                          key={c.city}
+                          type="button"
+                          $active={active}
+                          onClick={() =>
+                            dispatch({
+                              type: "patchFilters",
+                              filters: active
+                                ? { city: undefined }
+                                : { city: c.city },
+                            })
+                          }
+                        >
+                          {prettySlug(c.city)}
+                        </CityChip>
+                      );
+                    })}
+                  </CityList>
+                </>
+              )}
 
               {topLaws.length > 0 && (
                 <>

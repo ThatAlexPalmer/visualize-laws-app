@@ -59,3 +59,8 @@ export const fipsToUsps: Record<string, string> = {
   "72": "pr",
   "78": "vi",
 };
+
+/** Reverse of `fipsToUsps` — lowercase USPS → 2-digit FIPS. */
+export const uspsToFips: Record<string, string> = Object.fromEntries(
+  Object.entries(fipsToUsps).map(([fips, usps]) => [usps, fips]),
+);

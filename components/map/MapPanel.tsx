@@ -8,6 +8,7 @@ import { geoAlbersUsa, geoPath } from "d3-geo";
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
+  prettySlug,
   stateName,
   type Axis,
   type JurisdictionAgg,
@@ -16,6 +17,13 @@ import { resolveAxisCopy } from "@/lib/copy";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { stateFeatureCollection, stateFeatures } from "./geo";
+import { uspsToFips } from "./fips";
+import {
+  countiesForState,
+  joinCountySlugs,
+  loadCountyFeatures,
+  type CountyFeatureEntry,
+} from "./counties";
 import {
   axisValue,
   computeDomain,
@@ -26,8 +34,30 @@ import {
 import { MapLegend } from "./Legend";
 
 interface PathEntry {
+  kind: "state" | "county";
   usps: string | null;
   path: Path2D;
+  countyFips?: string;
+  countySlug?: string | null;
+  countyName?: string;
+}
+
+interface Hovered {
+  kind: "state" | "county";
+  usps: string | null;
+  countySlug?: string | null;
+  countyName?: string;
+}
+
+function sameHover(a: Hovered | null, b: Hovered | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.kind === b.kind &&
+    a.usps === b.usps &&
+    a.countySlug === b.countySlug &&
+    a.countyName === b.countyName
+  );
 }
 
 interface Size {
@@ -177,10 +207,12 @@ function syncCanvasSize(canvas: HTMLCanvasElement, size: Size): void {
 
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
-  const { data, status, retry } = useJurisdictions();
+  const { data, status, retry, stateDetail } = useJurisdictions();
   const axis = state.axis;
   const selectedState = state.selectedState;
+  const selectedCounty = state.filters.county ?? null;
   const rows = data?.rows ?? EMPTY_ROWS;
+  const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -190,7 +222,11 @@ export function MapPanel() {
   const rafRef = useRef<number | null>(null);
 
   const [size, setSize] = useState<Size | null>(null);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<Hovered | null>(null);
+  const [countyAtlas, setCountyAtlas] = useState<CountyFeatureEntry[] | null>(
+    null,
+  );
+  const [pathGen, setPathGen] = useState(0);
 
   const controls = useAnimationControls();
   const firstAxisRun = useRef(true);
@@ -201,13 +237,38 @@ export function MapPanel() {
     return m;
   }, [rows]);
 
-  // Use the actual min/max of state averages, not the national corpus bounds.
-  // Corpus bounds span all individual laws (e.g. -4 to 4); state averages cluster
-  // in a much tighter band, which compresses every state to the same mid-color.
-  const domain: Domain | null = useMemo(
-    () => computeDomain(axis, rows),
-    [axis, rows],
+  const aggByCountySlug = useMemo(() => {
+    const m = new Map<string, JurisdictionAgg>();
+    for (const r of countyRows) if (r.county) m.set(r.county.toLowerCase(), r);
+    return m;
+  }, [countyRows]);
+
+  const countyViewReady = Boolean(
+    selectedState && countyAtlas && stateDetail,
   );
+
+  // State view: min/max of state averages. Zoomed county view: min/max of
+  // in-state county averages (no national bounds — same as the US map).
+  const domain: Domain | null = useMemo(
+    () => computeDomain(axis, countyViewReady ? countyRows : rows),
+    [axis, countyViewReady, countyRows, rows],
+  );
+
+  // First state click lazy-loads county geometry (kept out of the initial bundle).
+  useEffect(() => {
+    if (!selectedState || countyAtlas) return;
+    let cancelled = false;
+    loadCountyFeatures()
+      .then((features) => {
+        if (!cancelled) setCountyAtlas(features);
+      })
+      .catch(() => {
+        /* atlas missing — stay on the zoomed state silhouette */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedState, countyAtlas]);
 
   // --- size + devicePixelRatio via ResizeObserver ---------------------------
   useEffect(() => {
@@ -254,7 +315,14 @@ export function MapPanel() {
 
     // 1) fills, colored by the selected axis (faint silhouette when no data)
     for (const e of entries) {
-      const agg = e.usps ? aggByUsps.get(e.usps) : undefined;
+      const agg =
+        e.kind === "county"
+          ? e.countySlug
+            ? aggByCountySlug.get(e.countySlug)
+            : undefined
+          : e.usps
+            ? aggByUsps.get(e.usps)
+            : undefined;
       ctx.fillStyle =
         agg && domain
           ? rampColorForAxis(normalize(axisValue(agg, axis), domain), axis)
@@ -268,7 +336,7 @@ export function MapPanel() {
     ctx.lineWidth = 1.0;
     ctx.strokeStyle = "rgba(255,255,255,0.32)";
     for (const e of entries) ctx.stroke(e.path);
-  }, [size, aggByUsps, domain, axis]);
+  }, [size, aggByUsps, aggByCountySlug, domain, axis]);
 
   // --- overlay layer: hover highlight + active selection --------------------
   // Transparent; cleared and repainted on its own. Only the hovered + selected
@@ -288,60 +356,112 @@ export function MapPanel() {
     ctx.lineJoin = "round";
 
     // hover highlight (skip when it coincides with the selection stroke)
-    if (hovered && hovered !== selectedState) {
-      const he = entries.find((e) => e.usps === hovered);
-      if (he) {
+    const hoverIsSelection =
+      hovered?.kind === "county"
+        ? Boolean(hovered.countySlug && hovered.countySlug === selectedCounty)
+        : Boolean(
+            hovered?.usps && hovered.usps === selectedState && !selectedCounty,
+          );
+    if (hovered && !hoverIsSelection) {
+      const hoverEntry =
+        hovered.kind === "county"
+          ? entries.find(
+              (e) =>
+                e.kind === "county" &&
+                (hovered.countySlug
+                  ? e.countySlug === hovered.countySlug
+                  : e.countyName === hovered.countyName),
+            )
+          : entries.find((e) => e.kind === "state" && e.usps === hovered.usps);
+      if (hoverEntry) {
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
-        ctx.stroke(he.path);
+        ctx.stroke(hoverEntry.path);
       }
     }
 
     // active selection (drawn last, on top)
-    if (selectedState) {
-      const se = entries.find((e) => e.usps === selectedState);
+    if (selectedCounty) {
+      const se = entries.find(
+        (e) => e.kind === "county" && e.countySlug === selectedCounty,
+      );
+      if (se) {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = theme.colors.fg;
+        ctx.stroke(se.path);
+      }
+    } else if (selectedState) {
+      const se = entries.find((e) => e.kind === "state" && e.usps === selectedState);
       if (se) {
         ctx.lineWidth = 2;
         ctx.strokeStyle = theme.colors.fg;
         ctx.stroke(se.path);
       }
     }
-  }, [size, hovered, selectedState, axis]);
+  }, [size, hovered, selectedState, selectedCounty, axis]);
 
-  // Rebuild the per-state Path2D set whenever the canvas size changes.
+  // Rebuild Path2Ds whenever the canvas size or zoom target changes.
+  // Paths are regenerated at the new scale (not interpolated).
   useEffect(() => {
     if (!size) return;
     const { w, h } = size;
     const pad = Math.round(Math.min(w, h) * 0.04) + 6;
     const x1 = Math.max(pad + 1, w - pad);
     const y1 = Math.max(pad + 1, h - pad);
+
+    const stateEntry = selectedState
+      ? stateFeatures.find((f) => f.usps === selectedState)
+      : undefined;
+    const fitTarget =
+      selectedState && stateEntry ? stateEntry.geo : stateFeatureCollection;
     const projection = geoAlbersUsa().fitExtent(
       [
         [pad, pad],
         [x1, y1],
       ],
-      stateFeatureCollection,
+      fitTarget,
     );
     const pathGen = geoPath(projection);
     const entries: PathEntry[] = [];
-    for (const f of stateFeatures) {
-      const d = pathGen(f.geo);
-      if (!d) continue;
-      entries.push({ usps: f.usps, path: new Path2D(d) });
+
+    if (countyViewReady && countyAtlas && stateEntry) {
+      const stateFips = stateEntry.fips || uspsToFips[selectedState ?? ""];
+      const inState = countiesForState(countyAtlas, stateFips);
+      const fipsToSlug = joinCountySlugs(inState, countyRows);
+      for (const f of inState) {
+        const d = pathGen(f.geo);
+        if (!d) continue;
+        entries.push({
+          kind: "county",
+          usps: selectedState,
+          path: new Path2D(d),
+          countyFips: f.fips,
+          countySlug: fipsToSlug.get(f.fips) ?? null,
+          countyName: f.name,
+        });
+      }
+    } else {
+      const source = selectedState && stateEntry ? [stateEntry] : stateFeatures;
+      for (const f of source) {
+        const d = pathGen(f.geo);
+        if (!d) continue;
+        entries.push({ kind: "state", usps: f.usps, path: new Path2D(d) });
+      }
     }
     pathsRef.current = entries;
-  }, [size]);
+    setPathGen((n) => n + 1);
+  }, [size, selectedState, countyViewReady, countyAtlas, countyRows]);
 
   // Repaint the base only when its inputs change (size/paths, data, axis). The
   // path-rebuild effect above runs first on a size change, so paths are fresh.
   useEffect(() => {
     drawBase();
-  }, [drawBase]);
+  }, [drawBase, pathGen]);
 
   // Repaint the lightweight overlay only when the hover/selection changes.
   useEffect(() => {
     drawOverlay();
-  }, [drawOverlay]);
+  }, [drawOverlay, pathGen]);
 
   // framer-motion crossfade when the active axis changes (skip initial mount).
   useEffect(() => {
@@ -354,10 +474,10 @@ export function MapPanel() {
       opacity: 1,
       transition: { duration: theme.motion.base, ease: theme.motion.ease },
     });
-  }, [axis, controls]);
+  }, [axis, selectedState, countyViewReady, controls]);
 
   // --- interaction: hit-test in CSS px under an identity transform ----------
-  const pick = useCallback((clientX: number, clientY: number): string | null => {
+  const pick = useCallback((clientX: number, clientY: number): Hovered | null => {
     const canvas = overlayRef.current;
     if (!canvas) return null;
     const ctx = canvas.getContext("2d");
@@ -367,10 +487,18 @@ export function MapPanel() {
     const y = clientY - rect.top;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    let found: string | null = null;
+    let found: Hovered | null = null;
     for (const e of pathsRef.current) {
-      if (e.usps && ctx.isPointInPath(e.path, x, y)) {
-        found = e.usps;
+      if (ctx.isPointInPath(e.path, x, y)) {
+        found =
+          e.kind === "county"
+            ? {
+                kind: "county",
+                usps: e.usps,
+                countySlug: e.countySlug ?? null,
+                countyName: e.countyName,
+              }
+            : { kind: "state", usps: e.usps };
         break;
       }
     }
@@ -385,7 +513,7 @@ export function MapPanel() {
     const p = pointerRef.current;
     if (!p) return;
     const u = pick(p.x, p.y);
-    setHovered((prev) => (prev === u ? prev : u));
+    setHovered((prev) => (sameHover(prev, u) ? prev : u));
   }, [pick]);
 
   const handleMove = useCallback(
@@ -417,14 +545,39 @@ export function MapPanel() {
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const u = pick(e.clientX, e.clientY);
-      if (!u) return;
-      dispatch({ type: "selectState", state: u === selectedState ? null : u });
+      if (selectedState) {
+        // Zoomed: a colored county sets the county filter. Uncolored counties
+        // and any other miss fall through to the state toggle (zoom out).
+        if (u?.kind === "county" && u.countySlug) {
+          dispatch({
+            type: "patchFilters",
+            filters: { county: u.countySlug },
+          });
+          return;
+        }
+        dispatch({ type: "selectState", state: null });
+        return;
+      }
+      if (!u?.usps) return;
+      dispatch({
+        type: "selectState",
+        state: u.usps === selectedState ? null : u.usps,
+      });
     },
     [pick, dispatch, selectedState],
   );
 
   const { unhinged } = state;
   const axisCopy = resolveAxisCopy(axis, unhinged);
+  const mapLabel = hovered
+    ? hovered.kind === "county"
+      ? (hovered.countyName ?? prettySlug(hovered.countySlug) ?? stateName(hovered.usps))
+      : stateName(hovered.usps)
+    : selectedCounty
+      ? prettySlug(selectedCounty)
+      : selectedState
+        ? stateName(selectedState)
+        : null;
 
   return (
     <Wrap ref={wrapRef}>
@@ -434,7 +587,16 @@ export function MapPanel() {
         onMouseMove={handleMove}
         onMouseLeave={handleLeave}
         onClick={handleClick}
-        style={{ cursor: hovered ? "pointer" : "default" }}
+        style={{
+          cursor:
+            hovered?.kind === "county"
+              ? hovered.countySlug
+                ? "pointer"
+                : "default"
+              : hovered
+                ? "pointer"
+                : "default",
+        }}
       />
       {status === "ready" && rows.length === 0 && (
         <Hint
@@ -458,15 +620,15 @@ export function MapPanel() {
       )}
       <MapLegend axis={axis} axisLabel={axisCopy.label} blurb={axisCopy.blurb} domain={domain} />
       <AnimatePresence>
-        {(hovered ?? selectedState) && (
+        {mapLabel && (
           <StateLabel
-            key={hovered ?? selectedState}
+            key={mapLabel}
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
           >
-            {stateName(hovered ?? selectedState)}
+            {mapLabel}
           </StateLabel>
         )}
       </AnimatePresence>

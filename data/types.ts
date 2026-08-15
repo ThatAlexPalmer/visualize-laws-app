@@ -45,6 +45,7 @@ export const DEFAULT_SCORE_RANGE: ScoreRange = { min: -4, max: 4 };
 export interface LawFilters {
   q?: string;
   state?: string;
+  city?: string;
   county?: string;
   function?: string;
   topic?: string;
@@ -105,9 +106,16 @@ export interface JurisdictionsResponse {
   national: (JurisdictionAgg & { bounds?: AxisBounds }) | null;
 }
 
+export interface CityAgg {
+  city: string;
+  lawCount: number;
+}
+
 export interface JurisdictionDetailResponse {
   jurisdiction: JurisdictionAgg | null;
   topLaws: LawSummary[];
+  counties: JurisdictionAgg[];
+  topCities: CityAgg[];
 }
 
 export interface LawDetailResponse {
@@ -139,3 +147,10 @@ export function stateName(code: string | null | undefined): string {
   if (!code) return "—";
   return STATE_NAMES[code.toLowerCase()] ?? code.toUpperCase();
 }
+
+export {
+  matchCountySlug,
+  normalizePlaceKey,
+  prettySlug,
+  slugVariants,
+} from "./slugs";

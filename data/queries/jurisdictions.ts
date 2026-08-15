@@ -1,6 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db";
+import { matchCountySlug } from "../slugs";
 import type {
   AxisBounds,
+  CityAgg,
   JurisdictionDetailResponse,
   JurisdictionsResponse,
 } from "../types";
@@ -38,6 +41,7 @@ const LAW_SELECT = {
 /**
  * All level='state' aggregates (for the choropleth + legend) plus the single
  * level='national' row, whose `bounds` JSON drives the color/slider domains.
+ * County rows stay off this payload so the US map does not grow to ~3k rows.
  */
 export async function getJurisdictions(): Promise<JurisdictionsResponse> {
   const [rows, nat] = await Promise.all([
@@ -62,31 +66,74 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
   return { rows, national };
 }
 
+async function queryTopCities(
+  state: string,
+  county: string | null,
+): Promise<CityAgg[]> {
+  return prisma.$queryRaw<CityAgg[]>`
+    SELECT city, count(*)::int AS "lawCount"
+    FROM laws
+    WHERE state = ${state}
+      AND city IS NOT NULL AND city <> ''
+      ${county ? Prisma.sql`AND lower(county) = ${county}` : Prisma.empty}
+    GROUP BY city
+    ORDER BY count(*) DESC
+    LIMIT 12
+  `;
+}
+
 /**
- * The level='state' aggregate for `state`, plus a handful of representative
- * laws ordered by opacity (descending) for the jurisdiction detail panel.
+ * Per-state (or county-scoped) aggregate, top laws, in-state county rows, and
+ * a short city list. Optional `county` switches the panel aggregate + top laws
+ * to that county without a new REST resource.
  */
 export async function getJurisdictionDetail(
   stateRaw: string,
+  countyRaw?: string | null,
 ): Promise<JurisdictionDetailResponse> {
   const code = stateRaw.toLowerCase();
   try {
-    const [jurisdiction, topLaws] = await Promise.all([
-      prisma.jurisdiction.findFirst({
-        where: { level: "state", state: code },
-        select: AGG_SELECT,
-      }),
+    const counties = await prisma.jurisdiction.findMany({
+      where: { level: "county", state: code },
+      select: AGG_SELECT,
+      orderBy: { name: "asc" },
+    });
+
+    const countySlug = countyRaw?.trim()
+      ? matchCountySlug(counties, countyRaw)
+      : null;
+
+    const [jurisdiction, topLaws, topCities] = await Promise.all([
+      countySlug
+        ? Promise.resolve(
+            counties.find((c) => c.county === countySlug) ?? null,
+          )
+        : prisma.jurisdiction.findFirst({
+            where: { level: "state", state: code },
+            select: AGG_SELECT,
+          }),
       prisma.law.findMany({
-        where: { state: code },
+        where: countySlug
+          ? {
+              state: code,
+              county: { equals: countySlug, mode: "insensitive" },
+            }
+          : { state: code },
         orderBy: { opacity: "desc" },
         take: 10,
         select: LAW_SELECT,
       }),
+      queryTopCities(code, countySlug),
     ]);
 
-    return { jurisdiction: jurisdiction ?? null, topLaws };
+    return {
+      jurisdiction: jurisdiction ?? null,
+      topLaws,
+      counties,
+      topCities,
+    };
   } catch (err) {
     console.error(`getJurisdictionDetail(${code}) failed:`, err);
-    return { jurisdiction: null, topLaws: [] };
+    return { jurisdiction: null, topLaws: [], counties: [], topCities: [] };
   }
 }
