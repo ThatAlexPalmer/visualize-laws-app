@@ -20,25 +20,41 @@ export function prettySlug(value: string | null | undefined): string {
     .replace(/\b([a-zA-Z])/g, (ch) => ch.toUpperCase());
 }
 
-const PLACE_PREFIXES = [/^city_borough_of_/, /^municipality_of_/];
-const PLACE_SUFFIXES = [
-  /_county$/,
-  /_parish$/,
-  /_borough$/,
-  /_census_area$/,
-  /_city$/,
+const PLACE_PREFIXES = [
+  /^city_and_borough_of_/,
+  /^city_borough_of_/,
+  /^municipality_of_/,
 ];
+const PLACE_SUFFIXES = [
+  /_county_*$/,
+  /_parish_*$/,
+  /_borough_*$/,
+  /_census_area_*$/,
+  /(county|parish|borough|census_area)_*$/,
+];
+
+/** True when a LOCUS slug is a county-type place (not an independent city). */
+export function isCountyKindSlug(slug: string | null | undefined): boolean {
+  return /(county|parish|borough|census_area)_*$/.test(
+    (slug ?? "").trim().toLowerCase(),
+  );
+}
 
 /**
  * Join key for LOCUS county slugs ↔ us-atlas county names.
- * Strips AK prefixes and county/parish/borough/census-area/`city` suffixes,
- * then compares lowercase words (underscores treated as spaces).
+ * Strips AK / borough prefixes and county/parish/borough/census-area suffixes
+ * (with or without `_`, ignoring trailing `_`), drops punctuation, and treats
+ * saint/ste as st so "St. Mary's" matches saint_mary's_county.
  */
 export function normalizePlaceKey(raw: string): string {
-  let s = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  let s = raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/_+$/g, "");
   for (const prefix of PLACE_PREFIXES) s = s.replace(prefix, "");
   for (const suffix of PLACE_SUFFIXES) s = s.replace(suffix, "");
-  return s.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  s = s
+    .replace(/_/g, " ")
+    .replace(/[.'’]/g, "")
+    .replace(/\b(saint|ste)\b/g, "st");
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /** Resolve typed/clicked input to a stored LOCUS county slug, if any. */
@@ -49,15 +65,12 @@ export function matchCountySlug(
   const trimmed = input.trim();
   if (!trimmed) return null;
   const [a, b] = slugVariants(trimmed);
-  const exact = counties.find((c) => {
-    const slug = (c.county ?? "").toLowerCase();
-    return slug === a || slug === b;
-  });
-  if (exact?.county) return exact.county;
   const needle = normalizePlaceKey(trimmed);
-  if (!needle) return null;
-  const fuzzy = counties.find(
-    (c) => normalizePlaceKey(c.county ?? "") === needle,
-  );
-  return fuzzy?.county ?? null;
+  const candidates = counties.filter((c) => {
+    const slug = (c.county ?? "").toLowerCase();
+    return slug === a || slug === b || (needle && normalizePlaceKey(slug) === needle);
+  });
+  const preferred =
+    candidates.find((c) => isCountyKindSlug(c.county)) ?? candidates[0];
+  return preferred?.county ?? null;
 }

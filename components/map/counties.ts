@@ -1,7 +1,7 @@
 import { feature } from "topojson-client";
 import type { GeoPermissibleObjects } from "d3-geo";
 
-import { normalizePlaceKey } from "@/lib/types";
+import { isCountyKindSlug, normalizePlaceKey } from "@/lib/types";
 import type { JurisdictionAgg } from "@/lib/types";
 
 export interface CountyFeatureEntry {
@@ -71,15 +71,28 @@ export function joinCountySlugs(
   locusCounties: JurisdictionAgg[],
 ): Map<string, string> {
   const byKey = new Map<string, CountyFeatureEntry>();
-  for (const f of features) {
-    const key = normalizePlaceKey(f.name);
-    if (!key) continue;
+  const remember = (key: string, f: CountyFeatureEntry): void => {
+    if (!key) return;
     const existing = byKey.get(key);
     if (!existing || f.fips < existing.fips) byKey.set(key, f);
+  };
+  for (const f of features) {
+    const key = normalizePlaceKey(f.name);
+    remember(key, f);
+    // Compacted LOCUS slugs (whitepinecounty) vs atlas "White Pine".
+    remember(key.replace(/\s+/g, ""), f);
   }
 
+  // County-type slugs first so fairfax_county wins the Fairfax polygon over
+  // fairfax_city when both normalize to the same key.
+  const ordered = [...locusCounties].sort((a, b) => {
+    const aCounty = isCountyKindSlug(a.county) ? 0 : 1;
+    const bCounty = isCountyKindSlug(b.county) ? 0 : 1;
+    return aCounty - bCounty;
+  });
+
   const fipsToSlug = new Map<string, string>();
-  for (const row of locusCounties) {
+  for (const row of ordered) {
     const slug = row.county;
     if (!slug) continue;
     const key = normalizePlaceKey(slug);

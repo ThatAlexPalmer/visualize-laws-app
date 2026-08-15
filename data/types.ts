@@ -149,6 +149,7 @@ export function stateName(code: string | null | undefined): string {
 }
 
 export {
+  isCountyKindSlug,
   matchCountySlug,
   normalizePlaceKey,
   prettySlug,

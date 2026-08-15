@@ -1,8 +1,6 @@
 import { feature } from "topojson-client";
 import type { GeoPermissibleObjects } from "d3-geo";
 import statesTopo from "us-atlas/states-10m.json";
-// County geometry (`us-atlas/counties-10m.json`) is lazy-loaded from
-// `./counties.ts` on first state click so it stays out of the initial bundle.
 
 import { fipsToUsps } from "./fips";
 
