@@ -331,9 +331,11 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
           value={city}
           onChange={(e) => {
             setCity(e.target.value);
-            setCounty("");
             cityDeb.run(e.target.value);
-            countyDeb.cancel();
+            if (county) {
+              setCounty("");
+              countyDeb.cancel();
+            }
           }}
         />
       </Field>
@@ -347,9 +349,11 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
           value={county}
           onChange={(e) => {
             setCounty(e.target.value);
-            setCity("");
             countyDeb.run(e.target.value);
-            cityDeb.cancel();
+            if (city) {
+              setCity("");
+              cityDeb.cancel();
+            }
           }}
         />
       </Field>
