@@ -169,8 +169,14 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
 
   const inflightState = useRef<string | null>(null);
   const inflightCounty = useRef<string | null>(null);
+  // state code -> national lawCount we last fetched detail for. Used to
+  // retry a cached empty county list after aggregates are rebuilt.
+  const emptyCountyFetchAt = useRef<Record<string, number>>({});
 
   const retry = useCallback(() => {
+    emptyCountyFetchAt.current = {};
+    setDetailByState({});
+    setCountyDetailByKey({});
     setRequestVersion((version) => version + 1);
   }, []);
 
@@ -182,6 +188,11 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       .then((response) => {
         if (controller.signal.aborted) return;
         setData(response);
+        emptyCountyFetchAt.current = {};
+        // Drop per-state caches so an empty `counties: []` from before
+        // aggregate recompute cannot keep the choropleth uncolored.
+        setDetailByState({});
+        setCountyDetailByKey({});
         setStatus("ready");
       })
       .catch(() => {
@@ -201,7 +212,15 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       inflightState.current = null;
       return;
     }
-    if (detailByState[selectedState]) {
+    const cached = detailByState[selectedState];
+    const nationalCount =
+      data?.rows.find((row) => row.state === selectedState)?.lawCount ?? 0;
+    const staleEmptyCounties =
+      Boolean(cached) &&
+      cached.counties.length === 0 &&
+      nationalCount > 0 &&
+      emptyCountyFetchAt.current[selectedState] !== nationalCount;
+    if (cached && !staleEmptyCounties) {
       setStateDetailStatus("ready");
       return;
     }
@@ -213,6 +232,7 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
     fetchJurisdictionDetail(selectedState, null, controller.signal)
       .then((detail) => {
         if (controller.signal.aborted) return;
+        emptyCountyFetchAt.current[selectedState] = nationalCount;
         setDetailByState((prev) => ({ ...prev, [selectedState]: detail }));
         setStateDetailStatus("ready");
       })
@@ -225,7 +245,7 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       controller.abort();
       if (inflightState.current === selectedState) inflightState.current = null;
     };
-  }, [selectedState, detailByState]);
+  }, [selectedState, detailByState, data]);
 
   const stateDetail = selectedState
     ? (detailByState[selectedState] ?? null)
