@@ -106,6 +106,18 @@ export interface JurisdictionsResponse {
   national: (JurisdictionAgg & { bounds?: AxisBounds }) | null;
 }
 
+export interface PlaceMatch {
+  state: string;
+  city?: string | null;
+  county?: string | null;
+  name: string;
+  lawCount: number;
+}
+
+export interface PlaceLookupResponse {
+  places: PlaceMatch[];
+}
+
 export interface CityAgg {
   city: string;
   lawCount: number;

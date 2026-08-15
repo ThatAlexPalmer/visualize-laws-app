@@ -3,6 +3,7 @@ import type { GeoPermissibleObjects } from "d3-geo";
 
 import { isCountyKindSlug, normalizePlaceKey } from "@/lib/types";
 import type { JurisdictionAgg } from "@/lib/types";
+import { fipsToUsps } from "./fips";
 
 export interface CountyFeatureEntry {
   /** 5-digit county FIPS (state 2 + county 3). */
@@ -52,6 +53,26 @@ export function loadCountyFeatures(): Promise<CountyFeatureEntry[]> {
     return cached;
   });
   return inflight;
+}
+
+/** Atlas counties whose Census name matches a typed query (no LOCUS row required). */
+export function matchAtlasCounties(
+  all: CountyFeatureEntry[],
+  input: string,
+): Array<{ fips: string; state: string; name: string }> {
+  const needle = normalizePlaceKey(input);
+  if (!needle) return [];
+  const compact = needle.replace(/\s+/g, "");
+  const out: Array<{ fips: string; state: string; name: string }> = [];
+  for (const f of all) {
+    const key = normalizePlaceKey(f.name);
+    if (key !== needle && key.replace(/\s+/g, "") !== compact) continue;
+    const state = fipsToUsps[f.stateFips];
+    if (!state) continue;
+    out.push({ fips: f.fips, state, name: f.name });
+  }
+  out.sort((a, b) => a.fips.localeCompare(b.fips));
+  return out;
 }
 
 export function countiesForState(

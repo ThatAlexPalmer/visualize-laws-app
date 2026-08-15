@@ -9,6 +9,7 @@ import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
   matchCountySlug,
+  normalizePlaceKey,
   prettySlug,
   stateName,
   type Axis,
@@ -211,7 +212,9 @@ export function MapPanel() {
   const { data, status, retry, stateDetail } = useJurisdictions();
   const axis = state.axis;
   const selectedState = state.selectedState;
+  const atlasCountyName = state.atlasCountyName;
   const selectedCountyRaw = state.filters.county ?? null;
+  const selectedCity = state.filters.city ?? null;
   const rows = data?.rows ?? EMPTY_ROWS;
   const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
   const selectedCounty = selectedCountyRaw
@@ -385,10 +388,19 @@ export function MapPanel() {
     }
 
     // active selection (drawn last, on top)
-    if (selectedCounty) {
-      const se = entries.find(
-        (e) => e.kind === "county" && e.countySlug === selectedCounty,
-      );
+    if (selectedCounty || atlasCountyName) {
+      const se = entries.find((e) => {
+        if (e.kind !== "county") return false;
+        if (selectedCounty && e.countySlug === selectedCounty) return true;
+        if (
+          atlasCountyName &&
+          e.countyName &&
+          normalizePlaceKey(e.countyName) === normalizePlaceKey(atlasCountyName)
+        ) {
+          return true;
+        }
+        return false;
+      });
       if (se) {
         ctx.lineWidth = 2;
         ctx.strokeStyle = theme.colors.fg;
@@ -402,7 +414,7 @@ export function MapPanel() {
         ctx.stroke(se.path);
       }
     }
-  }, [size, hovered, selectedState, selectedCounty, axis]);
+  }, [size, hovered, selectedState, selectedCounty, atlasCountyName, axis]);
 
   // Rebuild Path2Ds whenever the canvas size or zoom target changes.
   // Paths are regenerated at the new scale (not interpolated).
@@ -416,8 +428,22 @@ export function MapPanel() {
     const stateEntry = selectedState
       ? stateFeatures.find((f) => f.usps === selectedState)
       : undefined;
-    const fitTarget =
+    let fitTarget =
       selectedState && stateEntry ? stateEntry.geo : stateFeatureCollection;
+    if (selectedState && stateEntry && countyAtlas) {
+      const stateFips = stateEntry.fips || uspsToFips[selectedState];
+      const inState = countiesForState(countyAtlas, stateFips);
+      const fipsToSlug = joinCountySlugs(inState, countyRows);
+      const slug = selectedCounty;
+      const focusName = atlasCountyName ?? selectedCountyRaw;
+      const focus = inState.find((f) => {
+        const joined = fipsToSlug.get(f.fips);
+        if (slug && joined === slug) return true;
+        if (!focusName) return false;
+        return normalizePlaceKey(f.name) === normalizePlaceKey(focusName);
+      });
+      if (focus) fitTarget = focus.geo;
+    }
     const projection = geoAlbersUsa().fitExtent(
       [
         [pad, pad],
@@ -454,7 +480,16 @@ export function MapPanel() {
     }
     pathsRef.current = entries;
     setPathGen((n) => n + 1);
-  }, [size, selectedState, countyViewReady, countyAtlas, countyRows]);
+  }, [
+    size,
+    selectedState,
+    selectedCounty,
+    selectedCountyRaw,
+    atlasCountyName,
+    countyViewReady,
+    countyAtlas,
+    countyRows,
+  ]);
 
   // Repaint the base only when its inputs change (size/paths, data, axis). The
   // path-rebuild effect above runs first on a size change, so paths are fresh.
@@ -586,9 +621,13 @@ export function MapPanel() {
       : stateName(hovered.usps)
     : selectedCounty
       ? prettySlug(selectedCounty)
-      : selectedState
-        ? stateName(selectedState)
-        : null;
+      : atlasCountyName
+        ? atlasCountyName
+        : selectedCity
+          ? prettySlug(selectedCity)
+          : selectedState
+            ? stateName(selectedState)
+            : null;
 
   return (
     <Wrap ref={wrapRef}>

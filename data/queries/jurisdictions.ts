@@ -1,10 +1,11 @@
 import { prisma } from "../db";
-import { matchCountySlug } from "../slugs";
+import { matchCountySlug, prettySlug, slugVariants } from "../slugs";
 import type {
   AxisBounds,
   CityAgg,
   JurisdictionDetailResponse,
   JurisdictionsResponse,
+  PlaceLookupResponse,
 } from "../types";
 
 // The columns that make up a JurisdictionAgg (excludes id + bounds).
@@ -63,6 +64,78 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
     : null;
 
   return { rows, national };
+}
+
+/** Escape LIKE metacharacters so slug underscores are literal. */
+function escapeLike(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
+ * Resolve a typed city or county to candidate (state, place) rows.
+ * Used by GET /api/jurisdictions?city= / ?county= — not the US map payload.
+ */
+export async function resolvePlace(opts: {
+  city?: string | null;
+  county?: string | null;
+}): Promise<PlaceLookupResponse> {
+  const county = opts.county?.trim();
+  const city = opts.city?.trim();
+
+  if (county) {
+    const rows = await prisma.jurisdiction.findMany({
+      where: { level: "county" },
+      select: AGG_SELECT,
+    });
+    const places = rows
+      .filter((row) => matchCountySlug([row], county) === row.county)
+      .sort((a, b) => b.lawCount - a.lawCount)
+      .slice(0, 8)
+      .flatMap((row) =>
+        row.state && row.county
+          ? [
+              {
+                state: row.state,
+                county: row.county,
+                name: row.name,
+                lawCount: row.lawCount,
+              },
+            ]
+          : [],
+      );
+    return { places };
+  }
+
+  if (city) {
+    const [slugA, slugB] = slugVariants(city);
+    const likeA = `%${escapeLike(slugA)}%`;
+    const likeB = `%${escapeLike(slugB)}%`;
+    const rows = await prisma.$queryRaw<
+      Array<{ state: string; city: string; lawCount: number }>
+    >`
+      SELECT state, city, count(*)::int AS "lawCount"
+      FROM laws
+      WHERE city IS NOT NULL AND city <> ''
+        AND (
+          city IN (${slugA}, ${slugB})
+          OR city ILIKE ${likeA} ESCAPE '\\'
+          OR city ILIKE ${likeB} ESCAPE '\\'
+        )
+      GROUP BY state, city
+      ORDER BY count(*) DESC
+      LIMIT 8
+    `;
+    return {
+      places: rows.map((row) => ({
+        state: row.state,
+        city: row.city,
+        name: prettySlug(row.city),
+        lawCount: row.lawCount,
+      })),
+    };
+  }
+
+  return { places: [] };
 }
 
 async function queryTopCities(state: string): Promise<CityAgg[]> {

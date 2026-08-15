@@ -47,7 +47,12 @@ export function isCountyKindSlug(slug: string | null | undefined): boolean {
  * saint/ste as st so "St. Mary's" matches saint_mary's_county.
  */
 export function normalizePlaceKey(raw: string): string {
-  let s = raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/_+$/g, "");
+  let s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+$/g, "");
   for (const prefix of PLACE_PREFIXES) s = s.replace(prefix, "");
   for (const suffix of PLACE_SUFFIXES) s = s.replace(suffix, "");
   s = s
