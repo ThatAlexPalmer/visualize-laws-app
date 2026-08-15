@@ -235,14 +235,12 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     });
   }, 300);
 
-  // Keep local inputs in sync if filters are cleared elsewhere (e.g. reset).
+  // Keep local inputs in sync with the store (chips, map clicks, reset).
   useEffect(() => {
-    if (filters.city === undefined) setCity("");
-    else if (filters.city.includes("_")) setCity(prettySlug(filters.city));
+    setCity(filters.city == null ? "" : prettySlug(filters.city));
   }, [filters.city]);
   useEffect(() => {
-    if (filters.county === undefined) setCounty("");
-    else if (filters.county.includes("_")) setCounty(prettySlug(filters.county));
+    setCounty(filters.county == null ? "" : prettySlug(filters.county));
   }, [filters.county]);
   useEffect(() => {
     const anyAxis = AXES.some((a) => filters[a.key]);

@@ -8,6 +8,7 @@ import { geoAlbersUsa, geoPath } from "d3-geo";
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
+  matchCountySlug,
   prettySlug,
   stateName,
   type Axis,
@@ -210,9 +211,12 @@ export function MapPanel() {
   const { data, status, retry, stateDetail } = useJurisdictions();
   const axis = state.axis;
   const selectedState = state.selectedState;
-  const selectedCounty = state.filters.county ?? null;
+  const selectedCountyRaw = state.filters.county ?? null;
   const rows = data?.rows ?? EMPTY_ROWS;
   const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
+  const selectedCounty = selectedCountyRaw
+    ? (matchCountySlug(countyRows, selectedCountyRaw) ?? selectedCountyRaw)
+    : null;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -542,17 +546,24 @@ export function MapPanel() {
     };
   }, []);
 
+  // Drop hover when the path set changes so a county name cannot stick on the US map.
+  useEffect(() => {
+    setHovered(null);
+  }, [selectedState, countyViewReady, pathGen]);
+
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const u = pick(e.clientX, e.clientY);
       if (selectedState) {
         // Zoomed: a colored county sets the county filter. Uncolored counties
-        // and any other miss fall through to the state toggle (zoom out).
-        if (u?.kind === "county" && u.countySlug) {
-          dispatch({
-            type: "patchFilters",
-            filters: { county: u.countySlug },
-          });
+        // are unclickable. Only a miss (ocean / outside the state) zooms out.
+        if (u?.kind === "county") {
+          if (u.countySlug) {
+            dispatch({
+              type: "patchFilters",
+              filters: { county: u.countySlug },
+            });
+          }
           return;
         }
         dispatch({ type: "selectState", state: null });

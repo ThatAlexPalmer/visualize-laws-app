@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { matchCountySlug } from "../slugs";
 import type {
@@ -66,16 +65,12 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
   return { rows, national };
 }
 
-async function queryTopCities(
-  state: string,
-  county: string | null,
-): Promise<CityAgg[]> {
+async function queryTopCities(state: string): Promise<CityAgg[]> {
   return prisma.$queryRaw<CityAgg[]>`
     SELECT city, count(*)::int AS "lawCount"
     FROM laws
     WHERE state = ${state}
       AND city IS NOT NULL AND city <> ''
-      ${county ? Prisma.sql`AND lower(county) = ${county}` : Prisma.empty}
     GROUP BY city
     ORDER BY count(*) DESC
     LIMIT 12
@@ -123,7 +118,9 @@ export async function getJurisdictionDetail(
         take: 10,
         select: LAW_SELECT,
       }),
-      queryTopCities(code, countySlug),
+      // Always state-level: LOCUS rows never set city and county together, so a
+      // county-scoped city query would be empty and hide the city chips.
+      queryTopCities(code),
     ]);
 
     return {
