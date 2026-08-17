@@ -1,8 +1,12 @@
 import { feature } from "topojson-client";
+import { geoAlbersUsa } from "d3-geo";
 import type { GeoPermissibleObjects } from "d3-geo";
 import statesTopo from "us-atlas/states-10m.json";
 
 import { fipsToUsps } from "./fips";
+
+/** Size-independent world the mesh is baked into. Camera maps this to the canvas. */
+export const WORLD = { w: 960, h: 600, pad: 24 };
 
 export interface StateFeatureEntry {
   /** 2-digit FIPS code from the us-atlas geometry id. */
@@ -32,8 +36,17 @@ const collection = feature(topo, statesObject) as unknown as {
   features: RawFeature[];
 };
 
-/** The full state FeatureCollection — used to fit the projection to the canvas. */
+/** The full state FeatureCollection — used to fit the one-time US projection. */
 export const stateFeatureCollection = collection as unknown as GeoPermissibleObjects;
+
+/** Fixed Albers USA. Do not fitExtent this again on zoom or resize. */
+export const usProjection = geoAlbersUsa().fitExtent(
+  [
+    [WORLD.pad, WORLD.pad],
+    [WORLD.w - WORLD.pad, WORLD.h - WORLD.pad],
+  ],
+  stateFeatureCollection,
+);
 
 /** One entry per state geometry, tagged with FIPS + lowercase USPS codes. */
 export const stateFeatures: StateFeatureEntry[] = collection.features.map((f) => {
