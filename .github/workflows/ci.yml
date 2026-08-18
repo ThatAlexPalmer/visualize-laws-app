@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       # postinstall runs `prisma generate`, which the typecheck depends on.
@@ -37,6 +37,4 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # `next build` is intentionally NOT run here: the `/api/jurisdictions`
-      # route is `force-static`, so building executes a real DB query. Vercel's
-      # preview deploy (with a real DATABASE_URL) is the build gate.
+      # `next build` is not run here. Vercel preview/production is the build gate.

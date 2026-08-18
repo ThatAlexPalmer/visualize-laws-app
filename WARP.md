@@ -177,10 +177,12 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Empty county polygons are coverage, not a render bug** (issue #25). ~3,231 atlas
   shapes vs ~376 scored counties. Never invent county averages from city laws. Never
   special-case a state.
-- **Do not** point `prisma migrate diff --shadow-database-url` at the live `locus` DB
-  (it will wipe it). Do not run `pnpm prisma:migrate` to “fix” `search_vector` drift
-  (`DROP DEFAULT` would break FTS). Use `prisma:deploy` only unless you are authoring a
-  new migration.
+- Prisma **drops/resets** a shadow database. Never pass a URL that has data (local
+  Docker or remote) as `--shadow-database-url`. Never `migrate reset` / `db push`
+  against a database you care about. Apply with `prisma:deploy` / `prisma:deploy:prod`.
+  `pnpm prisma:migrate` only when **authoring** a new migration, locally. Do not use
+  it to “fix” `search_vector` drift (`DROP DEFAULT` breaks FTS). `--fresh` truncates
+  `laws` — never on production unless explicitly asked.
 - **Map zoom** must not remesh: no `fitExtent` / `new Path2D` on select, data, or resize.
 - **Strict aesthetic**: only `#000` / `#fff` and white-opacity grays via theme tokens.
 - **Docker bind mount is path-bound**: the `app` service mounts the project dir at `/workspace`

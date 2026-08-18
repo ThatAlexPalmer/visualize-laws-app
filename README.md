@@ -38,6 +38,8 @@ pnpm prisma:deploy
 pnpm dev
 ```
 
+Prefer `pnpm prisma:deploy` to apply existing migrations. Use `pnpm prisma:migrate` only when creating a new migration.
+
 ## seeding
 
 Load the default sample:
