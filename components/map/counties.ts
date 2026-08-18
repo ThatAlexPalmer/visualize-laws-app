@@ -25,7 +25,8 @@ let inflight: Promise<CountyFeatureEntry[]> | null = null;
 
 /**
  * Lazy-load us-atlas county geometry (~842 KB). Kept out of the initial
- * bundle; first state click triggers the dynamic import.
+ * bundle; MapPanel prefetches after the US map is ready. First state click
+ * is only a fallback if the idle prefetch has not finished.
  */
 export function loadCountyFeatures(): Promise<CountyFeatureEntry[]> {
   if (cached) return Promise.resolve(cached);

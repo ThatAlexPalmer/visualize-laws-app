@@ -281,7 +281,8 @@ function beginWorldFrame(
 
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
-  const { data, status, retry, stateDetail } = useJurisdictions();
+  const { data, status, retry, stateDetail, stateDetailStatus } =
+    useJurisdictions();
   const axis = state.axis;
   const selectedState = state.selectedState;
   const atlasCountyName = state.atlasCountyName;
@@ -352,8 +353,23 @@ export function MapPanel() {
     [countyRows],
   );
   const scoredCountyN = scoredCounties.length;
+  // US aggregates still in flight — do not present the faint mesh as finished.
+  const mapAggregatesInFlight = status === "loading" && rows.length === 0;
+  // Atlas and/or county rows still in flight. Sparse copy waits until settle.
+  const countiesInFlight =
+    Boolean(selectedState) &&
+    stateDetailStatus !== "error" &&
+    (!countiesBaked || !stateDetail || stateDetailStatus === "loading");
   const sparseCounties =
-    Boolean(selectedState && stateDetail) && scoredCountyN < COUNTY_FILL_MIN;
+    !countiesInFlight &&
+    Boolean(selectedState && stateDetail && stateDetailStatus === "ready") &&
+    scoredCountyN < COUNTY_FILL_MIN;
+  const loadingLine =
+    countiesInFlight && selectedState
+      ? `Loading counties in ${stateName(selectedState)}.`
+      : mapAggregatesInFlight
+        ? "Loading the map."
+        : null;
   const sparseCopy = useMemo(() => {
     if (!sparseCounties || !selectedState) return null;
     const names = scoredCounties
@@ -462,7 +478,9 @@ export function MapPanel() {
       ctx.fillStyle =
         agg && domain
           ? rampColorForAxis(normalize(axisValue(agg, axis), domain), axis)
-          : "rgba(255,255,255,0.015)";
+          : mapAggregatesInFlight
+            ? "rgba(255,255,255,0.04)"
+            : "rgba(255,255,255,0.015)";
       ctx.fill(e.path);
     }
     ctx.lineJoin = "round";
@@ -470,7 +488,8 @@ export function MapPanel() {
     ctx.strokeStyle = "rgba(255,255,255,0.32)";
     for (const e of statePathsRef.current) ctx.stroke(e.path);
 
-    if (focus) {
+    // In-flight state view is a flat wash + loading line, not a county mesh.
+    if (focus && !countiesInFlight) {
       const focusedState = statePathsRef.current.find((e) => e.usps === focus);
       // Cover the focused state's choropleth so unscored counties stay unpainted
       // (a 1.5% white wash over the state fill still reads as "colored").
@@ -495,7 +514,17 @@ export function MapPanel() {
       ctx.strokeStyle = "rgba(255,255,255,0.32)";
       for (const e of inState) ctx.stroke(e.path);
     }
-  }, [size, aggByUsps, aggByCountySlug, fipsToSlug, domain, axis, sparseCounties]);
+  }, [
+    size,
+    aggByUsps,
+    aggByCountySlug,
+    fipsToSlug,
+    domain,
+    axis,
+    sparseCounties,
+    mapAggregatesInFlight,
+    countiesInFlight,
+  ]);
 
   // --- overlay layer: hover highlight + active selection --------------------
   // Transparent; cleared and repainted on its own. Only the hovered + selected
@@ -623,6 +652,34 @@ export function MapPanel() {
     bakeStatePaths();
   }, [bakeStatePaths]);
 
+  // Prefetch the 842 KB atlas after the US map is ready so the first state
+  // click is not the download. Idle so it does not contend with first paint.
+  useEffect(() => {
+    if (status !== "ready" || rows.length === 0 || countiesBaked) return;
+    let cancelled = false;
+    let idleId = 0;
+    let timeoutId = 0;
+    const run = () => {
+      void loadCountyFeatures()
+        .then((features) => {
+          if (!cancelled) bakeCountyPaths(features);
+        })
+        .catch(() => {
+          /* first click still loads as a fallback */
+        });
+    };
+    if (typeof requestIdleCallback === "function") {
+      idleId = requestIdleCallback(run);
+    } else {
+      timeoutId = window.setTimeout(run, 1);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId) cancelIdleCallback(idleId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [status, rows.length, countiesBaked, bakeCountyPaths]);
+
   useEffect(() => {
     if (!selectedState || countiesBaked) return;
     let cancelled = false;
@@ -658,10 +715,30 @@ export function MapPanel() {
       startTween(cameraForState(null, size));
       return;
     }
-    if (!countiesBaked) return;
+    const detailSettled =
+      Boolean(stateDetail) || stateDetailStatus === "error";
+    const readyToFocus =
+      countiesBaked && detailSettled && stateDetailStatus !== "loading";
+    if (!readyToFocus) {
+      // Mesh before move: stay on the US (or ease back) until Path2Ds are baked
+      // and county rows have settled. Do not set focus — that would paint a
+      // black county mesh over a solid state fill.
+      const wasFocused = focusStateRef.current !== null;
+      focusStateRef.current = null;
+      if (wasFocused) startTween(cameraForState(null, size));
+      return;
+    }
     focusStateRef.current = selectedState;
     startTween(cameraForState(selectedState, size));
-  }, [selectedState, countiesBaked, size, startTween, cameraForState]);
+  }, [
+    selectedState,
+    countiesBaked,
+    size,
+    startTween,
+    cameraForState,
+    stateDetail,
+    stateDetailStatus,
+  ]);
 
   useEffect(() => {
     if (!size) return;
@@ -697,6 +774,7 @@ export function MapPanel() {
   // Hit-test in world space: invert the camera, then isPointInPath on baked paths.
   const pick = useCallback(
     (clientX: number, clientY: number): Hovered | null => {
+      if (tweenRef.current) return null;
       const canvas = overlayRef.current;
       if (!canvas) return null;
       const ctx = canvas.getContext("2d");
@@ -782,8 +860,11 @@ export function MapPanel() {
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Mid-tween hits are sloppy (overlapping Albers neighbors). Ignore.
+      if (tweenRef.current) return;
       const u = pick(e.clientX, e.clientY);
-      if (selectedState) {
+      const focused = focusStateRef.current;
+      if (focused) {
         // Zoomed: a colored county sets the county filter. Uncolored counties
         // are unclickable. Only a miss (ocean / outside the state) zooms out.
         if (u?.kind === "county") {
@@ -883,8 +964,11 @@ export function MapPanel() {
       )}
       <TitleStack>
         <StateLabel>{mapLabel ?? ""}</StateLabel>
-        {sparseCopy && <SparseLine>{sparseCopy.line}</SparseLine>}
-        {sparseCopy && sparseCopy.chipNames.length > 0 && (
+        {loadingLine && <SparseLine>{loadingLine}</SparseLine>}
+        {!loadingLine && sparseCopy && (
+          <SparseLine>{sparseCopy.line}</SparseLine>
+        )}
+        {!loadingLine && sparseCopy && sparseCopy.chipNames.length > 0 && (
           <SparseChips>
             {scoredCounties
               .slice()

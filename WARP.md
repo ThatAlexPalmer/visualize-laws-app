@@ -22,10 +22,11 @@ It is a standard single Next.js app at the repo root with a dedicated **data lay
 The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getLawById`,
 `getJurisdictions`, `getJurisdictionDetail`, `resolvePlace`), which use the Prisma client
 from `data/db.ts`. `/api/laws` returns row *summaries* and `/api/laws/[id]` returns the
-full law on demand. Jurisdiction routes are `force-dynamic` (no hour-long cache) so
-aggregate rebuilds show up immediately. `GET /api/jurisdictions` without params is the
-US map payload (state + national only). `?city=` / `?county=` is a place lookup
-(`{ places }`) and does not grow that payload.
+full law on demand. `GET /api/jurisdictions` without params is the US map payload
+(state + national only) and may be CDN-cached briefly (`s-maxage=60`) when complete;
+`national: null` / empty rows are not cached. `?city=` / `?county=` lookup and
+`/api/jurisdictions/[state]` stay `no-store`. Do not use hour-long / `force-static`
+cache on these routes.
 
 ## One-command DevEx
 

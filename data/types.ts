@@ -106,6 +106,11 @@ export interface JurisdictionsResponse {
   national: (JurisdictionAgg & { bounds?: AxisBounds }) | null;
 }
 
+/** True when the US map payload is safe to cache (never `national: null` / empty). */
+export function isCompleteNational(body: JurisdictionsResponse): boolean {
+  return body.national !== null && body.rows.length > 0;
+}
+
 export interface PlaceMatch {
   state: string;
   city?: string | null;

@@ -67,11 +67,15 @@ avoid staleness; expand only when durable.
   Place search boosts city/county slug hits with `IS TRUE` (nullable `OR` is NULL and
   sorts first under `DESC`).
 - `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand.
-- Jurisdiction routes are `force-dynamic` (`revalidate = 0`) so aggregate rebuilds show up
-  immediately. Do not reintroduce `force-static` / hour-long cache on these routes.
+- `GET /api/jurisdictions` (US rows, no query) may use a short CDN cache (`s-maxage=60`,
+  SWR 300) when `national` and `rows` are present. Do not cache `national: null` / empty
+  rows. `?city=` / `?county=` lookup and `/api/jurisdictions/[state]` stay `no-store` /
+  `force-dynamic`. Do not reintroduce `force-static` or hour-long cache on these routes.
 - `GET /api/jurisdictions` without params is the US map payload (state + national only).
   `?city=` / `?county=` is `resolvePlace` (`{ places }`) and must not grow that payload
   or spawn a new REST tree.
+- Loading ≠ sparse. US wait: `Loading the map.` State wait (atlas or county rows):
+  `Loading counties in {State}.` Sparse copy only after the request has settled.
 - City and county slugs are mutually exclusive on a law row (LOCUS-v1). County
   `Jurisdiction` rows (~376 on a full seed) are paints only; they are not the mesh.
 - Seed is resumable; see **Seeding runbook** below.
