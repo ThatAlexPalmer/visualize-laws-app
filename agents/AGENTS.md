@@ -104,10 +104,24 @@ avoid staleness; expand only when durable.
 - Prefer `pnpm` (no corepack).
 - Do not run the app/deploy unless the task asks for it.
 - Never stage `.env*`, credentials, or parquet cache (`.locus-cache/`).
-- Never point `prisma migrate diff --shadow-database-url` at the live `locus` DB
-  (it will wipe it). Do not run `pnpm prisma:migrate` (`migrate dev`) to “fix”
-  generated `search_vector` drift — that proposes `DROP DEFAULT` and breaks FTS.
-  Use `prisma:deploy` only unless you are authoring a new migration.
+- Prisma **drops/resets** a shadow database. Never pass a URL that has data
+  (local Docker or remote) as `--shadow-database-url`. Never `migrate reset`
+  or `db push` against a database you care about.
+- Apply committed SQL with `pnpm prisma:deploy` / `prisma:deploy:prod` only.
+  `pnpm prisma:migrate` (`migrate dev`) is only for **authoring** a new
+  migration, and only against local Docker. Do not use it to “fix”
+  `search_vector` drift (`DROP DEFAULT` breaks FTS).
+- `--fresh` truncates `laws`. Never on production unless explicitly asked.
+
+## PR review (Grok in-session)
+
+No Cursor Bugbot / Grok GitHub review app (pay-per-use). Reviews are
+`/review --pr N` in a Grok session.
+
+- PRs by the repo owner and `dependabot[bot]` only, unless asked.
+- Load this file, `WARP.md`, and issue #25 before judging map / data / migrate diffs.
+- Post a **PENDING** GitHub review. Never merge.
+- Dependabot: version/compat and whether the bump touches migrate/seed/shadow — no drive-by refactors.
 
 ---
 
@@ -130,9 +144,8 @@ Default `--limit 25000` is Alaska-only (shard 0). City/county QA needs Colorado:
 
 Existing DBs that already have `laws` rows skip docker seed. After the city-index
 migration they still need `pnpm seed --shards ''` (or `pnpm seed:prod --shards ''`)
-or the county choropleth stays empty. Do **not** run `pnpm prisma:migrate`
-(`migrate dev`) to “fix” generated `search_vector` drift — that would propose
-`DROP DEFAULT` and break FTS. Use `prisma:deploy` only.
+or the county choropleth stays empty. See **Working conventions** for
+migrate/shadow rules (`deploy` vs `dev`, never shadow a database with data).
 
 ### What the seeder does
 
