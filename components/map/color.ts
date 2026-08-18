@@ -40,7 +40,9 @@ export interface Domain {
 /**
  * Pick a color-scale domain for an axis. Prefers the national per-axis bounds
  * (so all axes share a stable scale); falls back to the min/max across the
- * supplied state rows, and returns null when there is nothing to scale.
+ * supplied rows. A single finite value (one county, or all averages equal)
+ * expands around that value so normalize() lands at 0.5 — mid-ramp fill
+ * instead of null / no paint. Returns null only when there is no finite value.
  */
 export function computeDomain(
   axis: Axis,
@@ -66,7 +68,9 @@ export function computeDomain(
       if (v > max) max = v;
     }
   }
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  // One joined county (or identical avgs): pad so the fill is mid-ramp, not empty.
+  if (max <= min) return { min: min - 1, max: min + 1 };
   return { min, max };
 }
 

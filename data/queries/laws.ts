@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db";
+import { slugVariants } from "../slugs";
 import {
   AXES,
   AXIS_BY_KEY,
@@ -15,6 +16,23 @@ import {
 // ($1, $2, ...) — never string-interpolated. The only interpolated fragments are
 // column names and the sort direction, which come from the trusted `AXES`
 // constant and an asc/desc whitelist (Postgres cannot parameterize identifiers).
+
+/** Escape LIKE metacharacters so slug underscores are literal. */
+function escapeLike(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/** ILIKE both slug variants so "Pagosa Springs" matches `pagosa_springs`. */
+function placeIlikeSql(
+  column: "city" | "county",
+  raw: string,
+  bind: (value: unknown) => string,
+): string {
+  const [a, b] = slugVariants(raw);
+  const likeA = bind(`%${escapeLike(a)}%`);
+  if (a === b) return `${column} ILIKE ${likeA} ESCAPE '\\'`;
+  return `(${column} ILIKE ${likeA} ESCAPE '\\' OR ${column} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
+}
 
 function parseFloatOrNull(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") return null;
@@ -146,18 +164,32 @@ export async function queryLaws(
 
   // Full-text search. Capture the bound placeholder so the *same* query text can
   // drive both the WHERE match and the relevance ORDER BY (ts_rank_cd) below.
+  // When q is set, also match city/county on the two lowercase slug variants
+  // (spaces→underscores and spaces removed) so "Pagosa Springs" hits pagosa_springs.
   const q = searchParams.get("q")?.trim();
   let qParam: string | null = null;
+  let slugAParam: string | null = null;
+  let slugBParam: string | null = null;
   if (q) {
     qParam = bind(q);
-    where.push(`search_vector @@ websearch_to_tsquery('english', ${qParam})`);
+    const [slugA, slugB] = slugVariants(q);
+    slugAParam = bind(slugA);
+    slugBParam = slugA === slugB ? slugAParam : bind(slugB);
+    where.push(
+      `(search_vector @@ websearch_to_tsquery('english', ${qParam})` +
+        ` OR city IN (${slugAParam}, ${slugBParam})` +
+        ` OR county IN (${slugAParam}, ${slugBParam}))`,
+    );
   }
 
   const state = searchParams.get("state")?.trim();
   if (state) where.push(`state = ${bind(state.toLowerCase())}`);
 
+  const city = searchParams.get("city")?.trim();
+  if (city) where.push(placeIlikeSql("city", city, bind));
+
   const county = searchParams.get("county")?.trim();
-  if (county) where.push(`county ILIKE ${bind(`%${county}%`)}`);
+  if (county) where.push(placeIlikeSql("county", county, bind));
 
   const fn = searchParams.get("function")?.trim();
   if (fn) where.push(`"function" = ${bind(fn)}`);
@@ -188,8 +220,13 @@ export async function queryLaws(
   const sortMeta = sortKey ? AXIS_BY_KEY[sortKey] : undefined;
   const dir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
   let orderSql: string;
-  if (qParam) {
-    orderSql = `ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('english', ${qParam})) DESC, id ASC`;
+  if (qParam && slugAParam && slugBParam) {
+    // IS TRUE so NULL city/county (the usual LOCUS shape) do not sort first
+    // under DESC NULLS FIRST and bury the slug hits this clause exists to boost.
+    orderSql =
+      `ORDER BY ((city IN (${slugAParam}, ${slugBParam}))` +
+      ` OR (county IN (${slugAParam}, ${slugBParam}))) IS TRUE DESC,` +
+      ` ts_rank_cd(search_vector, websearch_to_tsquery('english', ${qParam})) DESC, id ASC`;
   } else if (sortMeta) {
     orderSql = `ORDER BY ${sortMeta.column} ${dir}, id ASC`;
   } else {

@@ -65,6 +65,19 @@ Helpful options:
 pnpm seed --fresh       # reset and reseed
 pnpm seed --limit 1000  # small local sample
 pnpm seed --shards 0,1  # selected data shards
+pnpm seed --shards ''   # recompute jurisdiction aggregates only (no COPY)
+```
+
+The default 25k sample is Alaska-only (start of shard 0). For city/county QA (Pagosa Springs, El Paso County) load Colorado from shard 1:
+
+```bash
+pnpm seed --fresh --shards 1 --limit 25000
+```
+
+After applying the city-index migration on a database that already has laws, recompute county aggregates:
+
+```bash
+pnpm seed --shards ''
 ```
 
 ## common commands

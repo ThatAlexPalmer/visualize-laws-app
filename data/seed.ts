@@ -4,7 +4,7 @@
  * Streams the 8 LOCUS-v1 parquet shards from Hugging Face, bulk-loads them into
  * the `laws` table via Postgres COPY, tracks completed shards in
  * `seed_checkpoints` for resumability, then recomputes the `jurisdictions`
- * aggregates (national + per-state) with per-axis bounds.
+ * aggregates (national + per-state + per-county) with per-axis bounds.
  *
  * Usage:
  *   pnpm seed                  # full ~2.2M-row ingest (all 8 shards)
@@ -527,6 +527,37 @@ ON CONFLICT (level, state, county) DO UPDATE SET
   avg_problem_salience = EXCLUDED.avg_problem_salience
 `;
 
+// County display name: initcap of the LOCUS slug with underscores as spaces
+// (`el_paso_county` → `El Paso County`). Slug is stored lowercased.
+const COUNTY_AGG_SQL = `
+INSERT INTO jurisdictions
+  (level, state, county, name, law_count, substantive_count,
+   avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience)
+SELECT
+  'county',
+  l.state,
+  lower(l.county),
+  initcap(replace(lower(l.county), '_', ' ')),
+  count(*)::int,
+  count(*) FILTER (WHERE l.is_substantive)::int,
+  COALESCE(avg(l.opacity), 0),
+  COALESCE(avg(l.enforcement_discretion), 0),
+  COALESCE(avg(l.paternalism), 0),
+  COALESCE(avg(l.problem_salience), 0)
+FROM laws l
+WHERE l.state IS NOT NULL AND l.state <> ''
+  AND l.county IS NOT NULL AND l.county <> ''
+GROUP BY l.state, lower(l.county)
+ON CONFLICT (level, state, county) DO UPDATE SET
+  name = EXCLUDED.name,
+  law_count = EXCLUDED.law_count,
+  substantive_count = EXCLUDED.substantive_count,
+  avg_opacity = EXCLUDED.avg_opacity,
+  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
+  avg_paternalism = EXCLUDED.avg_paternalism,
+  avg_problem_salience = EXCLUDED.avg_problem_salience
+`;
+
 // `bounds` is per-axis [min,max] using the shared Axis camelCase keys.
 const NATIONAL_AGG_SQL = `
 INSERT INTO jurisdictions
@@ -562,10 +593,10 @@ ON CONFLICT (level, state, county) DO UPDATE SET
 `;
 
 /**
- * Recompute the national + per-state aggregate rows from the current `laws`
- * table, in one transaction. We DELETE the existing aggregate rows first: the
- * unique index (level, state, county) treats NULLs as distinct, so ON CONFLICT
- * alone would not dedupe the NULL-county rows on a re-run.
+ * Recompute the national + per-state + per-county aggregate rows from the
+ * current `laws` table, in one transaction. We DELETE the existing aggregate
+ * rows first: the unique index (level, state, county) treats NULLs as distinct,
+ * so ON CONFLICT alone would not dedupe the NULL-county rows on a re-run.
  */
 async function computeAggregates(client: Client): Promise<void> {
   // Full-table scans over ~2.2M rows can exceed the load-phase timeout.
@@ -573,9 +604,10 @@ async function computeAggregates(client: Client): Promise<void> {
   await client.query("BEGIN");
   try {
     await client.query(
-      "DELETE FROM jurisdictions WHERE level IN ('state', 'national')",
+      "DELETE FROM jurisdictions WHERE level IN ('state', 'national', 'county')",
     );
     await client.query(STATE_AGG_SQL, [JSON.stringify(STATE_NAMES)]);
+    await client.query(COUNTY_AGG_SQL);
     await client.query(NATIONAL_AGG_SQL);
     await client.query("COMMIT");
   } catch (err) {

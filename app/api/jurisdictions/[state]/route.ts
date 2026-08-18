@@ -8,11 +8,14 @@ import type { JurisdictionDetailResponse } from "@/data/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Per-state aggregate + top laws for the jurisdiction dashboard.
+// Per-state (or ?county= scoped) aggregate + top laws + in-state counties/cities.
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ state: string }> },
 ): Promise<NextResponse<JurisdictionDetailResponse>> {
   const { state } = await params;
-  return NextResponse.json(await getJurisdictionDetail(state));
+  const { searchParams } = new URL(req.url);
+  return NextResponse.json(
+    await getJurisdictionDetail(state, searchParams.get("county")),
+  );
 }

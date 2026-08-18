@@ -2,7 +2,7 @@
 
 // Advanced filter rail. All controls are wired to the store's `filters`; text
 // and slider inputs are debounced (~300ms) before dispatching to avoid query spam.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
@@ -12,11 +12,20 @@ import {
   FUNCTIONS,
   STATE_NAMES,
   TOPICS,
+  prettySlug,
   type Axis,
   type ScoreRange,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import {
+  MIN_PLACE_ZOOM_CHARS,
+  lookupPlaces,
+} from "@/components/jurisdiction/placeLookup";
+import {
+  loadCountyFeatures,
+  matchAtlasCounties,
+} from "@/components/map/counties";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 import { RangeSlider } from "./RangeSlider";
 import { Button } from "@/components/ui/buttons";
@@ -186,7 +195,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { data } = useJurisdictions();
   const { filters, unhinged } = state;
   const bounds = data?.national?.bounds ?? null;
+  const placeLookupAbort = useRef<AbortController | null>(null);
 
+  const [city, setCity] = useState(filters.city ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
@@ -212,12 +223,83 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bounds]);
 
-  const countyDeb = useDebouncedCallback((v: string) => {
-    dispatch({
-      type: "patchFilters",
-      filters: { county: v.trim() || undefined },
-    });
+  const cityDeb = useDebouncedCallback((v: string) => {
+    void applyCity(v);
   }, 300);
+  const countyDeb = useDebouncedCallback((v: string) => {
+    void applyCounty(v);
+  }, 300);
+
+  const applyCity = async (v: string): Promise<void> => {
+    const trimmed = v.trim();
+    if (!trimmed) {
+      dispatch({ type: "patchFilters", filters: { city: undefined } });
+      return;
+    }
+    if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
+      dispatch({ type: "patchFilters", filters: { city: trimmed } });
+      return;
+    }
+    placeLookupAbort.current?.abort();
+    const ac = new AbortController();
+    placeLookupAbort.current = ac;
+    try {
+      const places = await lookupPlaces("city", trimmed, ac.signal);
+      if (ac.signal.aborted) return;
+      if (places.length === 1 && places[0].city && places[0].state) {
+        dispatch({
+          type: "selectPlace",
+          state: places[0].state,
+          city: places[0].city,
+        });
+        return;
+      }
+    } catch {
+      if (ac.signal.aborted) return;
+    }
+    dispatch({ type: "patchFilters", filters: { city: trimmed } });
+  };
+
+  const applyCounty = async (v: string): Promise<void> => {
+    const trimmed = v.trim();
+    if (!trimmed) {
+      dispatch({ type: "patchFilters", filters: { county: undefined } });
+      return;
+    }
+    if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
+      dispatch({ type: "patchFilters", filters: { county: trimmed } });
+      return;
+    }
+    placeLookupAbort.current?.abort();
+    const ac = new AbortController();
+    placeLookupAbort.current = ac;
+    void loadCountyFeatures();
+    try {
+      const places = await lookupPlaces("county", trimmed, ac.signal);
+      if (ac.signal.aborted) return;
+      if (places.length === 1 && places[0].county && places[0].state) {
+        dispatch({
+          type: "selectPlace",
+          state: places[0].state,
+          county: places[0].county,
+        });
+        return;
+      }
+      const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
+      if (ac.signal.aborted) return;
+      if (atlas.length === 1) {
+        dispatch({
+          type: "selectPlace",
+          state: atlas[0].state,
+          atlasCountyName: atlas[0].name,
+        });
+        return;
+      }
+    } catch {
+      if (ac.signal.aborted) return;
+    }
+    dispatch({ type: "patchFilters", filters: { county: trimmed } });
+  };
   const rangeDeb = useDebouncedCallback((axis: Axis, r: ScoreRange) => {
     const d = domainFor(axis);
     const cleared = r.min <= d.min && r.max >= d.max;
@@ -227,9 +309,12 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     });
   }, 300);
 
-  // Keep local inputs in sync if filters are cleared elsewhere (e.g. reset).
+  // Keep local inputs in sync with the store (chips, map clicks, reset).
   useEffect(() => {
-    if (filters.county === undefined) setCounty("");
+    setCity(filters.city == null ? "" : prettySlug(filters.city));
+  }, [filters.city]);
+  useEffect(() => {
+    setCounty(filters.county == null ? "" : prettySlug(filters.county));
   }, [filters.county]);
   useEffect(() => {
     const anyAxis = AXES.some((a) => filters[a.key]);
@@ -243,8 +328,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   ]);
 
   const onReset = () => {
+    cityDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
+    setCity("");
     setCounty("");
     setRanges(makeFullRanges(domainFor));
     dispatch({ type: "resetFilters" });
@@ -308,15 +395,37 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
+        <FieldLabel htmlFor={`${idPrefix}-city`}>City</FieldLabel>
+        <Input
+          id={`${idPrefix}-city`}
+          type="text"
+          placeholder="e.g. Pagosa Springs"
+          value={city}
+          onChange={(e) => {
+            setCity(e.target.value);
+            cityDeb.run(e.target.value);
+            if (county) {
+              setCounty("");
+              countyDeb.cancel();
+            }
+          }}
+        />
+      </Field>
+
+      <Field as={motion.div} variants={item}>
         <FieldLabel htmlFor={`${idPrefix}-county`}>County</FieldLabel>
         <Input
           id={`${idPrefix}-county`}
           type="text"
-          placeholder="e.g. Cook"
+          placeholder="e.g. El Paso"
           value={county}
           onChange={(e) => {
             setCounty(e.target.value);
             countyDeb.run(e.target.value);
+            if (city) {
+              setCity("");
+              cityDeb.cancel();
+            }
           }}
         />
       </Field>

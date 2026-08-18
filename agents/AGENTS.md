@@ -19,15 +19,23 @@ avoid staleness; expand only when durable.
 - Data layer lives in `data/` (Prisma schema/migrations, DB client, seed pipeline, query functions).
 - API routes in `app/api/*` are the backend and delegate to `data/queries/*`.
 - Styling uses styled-components with strict black/white theme tokens.
+- City/county map is **shipped**: camera zoom over a baked Albers USA mesh, county
+  aggregates (~376), sparse-county copy when n < 8. Empty atlas outlines are a
+  coverage gap (issue #25), not a fill bug.
 
 ## Important paths
 
 - `app/layout.tsx`, `app/page.tsx`, `app/api/*` — UI shell and HTTP endpoints.
 - `components/` — map, sidebar, results, jurisdiction, modal UI.
+- `components/map/` — canvas choropleth: `MapPanel.tsx`, `geo.ts`, `camera.ts`,
+  `sparseCounties.ts`, `counties.ts`, `fips.ts`.
 - `lib/store.tsx`, `lib/theme.ts`, `lib/registry.tsx` — app state, theme tokens, SSR wiring.
-- `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations.
+- `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations
+  (incl. generated `search_vector` + city/county trigram indexes).
 - `data/db.ts` — Prisma client singleton.
-- `data/queries/laws.ts` and `data/queries/jurisdictions.ts` — data-access logic.
+- `data/queries/laws.ts` and `data/queries/jurisdictions.ts` — data-access logic
+  (`resolvePlace` lives in jurisdictions).
+- `data/slugs.ts` — place slug variants / atlas join keys. Do not rewrite stored slugs.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
 - `WARP.md` — Warp project rules (loaded automatically in this repo).
 
@@ -39,6 +47,8 @@ avoid staleness; expand only when durable.
 - `pnpm db:up` / `pnpm db:down` / `pnpm db:studio`
 - `pnpm prisma:deploy` / `pnpm prisma:migrate`
 - `pnpm seed` / `pnpm seed --limit 25000` / `pnpm seed --fresh`
+- `pnpm seed --fresh --shards 1 --limit 25000` — Colorado city/county QA sample
+- `pnpm seed --shards ''` — recompute national/state/county aggregates only (no COPY)
 - Remote admin (gitignored env): `pnpm seed:prod` / `pnpm seed:prod --fresh` /
   `pnpm prisma:deploy:prod` / `pnpm db:studio:prod`
 
@@ -52,12 +62,40 @@ avoid staleness; expand only when durable.
 ## Data and querying notes
 
 - State codes are lowercase two-letter codes in data/UI.
-- Full-text search is Postgres `tsvector` + GIN index.
+- Full-text search is Postgres `tsvector` + GIN index (`search_vector` is GENERATED).
 - `data/queries/laws.ts` uses parameterized SQL; only whitelisted sort fields are interpolated.
+  Place search boosts city/county slug hits with `IS TRUE` (nullable `OR` is NULL and
+  sorts first under `DESC`).
 - `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand.
-  Jurisdiction routes are cached (`force-static`, `revalidate = 3600`) — allow up to ~1h after
-  re-aggregating before map/dashboard APIs reflect new aggregates in production.
+- Jurisdiction routes are `force-dynamic` (`revalidate = 0`) so aggregate rebuilds show up
+  immediately. Do not reintroduce `force-static` / hour-long cache on these routes.
+- `GET /api/jurisdictions` without params is the US map payload (state + national only).
+  `?city=` / `?county=` is `resolvePlace` (`{ places }`) and must not grow that payload
+  or spawn a new REST tree.
+- City and county slugs are mutually exclusive on a law row (LOCUS-v1). County
+  `Jurisdiction` rows (~376 on a full seed) are paints only; they are not the mesh.
 - Seed is resumable; see **Seeding runbook** below.
+
+## City / county map (invariants)
+
+- Mesh is baked once into a fixed 960×600 Albers USA world. Zoom tweens a camera
+  `{k, tx, ty}` and `setTransform`s. **Do not** `fitExtent` or `new Path2D` on select,
+  incoming scores, zoom, or resize. Cities have no polygons and no geocoding.
+- Search / sidebar place pick zooms to the **state** and outlines the county. Do not
+  invent a tighter city zoom. Prefer a **city** hit unless the query says
+  county/parish/borough. Wait for submit or ≥3 chars / unique hit; clearing the
+  City/County chip must not zoom out. Only ocean / Clear zooms out.
+- Sparse gate **K=8** (`sparseCounties.ts`): n < 8 → outlines + copy, no county
+  legend, no fills; scored counties stay clickable. n ≥ 8 → fill scored/joined
+  counties only. Unscored hover is `{Name} · no data`. Clicking an unfilled
+  county is a no-op. Never special-case a state. Never invent county averages
+  from city laws.
+- Empty county polygons (e.g. TX ~177k laws / 0 county slugs) are **coverage**,
+  not a paint bug — issue #25. ~3,231 atlas shapes vs ~376 scored counties.
+- Do **not** rewrite `laws.city` / `laws.county` in place to Census names
+  (breaks LOCUS-v1 re-seed and additive shards). Pretty-print / gazetteer only.
+- Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
+  start of the US tween) so outlines do not linger.
 
 ## Working conventions
 
@@ -66,6 +104,10 @@ avoid staleness; expand only when durable.
 - Prefer `pnpm` (no corepack).
 - Do not run the app/deploy unless the task asks for it.
 - Never stage `.env*`, credentials, or parquet cache (`.locus-cache/`).
+- Never point `prisma migrate diff --shadow-database-url` at the live `locus` DB
+  (it will wipe it). Do not run `pnpm prisma:migrate` (`migrate dev`) to “fix”
+  generated `search_vector` drift — that proposes `DROP DEFAULT` and breaks FTS.
+  Use `prisma:deploy` only unless you are authoring a new migration.
 
 ---
 
@@ -79,7 +121,18 @@ Canonical seeder: `data/seed.ts`. Scripts:
 | `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
 
 Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local progress),
-`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`.
+`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`,
+`--shards ''` (no COPY — recompute national/state/**county** aggregates only).
+
+Default `--limit 25000` is Alaska-only (shard 0). City/county QA needs Colorado:
+
+`pnpm seed --fresh --shards 1 --limit 25000`
+
+Existing DBs that already have `laws` rows skip docker seed. After the city-index
+migration they still need `pnpm seed --shards ''` (or `pnpm seed:prod --shards ''`)
+or the county choropleth stays empty. Do **not** run `pnpm prisma:migrate`
+(`migrate dev`) to “fix” generated `search_vector` drift — that would propose
+`DROP DEFAULT` and break FTS. Use `prisma:deploy` only.
 
 ### What the seeder does
 
@@ -87,7 +140,8 @@ Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local
 2. Bulk-loads via Postgres `COPY` in **5k-row batches**, **commit per batch**.
 3. Local mid-shard progress: `.locus-cache/seed-progress.json` (skip already-committed rows on retry).
 4. Whole-shard resume: `seed_checkpoints` (one row per finished shard `0000`…`0007`).
-5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty state code).
+5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty
+   state code + 1× `county` per `(state, county)` with a non-empty county slug).
 6. `search_vector` is GENERATED — never written by the seeder.
 
 ### Resilience (remote-aware)
@@ -153,8 +207,12 @@ Expect:
 
 - `laws` count **≈ 2,211,516** (exact corpus size)
 - `seed_checkpoints` **= 8**
-- `jurisdictions`: **1** `national` + **one `state` row per distinct non-empty state** (50 in current corpus)
+- `jurisdictions`: **1** `national` + **one `state` row per distinct non-empty state**
+  (50 in current corpus) + ~**376** `county` rows
 - `national.law_count` should match `count(*)` on `laws`
+- Existing DBs that already have `laws` but no county aggregates (skipped docker
+  seed after the city-index migration) need `pnpm seed --shards ''` — indexes
+  alone will not fill the choropleth
 
 Read-only check pattern (never echo connection strings):
 

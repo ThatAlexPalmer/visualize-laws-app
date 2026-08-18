@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import {
   AXES,
+  prettySlug,
   stateName,
   type Axis,
   type LawFilters,
@@ -25,6 +26,7 @@ function buildQuery(f: LawFilters): string {
   p.set("pageSize", String(f.pageSize));
   if (f.q) p.set("q", f.q);
   if (f.state) p.set("state", f.state);
+  if (f.city) p.set("city", f.city);
   if (f.county) p.set("county", f.county);
   if (f.function) p.set("function", f.function);
   if (f.topic) p.set("topic", f.topic);
@@ -376,7 +378,8 @@ export function ResultsPanel() {
                     <RowTitle>{law.header?.trim() || "Untitled provision"}</RowTitle>
                     <RowMeta>
                       {stateName(law.state)}
-                      {law.city ? ` · ${law.city}` : ""}
+                      {law.city ? ` · ${prettySlug(law.city)}` : ""}
+                      {law.county ? ` · ${prettySlug(law.county)}` : ""}
                       {law.function ? ` · ${law.function}` : ""}
                       {law.topic ? ` · ${law.topic}` : ""}
                     </RowMeta>

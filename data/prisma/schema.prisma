@@ -37,6 +37,7 @@ model Law {
 
   @@index([state])
   @@index([state, county])
+  @@index([state, city])
   @@index([function])
   @@index([topic])
   @@index([isSubstantive])
@@ -46,8 +47,9 @@ model Law {
   @@index([problemSalience])
   @@index([searchVector], type: Gin)
   // Phase 2 performance indexes (see migration 20260102000000_perf_search_indexes).
-  // Trigram GIN powering the `county ILIKE '%x%'` substring filter.
+  // Trigram GIN powering the `county ILIKE '%x%'` / `city ILIKE '%x%'` filters.
   @@index([county(ops: raw("gin_trgm_ops"))], type: Gin, map: "laws_county_trgm_idx")
+  @@index([city(ops: raw("gin_trgm_ops"))], type: Gin, map: "laws_city_trgm_idx")
   // Composite (state, axis) + (state, isSubstantive): filter by state then
   // sort/filter on a score without a separate sort over the per-state slice.
   @@index([state, opacity], map: "laws_state_opacity_idx")
@@ -59,7 +61,7 @@ model Law {
 }
 
 /// Pre-computed aggregates for fast map + dashboard rendering.
-/// `level` = 'national' | 'state' (county is a future phase).
+/// `level` = 'national' | 'state' | 'county'.
 model Jurisdiction {
   id                       Int     @id @default(autoincrement())
   level                    String

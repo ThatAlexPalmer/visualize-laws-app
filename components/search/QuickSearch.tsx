@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { useExplorer } from "@/lib/store";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import {
+  MIN_PLACE_ZOOM_CHARS,
+  resolveQueryFocus,
+  type PlaceFocus,
+} from "@/components/jurisdiction/placeLookup";
 
 const Positioner = styled.div`
   position: absolute;
@@ -117,11 +122,64 @@ const Clear = styled.button`
 export function QuickSearch() {
   const { state, dispatch } = useExplorer();
   const [query, setQuery] = useState(state.filters.q ?? "");
-  const debounced = useDebouncedCallback((value: string) => {
+  const selectedStateRef = useRef(state.selectedState);
+  selectedStateRef.current = state.selectedState;
+  const lookupAbort = useRef<AbortController | null>(null);
+
+  const applyFocus = (focus: PlaceFocus): void => {
+    if (focus.kind === "county") {
+      dispatch({
+        type: "selectPlace",
+        state: focus.state,
+        county: focus.county,
+      });
+      return;
+    }
+    if (focus.kind === "city") {
+      dispatch({
+        type: "selectPlace",
+        state: focus.state,
+        city: focus.city,
+      });
+      return;
+    }
+    dispatch({
+      type: "selectPlace",
+      state: focus.state,
+      atlasCountyName: focus.name,
+    });
+  };
+
+  const applyQuery = async (
+    value: string,
+    uniqueOnly: boolean,
+  ): Promise<void> => {
+    const trimmed = value.trim();
     dispatch({
       type: "patchFilters",
-      filters: { q: value.trim() || undefined },
+      filters: { q: trimmed || undefined },
     });
+    if (!trimmed) return;
+    if (uniqueOnly && trimmed.length < MIN_PLACE_ZOOM_CHARS) return;
+
+    lookupAbort.current?.abort();
+    const ac = new AbortController();
+    lookupAbort.current = ac;
+    try {
+      const focus = await resolveQueryFocus(trimmed, {
+        currentState: selectedStateRef.current,
+        uniqueOnly,
+        signal: ac.signal,
+      });
+      if (ac.signal.aborted || !focus) return;
+      applyFocus(focus);
+    } catch {
+      /* keep q-only search if lookup fails */
+    }
+  };
+
+  const debounced = useDebouncedCallback((value: string) => {
+    void applyQuery(value, true);
   }, 300);
 
   useEffect(() => {
@@ -133,6 +191,7 @@ export function QuickSearch() {
 
   const clear = () => {
     debounced.cancel();
+    lookupAbort.current?.abort();
     setQuery("");
     dispatch({ type: "patchFilters", filters: { q: undefined } });
   };
@@ -143,7 +202,8 @@ export function QuickSearch() {
         role="search"
         onSubmit={(event) => {
           event.preventDefault();
-          debounced.flush(query);
+          debounced.cancel();
+          void applyQuery(query, false);
         }}
       >
         <Label htmlFor="law-search">Search</Label>

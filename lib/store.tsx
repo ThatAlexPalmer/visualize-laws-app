@@ -11,6 +11,8 @@ export interface ExplorerState {
   axis: Axis;
   filters: LawFilters;
   selectedState: string | null;
+  /** Atlas-only county focus (no LOCUS slug). Fit/highlight only — not a results filter. */
+  atlasCountyName: string | null;
   selectedLaw: LawSummary | null;
   unhinged: boolean;
   filtersOpen: boolean;
@@ -31,6 +33,7 @@ const initialState: ExplorerState = {
   axis: "opacity",
   filters: initialFilters,
   selectedState: null,
+  atlasCountyName: null,
   selectedLaw: null,
   unhinged: false,
   filtersOpen: false,
@@ -43,6 +46,13 @@ export type ExplorerAction =
   | { type: "setPage"; page: number }
   | { type: "resetFilters" }
   | { type: "selectState"; state: string | null }
+  | {
+      type: "selectPlace";
+      state: string;
+      city?: string;
+      county?: string;
+      atlasCountyName?: string;
+    }
   | { type: "openLaw"; law: LawSummary }
   | { type: "closeLaw" }
   | { type: "toggleUnhinged" }
@@ -53,16 +63,30 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
   switch (action.type) {
     case "setAxis":
       return { ...state, axis: action.axis };
-    case "patchFilters":
+    case "patchFilters": {
       // Any filter change (other than page itself) resets to page 1.
+      // City and county are mutually exclusive: setting one clears the other.
+      const incoming = action.filters;
+      const filters = {
+        ...state.filters,
+        ...incoming,
+        page: incoming.page ?? 1,
+      };
+      if (incoming.city && incoming.county === undefined) {
+        filters.county = undefined;
+      }
+      if (incoming.county && incoming.city === undefined) {
+        filters.city = undefined;
+      }
       return {
         ...state,
-        filters: {
-          ...state.filters,
-          ...action.filters,
-          page: action.filters.page ?? 1,
-        },
+        atlasCountyName:
+          incoming.city !== undefined || incoming.county !== undefined
+            ? null
+            : state.atlasCountyName,
+        filters,
       };
+    }
     case "setPage":
       return { ...state, filters: { ...state.filters, page: action.page } };
     case "resetFilters":
@@ -70,14 +94,47 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
         ...state,
         filters: { ...initialFilters },
         selectedState: null,
+        atlasCountyName: null,
         filterResetVersion: state.filterResetVersion + 1,
       };
     case "selectState":
       return {
         ...state,
         selectedState: action.state,
-        filters: { ...state.filters, state: action.state ?? undefined, page: 1 },
+        atlasCountyName: null,
+        filters: {
+          ...state.filters,
+          state: action.state ?? undefined,
+          county: undefined,
+          city: undefined,
+          page: 1,
+        },
       };
+    case "selectPlace": {
+      const city = action.city;
+      const county = action.county;
+      const atlasCountyName = county ? null : (action.atlasCountyName ?? null);
+      if (
+        state.selectedState === action.state &&
+        state.filters.city === city &&
+        state.filters.county === county &&
+        state.atlasCountyName === atlasCountyName
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        selectedState: action.state,
+        atlasCountyName,
+        filters: {
+          ...state.filters,
+          state: action.state,
+          city,
+          county,
+          page: 1,
+        },
+      };
+    }
     case "openLaw":
       return { ...state, selectedLaw: action.law };
     case "closeLaw":

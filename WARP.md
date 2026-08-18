@@ -20,9 +20,12 @@ It is a standard single Next.js app at the repo root with a dedicated **data lay
   domain types, the seed pipeline, and the data-access query functions (`data/queries/*`).
 
 The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getLawById`,
-`getJurisdictions`, `getJurisdictionDetail`), which use the Prisma client from `data/db.ts`.
-`/api/laws` returns row *summaries* and `/api/laws/[id]` returns the full law on demand; the
-jurisdiction routes are cached (`force-static`, `revalidate = 3600`).
+`getJurisdictions`, `getJurisdictionDetail`, `resolvePlace`), which use the Prisma client
+from `data/db.ts`. `/api/laws` returns row *summaries* and `/api/laws/[id]` returns the
+full law on demand. Jurisdiction routes are `force-dynamic` (no hour-long cache) so
+aggregate rebuilds show up immediately. `GET /api/jurisdictions` without params is the
+US map payload (state + national only). `?city=` / `?county=` is a place lookup
+(`{ places }`) and does not grow that payload.
 
 ## One-command DevEx
 
@@ -55,11 +58,21 @@ against `localhost:5432`.
 
 ### Map rendering
 
-The map is a **pure HTML5 Canvas** choropleth (`components/map/`): `us-atlas` TopoJSON →
-`topojson-client` features → `d3-geo` (`geoAlbersUsa` + `geoPath` drawn to a 2D context).
-States are colored by the selected axis average using the national `bounds` for the domain;
-clicks hit-test via `Path2D` + `ctx.isPointInPath`. `us-atlas` state ids are FIPS codes mapped
-to lowercase USPS codes in `components/map/fips.ts` to match the dataset.
+The map is a **pure HTML5 Canvas** choropleth (`components/map/`). Geometry is baked once
+into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a camera
+`{k, tx, ty}` (`camera.ts`) and `setTransform`s; it does **not** `fitExtent` or
+`new Path2D` on zoom, resize, or incoming county scores.
+
+- Mesh: 50 state Path2Ds on mount; 3,231 county Path2Ds after a lazy
+  `us-atlas/counties-10m.json` import (kept out of the initial JS bundle).
+- Color: the 376 `level='county'` aggregate rows are paints only. Cities have no polygons.
+- US view fills states. Inside a state, only that state's county outlines are stroked;
+  scored/joined counties fill when **n ≥ 8**. If n &lt; 8, outlines + a line of copy
+  (`sparseCounties.ts`); no county legend. Unscored shapes stay unpainted (`{Name} · no data`).
+- Hit-test inverts the camera, then `isPointInPath` on the baked paths. Zoom-out drops
+  the county mesh immediately (states only).
+- FIPS → lowercase USPS is `components/map/fips.ts`. Place slugs join in `data/slugs.ts`.
+- QuickSearch may zoom to a state and highlight a county; it does not remesh.
 
 ## Development Commands
 
@@ -79,7 +92,9 @@ pnpm db:studio          # prisma studio --schema data/prisma/schema.prisma
 
 pnpm prisma:deploy      # apply migrations (data/prisma/schema.prisma)
 pnpm prisma:migrate     # create/apply a dev migration
-pnpm seed --limit 25000 # fast dev sample
+pnpm seed --limit 25000 # fast dev sample (Alaska-only; shard 0)
+pnpm seed --fresh --shards 1 --limit 25000  # Colorado QA (pagosa_springs, el_paso_county)
+pnpm seed --shards ''   # recompute national/state/county aggregates only
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
 pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 pnpm seed:prod …        # same flags against .env.prod (remote admin only)
@@ -94,9 +109,11 @@ app/                                # Next.js App Router: layout, page, about/, 
 components/                         # nav, sidebar, map, results, jurisdiction, modal
 lib/                                # store, theme, styled-components registry, types re-export
 data/
-  prisma/                           # schema.prisma + migrations (tsvector/GIN)
-  queries/                          # data-access layer: laws.ts, jurisdictions.ts
+  prisma/                           # schema.prisma + migrations (tsvector/GIN, city indexes)
+  queries/                          # laws.ts, jurisdictions.ts (incl. resolvePlace)
+  slugs.ts                          # place slug variants / atlas join keys
   db.ts, types.ts, seed.ts, db-count.ts
+components/map/                     # canvas map: geo.ts, camera.ts, sparseCounties.ts, MapPanel.tsx
 next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
@@ -105,13 +122,15 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 
 - **Law** — one LOCUS-v1 chunk (~2.2M rows): header, content, isSubstantive, function, topic,
   sourceJurisdictionType, state (lowercase 2-letter), city, county, and the four scores
-  (opacity, enforcementDiscretion, paternalism, problemSalience). Indexed on state, [state,
-  county], function, topic, isSubstantive, each score, plus a generated `search_vector tsvector`
-  column with a **GIN** index (defined in the migration SQL — Prisma cannot express GENERATED
-  columns; tracked as `Unsupported("tsvector")`).
-- **Jurisdiction** — pre-computed aggregates. `level` is `national` or `state`. The single
-  `national` row carries corpus-wide averages + per-axis `[min,max]` `bounds` (JSON) used for
-  slider domains and the map color scale. (`county` level is a future phase.)
+  (opacity, enforcementDiscretion, paternalism, problemSalience). City and county are
+  mutually exclusive in the corpus. Indexed on state, `[state, county]`, `[state, city]`,
+  function, topic, isSubstantive, each score, county/city trigram GIN, plus a generated
+  `search_vector tsvector` GIN (migration SQL — Prisma cannot express GENERATED columns;
+  tracked as `Unsupported("tsvector")`).
+- **Jurisdiction** — pre-computed aggregates. `level` is `national` | `state` | `county`.
+  The single `national` row carries corpus-wide averages + per-axis `[min,max]` `bounds`
+  (JSON) for sliders and the US color scale. County rows (~376 on a full seed) color
+  in-state polygons only; they are **not** the mesh. Unique key is `(level, state, county)`.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
 
 ## Seeding
@@ -133,8 +152,9 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - Local full corpus (Docker Postgres, shards cached): **~15–40 min**
 - Remote full fresh (`pnpm seed:prod --fresh` from laptop → managed Postgres): **~30–60+ min**,
   with occasional silent stalls; resume without `--fresh` is expected
-- Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 + one
-  row per state (~50)
+- Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 +
+  one `state` per distinct code (~50) + ~**376** `county` rows (full corpus). Existing DBs
+  that skipped docker seed after the city-index migration need `pnpm seed --shards ''`.
 
 Maintainer/agent detail (single-writer, background logs, verify SQL): **`agents/AGENTS.md`**.
 Do not expand public `README.md` with remote DB / internal agent ops.
@@ -148,9 +168,20 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
   and `data/queries/*` import the client/types via relative paths.
 - **Parameterized SQL only** in `data/queries/laws.ts` — user input is always bound; only
-  whitelisted column names / sort directions are interpolated.
+  whitelisted column names / sort directions are interpolated. Place search boosts slug
+  hits with `IS TRUE` (nullable city/county `OR` is NULL and sorts first under DESC).
 - **State codes are lowercase 2-letter** throughout (matches the dataset). Use `stateName()`
-  from `data/types.ts` for display.
+  from `data/types.ts` for display. Place slugs stay as stored (`pagosa_springs`); pretty-print
+  in the UI. Do **not** rewrite `laws.county` / `laws.city` to Census names (breaks LOCUS-v1
+  re-seed and additive shards).
+- **Empty county polygons are coverage, not a render bug** (issue #25). ~3,231 atlas
+  shapes vs ~376 scored counties. Never invent county averages from city laws. Never
+  special-case a state.
+- **Do not** point `prisma migrate diff --shadow-database-url` at the live `locus` DB
+  (it will wipe it). Do not run `pnpm prisma:migrate` to “fix” `search_vector` drift
+  (`DROP DEFAULT` would break FTS). Use `prisma:deploy` only unless you are authoring a
+  new migration.
+- **Map zoom** must not remesh: no `fitExtent` / `new Path2D` on select, data, or resize.
 - **Strict aesthetic**: only `#000` / `#fff` and white-opacity grays via theme tokens.
 - **Docker bind mount is path-bound**: the `app` service mounts the project dir at `/workspace`
   via an absolute host path captured at container-create time. Renaming/moving the folder breaks
@@ -186,4 +217,7 @@ Not built yet; good first issues to file:
    Strong fit for the first USDC-gated unlock.
 2. **USDC / agentic payments** — open-core monetization gating premium capability while the core
    remains source-available under BUSL terms.
-3. **County-level map** — extend the choropleth + aggregates to `level='county'`.
+
+County-level view is **shipped** (camera zoom, county aggregates, sparse copy). Remaining
+data-shape work (ugly slugs, gazetteer, LOCUS-v1.1) is coverage/docs — see issue #25.
+Do not treat empty county outlines as a fill bug.

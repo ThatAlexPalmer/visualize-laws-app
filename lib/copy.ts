@@ -36,6 +36,7 @@ export const UNHINGED_UI: Record<string, string> = {
     "Pick a state. Any state. They all did something.",
   "Average scores": "Mean vibes",
   "Notable laws": "Hall of fame (or shame)",
+  "Cities": "Towns that did this",
   "No laws match these filters.": "None of your business, apparently.",
   "Loading\u2026": "summoning chaos\u2026",
   "About": "WHAT IS THIS",
