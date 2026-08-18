@@ -1,5 +1,5 @@
 // LOCUS Explorer — Prisma schema
-// Postgres (local via docker-compose; Vercel Postgres/Neon in production).
+// Postgres (local via docker-compose; Prisma Postgres in production).
 generator client {
   provider      = "prisma-client-js"
   // Native engine for local dev + debian-openssl-3.0.x for the Linux container

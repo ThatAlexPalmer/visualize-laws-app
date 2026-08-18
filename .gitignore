@@ -41,3 +41,6 @@ yarn-error.log*
 
 # local planning docs (not committed)
 /plans/
+
+# Vercel CLI link (project/org ids; do not commit)
+.vercel
