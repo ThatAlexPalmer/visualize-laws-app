@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import styled from "styled-components";
 import { DesktopFilters, Sidebar } from "@/components/sidebar/Sidebar";
 import { ConnectedMapLegend } from "@/components/map/Legend";
@@ -86,6 +87,7 @@ const MapChrome = styled.div`
 `;
 
 export default function Page() {
+  const [countiesBaked, setCountiesBaked] = useState(false);
   return (
     <JurisdictionsProvider>
       <Shell>
@@ -95,9 +97,9 @@ export default function Page() {
           <Main>
             <MapChrome>
               <QuickSearch />
-              <MapPanel />
+              <MapPanel onCountiesBaked={setCountiesBaked} />
             </MapChrome>
-            <ConnectedMapLegend />
+            <ConnectedMapLegend countiesBaked={countiesBaked} />
             <JurisdictionPanel />
             <Lower>
               <ResultsPanel />

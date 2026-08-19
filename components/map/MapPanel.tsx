@@ -42,7 +42,11 @@ import {
   rampColorForAxis,
   type Domain,
 } from "./color";
-import { COUNTY_FILL_MIN, formatSparseCountyCopy } from "./sparseCounties";
+import {
+  COUNTY_FILL_MIN,
+  countyScaleReady,
+  formatSparseCountyCopy,
+} from "./sparseCounties";
 
 interface StatePathEntry {
   usps: string | null;
@@ -277,7 +281,11 @@ function beginWorldFrame(
   ctx.setTransform(dpr * cam.k, 0, 0, dpr * cam.k, dpr * cam.tx, dpr * cam.ty);
 }
 
-export function MapPanel() {
+export function MapPanel({
+  onCountiesBaked,
+}: {
+  onCountiesBaked?: (baked: boolean) => void;
+}) {
   const { state, dispatch } = useExplorer();
   const { data, status, retry, stateDetail } = useJurisdictions();
   const axis = state.axis;
@@ -316,6 +324,10 @@ export function MapPanel() {
   const [hovered, setHovered] = useState<Hovered | null>(null);
   const [countiesBaked, setCountiesBaked] = useState(false);
 
+  useEffect(() => {
+    onCountiesBaked?.(countiesBaked);
+  }, [countiesBaked, onCountiesBaked]);
+
   const controls = useAnimationControls();
   const firstAxisRun = useRef(true);
   // All map, rail, and filter consumers share the provider's response.
@@ -343,7 +355,11 @@ export function MapPanel() {
     return joinCountySlugs(asFeatures, countyRows);
   }, [selectedState, countiesBaked, countyRows]);
 
-  const countyViewReady = Boolean(selectedState && countiesBaked && stateDetail);
+  const countyViewReady = countyScaleReady({
+    selectedState,
+    stateDetail,
+    countiesBaked,
+  });
 
   const scoredCounties = useMemo(
     () => countyRows.filter((r) => r.county),

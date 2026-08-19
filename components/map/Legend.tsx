@@ -10,7 +10,7 @@ import type { Axis, JurisdictionAgg } from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { computeDomain, rampColorForAxis, type Domain } from "./color";
-import { COUNTY_FILL_MIN } from "./sparseCounties";
+import { COUNTY_FILL_MIN, countyScaleReady } from "./sparseCounties";
 
 interface Props {
   axis: Axis;
@@ -125,11 +125,12 @@ export function MapLegend({ axis, axisLabel, blurb, domain }: Props) {
   );
 }
 
-/**
- * Same visibility + domain as the choropleth: hidden only for sparse county
- * views (n < K). Lives in document flow under the map, never over the canvas.
- */
-export function ConnectedMapLegend() {
+/** Hidden when in-state scored n < K. */
+export function ConnectedMapLegend({
+  countiesBaked,
+}: {
+  countiesBaked: boolean;
+}) {
   const { state } = useExplorer();
   const { data, stateDetail } = useJurisdictions();
   const axis = state.axis;
@@ -143,7 +144,11 @@ export function ConnectedMapLegend() {
   );
   const sparseCounties =
     Boolean(selectedState && stateDetail) && scoredCountyN < COUNTY_FILL_MIN;
-  const countyViewReady = Boolean(selectedState && stateDetail);
+  const countyViewReady = countyScaleReady({
+    selectedState,
+    stateDetail,
+    countiesBaked,
+  });
 
   const domain = useMemo(
     () =>
@@ -154,8 +159,7 @@ export function ConnectedMapLegend() {
     [axis, countyViewReady, sparseCounties, countyRows, rows],
   );
 
-  const show = !selectedState || scoredCountyN >= COUNTY_FILL_MIN;
-  if (!show) return null;
+  if (sparseCounties) return null;
 
   const axisCopy = resolveAxisCopy(axis, state.unhinged);
   return (
