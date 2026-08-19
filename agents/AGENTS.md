@@ -118,6 +118,7 @@ avoid staleness; expand only when durable.
 No Cursor Bugbot / Grok GitHub review app (pay-per-use). Reviews are
 `/review --pr N` in a Grok session.
 
+- Reviews are short: bugs and the ask only. No play-by-play. Do not post a GitHub comment as the repo owner unless asked — keep the review in-session unless asked to post.
 - PRs by the repo owner and `dependabot[bot]` only, unless asked.
 - Load this file, `WARP.md`, and issue #25 before judging map / data / migrate diffs.
 - Post a **PENDING** GitHub review. Never merge.
