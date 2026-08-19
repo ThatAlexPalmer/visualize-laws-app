@@ -15,7 +15,6 @@ import {
   type Axis,
   type JurisdictionAgg,
 } from "@/lib/types";
-import { resolveAxisCopy } from "@/lib/copy";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { stateFeatures, usProjection } from "./geo";
@@ -43,7 +42,6 @@ import {
   rampColorForAxis,
   type Domain,
 } from "./color";
-import { MapLegend } from "./Legend";
 import { COUNTY_FILL_MIN, formatSparseCountyCopy } from "./sparseCounties";
 
 interface StatePathEntry {
@@ -807,8 +805,6 @@ export function MapPanel() {
     [pick, dispatch, selectedState],
   );
 
-  const { unhinged } = state;
-  const axisCopy = resolveAxisCopy(axis, unhinged);
   const hoveredCountyLabel = hovered?.kind === "county"
     ? (hovered.countyName ?? prettySlug(hovered.countySlug) ?? stateName(hovered.usps))
     : null;
@@ -832,7 +828,6 @@ export function MapPanel() {
           : selectedState
             ? stateName(selectedState)
             : null;
-  const showCountyLegend = !selectedState || scoredCountyN >= COUNTY_FILL_MIN;
 
   return (
     <Wrap ref={wrapRef}>
@@ -872,14 +867,6 @@ export function MapPanel() {
         >
           map unavailable · retry
         </RetryHint>
-      )}
-      {showCountyLegend && (
-        <MapLegend
-          axis={axis}
-          axisLabel={axisCopy.label}
-          blurb={axisCopy.blurb}
-          domain={domain}
-        />
       )}
       <TitleStack>
         <StateLabel>{mapLabel ?? ""}</StateLabel>

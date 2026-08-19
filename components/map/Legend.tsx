@@ -1,10 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 
-import type { Axis } from "@/lib/types";
-import { rampColorForAxis, type Domain } from "./color";
+import { resolveAxisCopy } from "@/lib/copy";
+import { useExplorer } from "@/lib/store";
+import type { Axis, JurisdictionAgg } from "@/lib/types";
+import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
+
+import { computeDomain, rampColorForAxis, type Domain } from "./color";
+import { COUNTY_FILL_MIN } from "./sparseCounties";
 
 interface Props {
   axis: Axis;
@@ -13,11 +19,23 @@ interface Props {
   domain: Domain | null;
 }
 
+const EMPTY_ROWS: JurisdictionAgg[] = [];
+
+/** Full-width slot under the map so the card never paints over the canvas. */
+const Slot = styled.div`
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-start;
+  padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
+  border-top: 1px solid ${({ theme }) => theme.colors.g08};
+  background: ${({ theme }) => theme.colors.bg};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    padding: ${({ theme }) => theme.space(3)};
+  }
+`;
+
 const Box = styled(motion.div)`
-  position: absolute;
-  left: ${({ theme }) => theme.space(4)};
-  bottom: ${({ theme }) => theme.space(4)};
-  z-index: 3;
   width: 260px;
   display: flex;
   flex-direction: column;
@@ -26,13 +44,12 @@ const Box = styled(motion.div)`
   background: ${({ theme }) => theme.colors.g04};
   border: 1px solid ${({ theme }) => theme.colors.g12};
   border-radius: 0;
-  backdrop-filter: blur(6px);
-  pointer-events: none;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    width: 100%;
+  }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    left: ${({ theme }) => theme.space(3)};
-    bottom: ${({ theme }) => theme.space(3)};
-    width: calc(100% - ${({ theme }) => theme.space(6)});
     padding: ${({ theme }) => theme.space(2.5)};
   }
 `;
@@ -86,22 +103,67 @@ export function MapLegend({ axis, axisLabel, blurb, domain }: Props) {
     background: `linear-gradient(90deg, ${rampColorForAxis(0, axis)} 0%, ${rampColorForAxis(1, axis)} 100%)`,
   };
   return (
-    <Box
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <Label>{axisLabel}</Label>
-      <Blurb>{blurb}</Blurb>
-      <Bar style={barStyle} />
-      <Scale>
-        <span>{domain ? fmt(domain.min) : "—"}</span>
-        <span>{domain ? fmt(domain.max) : "—"}</span>
-      </Scale>
-      <Direction>
-        <span>less</span>
-        <span>more</span>
-      </Direction>
-    </Box>
+    <Slot>
+      <Box
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Label>{axisLabel}</Label>
+        <Blurb>{blurb}</Blurb>
+        <Bar style={barStyle} />
+        <Scale>
+          <span>{domain ? fmt(domain.min) : "—"}</span>
+          <span>{domain ? fmt(domain.max) : "—"}</span>
+        </Scale>
+        <Direction>
+          <span>less</span>
+          <span>more</span>
+        </Direction>
+      </Box>
+    </Slot>
+  );
+}
+
+/**
+ * Same visibility + domain as the choropleth: hidden only for sparse county
+ * views (n < K). Lives in document flow under the map, never over the canvas.
+ */
+export function ConnectedMapLegend() {
+  const { state } = useExplorer();
+  const { data, stateDetail } = useJurisdictions();
+  const axis = state.axis;
+  const selectedState = state.selectedState;
+  const rows = data?.rows ?? EMPTY_ROWS;
+  const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
+
+  const scoredCountyN = useMemo(
+    () => countyRows.filter((r) => r.county).length,
+    [countyRows],
+  );
+  const sparseCounties =
+    Boolean(selectedState && stateDetail) && scoredCountyN < COUNTY_FILL_MIN;
+  const countyViewReady = Boolean(selectedState && stateDetail);
+
+  const domain = useMemo(
+    () =>
+      computeDomain(
+        axis,
+        countyViewReady && !sparseCounties ? countyRows : rows,
+      ),
+    [axis, countyViewReady, sparseCounties, countyRows, rows],
+  );
+
+  const show = !selectedState || scoredCountyN >= COUNTY_FILL_MIN;
+  if (!show) return null;
+
+  const axisCopy = resolveAxisCopy(axis, state.unhinged);
+  return (
+    <MapLegend
+      axis={axis}
+      axisLabel={axisCopy.label}
+      blurb={axisCopy.blurb}
+      domain={domain}
+    />
   );
 }

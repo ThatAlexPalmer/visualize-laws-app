@@ -2,6 +2,7 @@
 
 import styled from "styled-components";
 import { DesktopFilters, Sidebar } from "@/components/sidebar/Sidebar";
+import { ConnectedMapLegend } from "@/components/map/Legend";
 import { MapPanel } from "@/components/map/MapPanel";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
 import {
@@ -79,7 +80,7 @@ const Lower = styled.div`
   }
 `;
 
-const MapRegion = styled.div`
+const MapChrome = styled.div`
   position: relative;
   flex-shrink: 0;
 `;
@@ -92,10 +93,11 @@ export default function Page() {
           <AggregateRail />
           <Sidebar />
           <Main>
-            <MapRegion>
+            <MapChrome>
               <QuickSearch />
               <MapPanel />
-            </MapRegion>
+            </MapChrome>
+            <ConnectedMapLegend />
             <JurisdictionPanel />
             <Lower>
               <ResultsPanel />
