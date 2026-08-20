@@ -15,7 +15,6 @@ import {
   type Axis,
   type JurisdictionAgg,
 } from "@/lib/types";
-import { resolveAxisCopy } from "@/lib/copy";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { stateFeatures, usProjection } from "./geo";
@@ -43,8 +42,11 @@ import {
   rampColorForAxis,
   type Domain,
 } from "./color";
-import { MapLegend } from "./Legend";
-import { COUNTY_FILL_MIN, formatSparseCountyCopy } from "./sparseCounties";
+import {
+  COUNTY_FILL_MIN,
+  countyScaleReady,
+  formatSparseCountyCopy,
+} from "./sparseCounties";
 
 interface StatePathEntry {
   usps: string | null;
@@ -279,7 +281,11 @@ function beginWorldFrame(
   ctx.setTransform(dpr * cam.k, 0, 0, dpr * cam.k, dpr * cam.tx, dpr * cam.ty);
 }
 
-export function MapPanel() {
+export function MapPanel({
+  onCountiesBaked,
+}: {
+  onCountiesBaked?: (baked: boolean) => void;
+}) {
   const { state, dispatch } = useExplorer();
   const { data, status, retry, stateDetail, stateDetailStatus } =
     useJurisdictions();
@@ -319,6 +325,10 @@ export function MapPanel() {
   const [hovered, setHovered] = useState<Hovered | null>(null);
   const [countiesBaked, setCountiesBaked] = useState(false);
 
+  useEffect(() => {
+    onCountiesBaked?.(countiesBaked);
+  }, [countiesBaked, onCountiesBaked]);
+
   const controls = useAnimationControls();
   const firstAxisRun = useRef(true);
   // All map, rail, and filter consumers share the provider's response.
@@ -346,7 +356,11 @@ export function MapPanel() {
     return joinCountySlugs(asFeatures, countyRows);
   }, [selectedState, countiesBaked, countyRows]);
 
-  const countyViewReady = Boolean(selectedState && countiesBaked && stateDetail);
+  const countyViewReady = countyScaleReady({
+    selectedState,
+    stateDetail,
+    countiesBaked,
+  });
 
   const scoredCounties = useMemo(
     () => countyRows.filter((r) => r.county),
@@ -888,8 +902,6 @@ export function MapPanel() {
     [pick, dispatch, selectedState],
   );
 
-  const { unhinged } = state;
-  const axisCopy = resolveAxisCopy(axis, unhinged);
   const hoveredCountyLabel = hovered?.kind === "county"
     ? (hovered.countyName ?? prettySlug(hovered.countySlug) ?? stateName(hovered.usps))
     : null;
@@ -913,7 +925,6 @@ export function MapPanel() {
           : selectedState
             ? stateName(selectedState)
             : null;
-  const showCountyLegend = !selectedState || scoredCountyN >= COUNTY_FILL_MIN;
 
   return (
     <Wrap ref={wrapRef}>
@@ -953,14 +964,6 @@ export function MapPanel() {
         >
           map unavailable · retry
         </RetryHint>
-      )}
-      {showCountyLegend && (
-        <MapLegend
-          axis={axis}
-          axisLabel={axisCopy.label}
-          blurb={axisCopy.blurb}
-          domain={domain}
-        />
       )}
       <TitleStack>
         <StateLabel>{mapLabel ?? ""}</StateLabel>
