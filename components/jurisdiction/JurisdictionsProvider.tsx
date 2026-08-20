@@ -12,11 +12,12 @@ import {
 } from "react";
 import { useExplorer } from "@/lib/store";
 import { matchCountySlug } from "@/lib/types";
-import type {
-  CityAgg,
-  JurisdictionAgg,
-  JurisdictionDetailResponse,
-  JurisdictionsResponse,
+import {
+  isCompleteNational,
+  type CityAgg,
+  type JurisdictionAgg,
+  type JurisdictionDetailResponse,
+  type JurisdictionsResponse,
 } from "@/lib/types";
 
 type JurisdictionsStatus = "loading" | "ready" | "error";
@@ -97,14 +98,18 @@ function normalizeDetail(body: JurisdictionDetailResponse): JurisdictionDetailRe
   };
 }
 
-async function fetchJurisdictions(signal: AbortSignal): Promise<JurisdictionsResponse> {
+async function fetchJurisdictions(
+  signal: AbortSignal,
+  reload = false,
+): Promise<JurisdictionsResponse> {
   let lastError: unknown;
+  let lastIncomplete: JurisdictionsResponse | null = null;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch("/api/jurisdictions", {
-        cache: "no-store",
         signal,
+        ...(reload || attempt > 0 ? { cache: "reload" } : {}),
       });
       if (!response.ok) {
         throw new Error(`Jurisdiction request failed with ${response.status}`);
@@ -113,6 +118,12 @@ async function fetchJurisdictions(signal: AbortSignal): Promise<JurisdictionsRes
       const body: unknown = await response.json();
       if (!isJurisdictionsResponse(body)) {
         throw new Error("Jurisdiction response has an invalid shape");
+      }
+      // Incomplete seed snapshots are not a cacheable success. Retry once
+      // (bypass HTTP cache) so `national: null` cannot stick as "ready".
+      if (!isCompleteNational(body)) {
+        lastIncomplete = body;
+        throw new Error("Jurisdiction aggregates are incomplete");
       }
       return body;
     } catch (error) {
@@ -124,6 +135,7 @@ async function fetchJurisdictions(signal: AbortSignal): Promise<JurisdictionsRes
     }
   }
 
+  if (lastIncomplete) return lastIncomplete;
   throw lastError;
 }
 
@@ -184,7 +196,7 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     setStatus("loading");
 
-    fetchJurisdictions(controller.signal)
+    fetchJurisdictions(controller.signal, requestVersion > 0)
       .then((response) => {
         if (controller.signal.aborted) return;
         setData(response);
