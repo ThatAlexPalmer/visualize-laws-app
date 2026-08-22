@@ -6,7 +6,8 @@ import { motion } from "framer-motion";
 
 import { resolveAxisCopy } from "@/lib/copy";
 import { useExplorer } from "@/lib/store";
-import type { Axis, JurisdictionAgg } from "@/lib/types";
+import type { Axis, CountyFill, JurisdictionAgg } from "@/lib/types";
+import { nativeCountyToFill } from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
 import { computeDomain, rampColorForAxis, type Domain } from "./color";
@@ -137,10 +138,15 @@ export function ConnectedMapLegend({
   const selectedState = state.selectedState;
   const rows = data?.rows ?? EMPTY_ROWS;
   const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
+  const fillRows = useMemo<CountyFill[]>(() => {
+    const stored = stateDetail?.countyFills;
+    if (stored && stored.length > 0) return stored;
+    return countyRows.map(nativeCountyToFill);
+  }, [stateDetail?.countyFills, countyRows]);
 
   const scoredCountyN = useMemo(
-    () => countyRows.filter((r) => r.county).length,
-    [countyRows],
+    () => fillRows.filter((r) => r.sourcePlace).length,
+    [fillRows],
   );
   const sparseCounties =
     Boolean(selectedState && stateDetail) && scoredCountyN < COUNTY_FILL_MIN;
@@ -154,9 +160,9 @@ export function ConnectedMapLegend({
     () =>
       computeDomain(
         axis,
-        countyViewReady && !sparseCounties ? countyRows : rows,
+        countyViewReady && !sparseCounties ? fillRows : rows,
       ),
-    [axis, countyViewReady, sparseCounties, countyRows, rows],
+    [axis, countyViewReady, sparseCounties, fillRows, rows],
   );
 
   if (sparseCounties) return null;

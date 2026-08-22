@@ -3,10 +3,13 @@ import { matchCountySlug, prettySlug, slugVariants } from "../slugs";
 import type {
   AxisBounds,
   CityAgg,
+  CountyFill,
+  JurisdictionAgg,
   JurisdictionDetailResponse,
   JurisdictionsResponse,
   PlaceLookupResponse,
 } from "../types";
+import { nativeCountyToFill } from "../types";
 
 // The columns that make up a JurisdictionAgg (excludes id + bounds).
 const AGG_SELECT = {
@@ -161,7 +164,7 @@ export async function getJurisdictionDetail(
       ? matchCountySlug(counties, countyRaw)
       : null;
 
-    const [jurisdiction, topLaws, topCities] = await Promise.all([
+    const [jurisdiction, topLaws, topCities, countyFills] = await Promise.all([
       countySlug
         ? Promise.resolve(
             counties.find((c) => c.county === countySlug) ?? null,
@@ -184,16 +187,55 @@ export async function getJurisdictionDetail(
       // Always state-level: LOCUS rows never set city and county together, so a
       // county-scoped city query would be empty and hide the city chips.
       queryTopCities(code),
+      queryCountyFills(code, counties),
     ]);
 
     return {
       jurisdiction: jurisdiction ?? null,
       topLaws,
       counties,
+      countyFills,
       topCities,
     };
   } catch (err) {
     console.error(`getJurisdictionDetail(${code}) failed:`, err);
-    return { jurisdiction: null, topLaws: [], counties: [], topCities: [] };
+    return {
+      jurisdiction: null,
+      topLaws: [],
+      counties: [],
+      countyFills: [],
+      topCities: [],
+    };
   }
+}
+
+async function queryCountyFills(
+  state: string,
+  nativeCounties: JurisdictionAgg[],
+): Promise<CountyFill[]> {
+  const stored = await prisma.countyFill.findMany({
+    where: { state },
+    select: {
+      state: true,
+      fips: true,
+      source: true,
+      sourcePlace: true,
+      county: true,
+      name: true,
+      lawCount: true,
+      substantiveCount: true,
+      avgOpacity: true,
+      avgEnforcementDiscretion: true,
+      avgPaternalism: true,
+      avgProblemSalience: true,
+    },
+    orderBy: { name: "asc" },
+  });
+  if (stored.length === 0) {
+    return nativeCounties.map(nativeCountyToFill);
+  }
+  return stored.filter(
+    (row): row is CountyFill =>
+      row.source === "county" || row.source === "city",
+  );
 }

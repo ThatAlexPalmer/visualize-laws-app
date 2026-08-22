@@ -4,13 +4,14 @@
  * Streams the 8 LOCUS-v1 parquet shards from Hugging Face, bulk-loads them into
  * the `laws` table via Postgres COPY, tracks completed shards in
  * `seed_checkpoints` for resumability, then recomputes the `jurisdictions`
- * aggregates (national + per-state + per-county) with per-axis bounds.
+ * aggregates (national + per-state + per-county) and city_county / county_fills.
  *
  * Usage:
  *   pnpm seed                  # full ~2.2M-row ingest (all 8 shards)
  *   pnpm seed --limit 5000     # fast dev sample (stop after N rows)
  *   pnpm seed --shards 0,1     # only the given shards
- *   pnpm seed --fresh          # TRUNCATE laws + jurisdictions + checkpoints first
+ *   pnpm seed --fresh          # TRUNCATE laws + jurisdictions + checkpoints + fills
+ *   pnpm build:city-county     # rebuild city fills only (no parquet COPY)
  *
  * Design notes:
  *   - `laws.search_vector` is a GENERATED column; it is never written here.
@@ -41,6 +42,7 @@ import { ParquetReader } from "@dsnp/parquetjs";
 import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
+import { buildCityCountyTables } from "./build-city-county";
 import { STATE_NAMES } from "./types";
 
 // --- Configuration ---------------------------------------------------------
@@ -658,11 +660,13 @@ async function main(): Promise<void> {
   const startedAt = Date.now();
   try {
     if (opts.fresh) {
-      console.log("--fresh: truncating laws, jurisdictions, seed_checkpoints");
+      console.log(
+        "--fresh: truncating laws, jurisdictions, seed_checkpoints, city_county, county_fills",
+      );
       // Truncate can be slow on a large partial table — disable statement timeout.
       await client.query(`SET statement_timeout = ${AGG_STATEMENT_TIMEOUT_MS}`);
       await client.query(
-        "TRUNCATE TABLE laws, jurisdictions, seed_checkpoints RESTART IDENTITY",
+        "TRUNCATE TABLE laws, jurisdictions, seed_checkpoints, city_county, county_fills RESTART IDENTITY",
       );
       await client.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
       clearProgress();
@@ -739,6 +743,25 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
 
     console.log("Recomputing aggregates…");
     await computeAggregates(client);
+
+    console.log("Building city_county + county_fills…");
+    try {
+      const fillStats = await buildCityCountyTables(client);
+      console.log(
+        `  city_county: ${fmt(fillStats.cities)} cities → ` +
+          `${fmt(fillStats.oneCounty)} one-county · ${fmt(fillStats.multi)} multi · ` +
+          `${fmt(fillStats.unmatched)} unmatched`,
+      );
+      console.log(
+        `  county_fills: ${fmt(fillStats.nativeFills)} native + ` +
+          `${fmt(fillStats.cityFills)} city (${fmt(fillStats.uniqueFips)} FIPS)`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `  city/county build skipped (${msg}). Run \`pnpm build:city-county\` after migrate.`,
+      );
+    }
 
     const lawsCount = await client.query<{ n: number }>(
       "SELECT count(*)::int AS n FROM laws",

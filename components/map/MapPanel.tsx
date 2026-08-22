@@ -8,11 +8,14 @@ import { geoPath } from "d3-geo";
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
+  cityStandInLabel,
   matchCountySlug,
+  nativeCountyToFill,
   normalizePlaceKey,
   prettySlug,
   stateName,
   type Axis,
+  type CountyFill,
   type JurisdictionAgg,
 } from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
@@ -20,7 +23,7 @@ import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvide
 import { stateFeatures, usProjection } from "./geo";
 import { fipsToUsps } from "./fips";
 import {
-  joinCountySlugs,
+  joinCountyFills,
   loadCountyFeatures,
   type CountyFeatureEntry,
 } from "./counties";
@@ -68,6 +71,8 @@ interface Hovered {
   usps: string | null;
   countySlug?: string | null;
   countyName?: string;
+  fillSource?: CountyFill["source"] | null;
+  sourcePlace?: string | null;
 }
 
 function sameHover(a: Hovered | null, b: Hovered | null): boolean {
@@ -77,7 +82,9 @@ function sameHover(a: Hovered | null, b: Hovered | null): boolean {
     a.kind === b.kind &&
     a.usps === b.usps &&
     a.countySlug === b.countySlug &&
-    a.countyName === b.countyName
+    a.countyName === b.countyName &&
+    a.fillSource === b.fillSource &&
+    a.sourcePlace === b.sourcePlace
   );
 }
 
@@ -296,6 +303,11 @@ export function MapPanel({
   const selectedCity = state.filters.city ?? null;
   const rows = data?.rows ?? EMPTY_ROWS;
   const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
+  const fillRows = useMemo<CountyFill[]>(() => {
+    const stored = stateDetail?.countyFills;
+    if (stored && stored.length > 0) return stored;
+    return countyRows.map(nativeCountyToFill);
+  }, [stateDetail?.countyFills, countyRows]);
   const selectedCounty = selectedCountyRaw
     ? (matchCountySlug(countyRows, selectedCountyRaw) ?? selectedCountyRaw)
     : null;
@@ -338,14 +350,14 @@ export function MapPanel({
     return m;
   }, [rows]);
 
-  const aggByCountySlug = useMemo(() => {
-    const m = new Map<string, JurisdictionAgg>();
-    for (const r of countyRows) if (r.county) m.set(r.county.toLowerCase(), r);
+  const fillByKey = useMemo(() => {
+    const m = new Map<string, CountyFill>();
+    for (const r of fillRows) m.set(`${r.source}:${r.sourcePlace}`, r);
     return m;
-  }, [countyRows]);
+  }, [fillRows]);
 
-  const fipsToSlug = useMemo(() => {
-    if (!selectedState || !countiesBaked) return new Map<string, string>();
+  const paintByFips = useMemo(() => {
+    if (!selectedState || !countiesBaked) return new Map();
     const inState = countyPathsRef.current.filter((c) => c.usps === selectedState);
     const asFeatures: CountyFeatureEntry[] = inState.map((c) => ({
       fips: c.fips,
@@ -353,8 +365,8 @@ export function MapPanel({
       name: c.name,
       geo: c.path as unknown as CountyFeatureEntry["geo"],
     }));
-    return joinCountySlugs(asFeatures, countyRows);
-  }, [selectedState, countiesBaked, countyRows]);
+    return joinCountyFills(asFeatures, fillRows);
+  }, [selectedState, countiesBaked, fillRows]);
 
   const countyViewReady = countyScaleReady({
     selectedState,
@@ -363,8 +375,8 @@ export function MapPanel({
   });
 
   const scoredCounties = useMemo(
-    () => countyRows.filter((r) => r.county),
-    [countyRows],
+    () => fillRows.filter((r) => r.sourcePlace),
+    [fillRows],
   );
   const scoredCountyN = scoredCounties.length;
   // US aggregates still in flight — do not present the faint mesh as finished.
@@ -387,7 +399,11 @@ export function MapPanel({
   const sparseCopy = useMemo(() => {
     if (!sparseCounties || !selectedState) return null;
     const names = scoredCounties
-      .map((r) => r.name)
+      .map((r) =>
+        r.source === "city"
+          ? cityStandInLabel(r.name, r.sourcePlace)
+          : r.name,
+      )
       .sort((a, b) => a.localeCompare(b));
     return formatSparseCountyCopy(stateName(selectedState), names);
   }, [sparseCounties, selectedState, scoredCounties]);
@@ -398,9 +414,9 @@ export function MapPanel({
     () =>
       computeDomain(
         axis,
-        countyViewReady && !sparseCounties ? countyRows : rows,
+        countyViewReady && !sparseCounties ? fillRows : rows,
       ),
-    [axis, countyViewReady, sparseCounties, countyRows, rows],
+      [axis, countyViewReady, sparseCounties, fillRows, rows],
   );
 
   const bakeStatePaths = useCallback((): void => {
@@ -514,8 +530,10 @@ export function MapPanel({
       const inState = countyPathsRef.current.filter((c) => c.usps === focus);
       if (!sparseCounties) {
         for (const e of inState) {
-          const slug = fipsToSlug.get(e.fips);
-          const agg = slug ? aggByCountySlug.get(slug) : undefined;
+          const paint = paintByFips.get(e.fips);
+          const agg = paint
+            ? fillByKey.get(`${paint.source}:${paint.sourcePlace}`)
+            : undefined;
           if (!agg || !domain) continue;
           ctx.fillStyle = rampColorForAxis(
             normalize(axisValue(agg, axis), domain),
@@ -531,8 +549,8 @@ export function MapPanel({
   }, [
     size,
     aggByUsps,
-    aggByCountySlug,
-    fipsToSlug,
+    fillByKey,
+    paintByFips,
     domain,
     axis,
     sparseCounties,
@@ -560,19 +578,31 @@ export function MapPanel({
 
     const hoverIsSelection =
       hovered?.kind === "county"
-        ? Boolean(hovered.countySlug && hovered.countySlug === selectedCounty)
+        ? Boolean(
+            (hovered.fillSource === "city" &&
+              hovered.sourcePlace &&
+              hovered.sourcePlace === selectedCity) ||
+              (hovered.countySlug && hovered.countySlug === selectedCounty),
+          )
         : Boolean(
             hovered?.usps && hovered.usps === selectedState && !selectedCounty,
           );
     if (hovered && !hoverIsSelection) {
       if (hovered.kind === "county" && focus) {
-        const hoverEntry = countyPathsRef.current.find(
-          (e) =>
-            e.usps === focus &&
-            (hovered.countySlug
-              ? fipsToSlug.get(e.fips) === hovered.countySlug
-              : e.name === hovered.countyName),
-        );
+        const hoverEntry = countyPathsRef.current.find((e) => {
+          if (e.usps !== focus) return false;
+          const paint = paintByFips.get(e.fips);
+          if (hovered.fillSource === "city" && hovered.sourcePlace) {
+            return (
+              paint?.source === "city" &&
+              paint.sourcePlace === hovered.sourcePlace
+            );
+          }
+          if (hovered.countySlug) {
+            return paint?.countySlug === hovered.countySlug;
+          }
+          return e.name === hovered.countyName;
+        });
         if (hoverEntry) {
           ctx.lineWidth = 1.5 / cam.k;
           ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
@@ -590,11 +620,18 @@ export function MapPanel({
       }
     }
 
-    if ((selectedCounty || atlasCountyName) && focus) {
+    if ((selectedCounty || selectedCity || atlasCountyName) && focus) {
       const se = countyPathsRef.current.find((e) => {
         if (e.usps !== focus) return false;
-        const slug = fipsToSlug.get(e.fips);
-        if (selectedCounty && slug === selectedCounty) return true;
+        const paint = paintByFips.get(e.fips);
+        if (selectedCounty && paint?.countySlug === selectedCounty) return true;
+        if (
+          selectedCity &&
+          paint?.source === "city" &&
+          paint.sourcePlace === selectedCity
+        ) {
+          return true;
+        }
         if (
           atlasCountyName &&
           normalizePlaceKey(e.name) === normalizePlaceKey(atlasCountyName)
@@ -621,9 +658,10 @@ export function MapPanel({
     hovered,
     selectedState,
     selectedCounty,
+    selectedCity,
     atlasCountyName,
     axis,
-    fipsToSlug,
+    paintByFips,
   ]);
 
   drawBaseRef.current = drawBase;
@@ -807,11 +845,14 @@ export function MapPanel({
         for (const e of countyPathsRef.current) {
           if (e.usps !== focus) continue;
           if (ctx.isPointInPath(e.path, wx, wy)) {
+            const paint = paintByFips.get(e.fips);
             found = {
               kind: "county",
               usps: e.usps,
-              countySlug: fipsToSlug.get(e.fips) ?? null,
+              countySlug: paint?.countySlug ?? null,
               countyName: e.name,
+              fillSource: paint?.source ?? null,
+              sourcePlace: paint?.sourcePlace ?? null,
             };
             break;
           }
@@ -827,7 +868,7 @@ export function MapPanel({
       ctx.restore();
       return found;
     },
-    [fipsToSlug],
+    [paintByFips],
   );
 
   // Coalesce mousemoves: store the latest pointer and hit-test at most once per
@@ -882,7 +923,12 @@ export function MapPanel({
         // Zoomed: a colored county sets the county filter. Uncolored counties
         // are unclickable. Only a miss (ocean / outside the state) zooms out.
         if (u?.kind === "county") {
-          if (u.countySlug) {
+          if (u.fillSource === "city" && u.sourcePlace) {
+            dispatch({
+              type: "patchFilters",
+              filters: { city: u.sourcePlace },
+            });
+          } else if (u.countySlug) {
             dispatch({
               type: "patchFilters",
               filters: { county: u.countySlug },
@@ -906,15 +952,18 @@ export function MapPanel({
     ? (hovered.countyName ?? prettySlug(hovered.countySlug) ?? stateName(hovered.usps))
     : null;
   const hoveredHasScore = Boolean(
-    hovered?.kind === "county" &&
-      hovered.countySlug &&
-      aggByCountySlug.has(hovered.countySlug),
+    hovered?.kind === "county" && hovered.sourcePlace,
   );
   const mapLabel = hovered
     ? hovered.kind === "county"
-      ? hoveredHasScore
-        ? hoveredCountyLabel
-        : `${hoveredCountyLabel} · no data`
+      ? hovered.fillSource === "city" && hovered.sourcePlace
+        ? cityStandInLabel(
+            hovered.countyName ?? hoveredCountyLabel ?? "",
+            hovered.sourcePlace,
+          )
+        : hoveredHasScore
+          ? hoveredCountyLabel
+          : `${hoveredCountyLabel} · no data`
       : stateName(hovered.usps)
     : selectedCounty
       ? prettySlug(selectedCounty)
@@ -937,7 +986,7 @@ export function MapPanel({
         style={{
           cursor:
             hovered?.kind === "county"
-              ? hovered.countySlug
+              ? hovered.sourcePlace
                 ? "pointer"
                 : "default"
               : hovered
@@ -977,22 +1026,32 @@ export function MapPanel({
               .slice()
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((row) => {
-                const slug = row.county;
-                if (!slug) return null;
-                const active = selectedCounty === slug;
+                const key = `${row.source}:${row.sourcePlace}`;
+                if (!row.sourcePlace) return null;
+                const active =
+                  row.source === "city"
+                    ? selectedCity === row.sourcePlace
+                    : selectedCounty === row.county;
+                const label =
+                  row.source === "city"
+                    ? cityStandInLabel(row.name, row.sourcePlace)
+                    : row.name;
                 return (
                   <SparseChip
-                    key={slug}
+                    key={key}
                     type="button"
                     $active={active}
                     onClick={() =>
                       dispatch({
                         type: "patchFilters",
-                        filters: { county: slug },
+                        filters:
+                          row.source === "city"
+                            ? { city: row.sourcePlace }
+                            : { county: row.county ?? row.sourcePlace },
                       })
                     }
                   >
-                    {row.name}
+                    {label}
                   </SparseChip>
                 );
               })}

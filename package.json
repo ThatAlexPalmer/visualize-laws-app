@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "seed": "dotenv -e .env.local -- tsx data/seed.ts",
     "seed:prod": "dotenv -e .env.prod -- tsx data/seed.ts",
+    "build:city-county": "dotenv -e .env.local -- tsx data/build-city-county.ts",
+    "test": "tsx --test data/cityCounty.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",
