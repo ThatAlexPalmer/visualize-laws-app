@@ -134,8 +134,9 @@ export interface CountyFillPaint {
 }
 
 /**
- * Join map fills to atlas features. Native county rows win a FIPS (direct
- * FIPS, then slug name match). One-county city stand-ins fill leftover FIPS.
+ * Join map fills to atlas features. Native county rows win a FIPS that exists
+ * in the mesh, then unmatched natives slug-match. One-county city stand-ins
+ * fill leftover FIPS.
  */
 export function joinCountyFills(
   features: CountyFeatureEntry[],
@@ -144,9 +145,10 @@ export function joinCountyFills(
   const out = new Map<string, CountyFillPaint>();
   const natives = fills.filter((row) => row.source === "county");
   const cities = fills.filter((row) => row.source === "city");
+  const knownFips = new Set(features.map((f) => f.fips));
 
   for (const row of natives) {
-    if (!row.fips) continue;
+    if (!row.fips || !knownFips.has(row.fips)) continue;
     out.set(row.fips, {
       source: "county",
       sourcePlace: row.sourcePlace,
@@ -182,7 +184,6 @@ export function joinCountyFills(
     });
   }
 
-  const knownFips = new Set(features.map((f) => f.fips));
   for (const row of cities) {
     if (!row.fips || out.has(row.fips) || !knownFips.has(row.fips)) continue;
     out.set(row.fips, {

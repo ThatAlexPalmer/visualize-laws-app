@@ -213,29 +213,34 @@ async function queryCountyFills(
   state: string,
   nativeCounties: JurisdictionAgg[],
 ): Promise<CountyFill[]> {
-  const stored = await prisma.countyFill.findMany({
-    where: { state },
-    select: {
-      state: true,
-      fips: true,
-      source: true,
-      sourcePlace: true,
-      county: true,
-      name: true,
-      lawCount: true,
-      substantiveCount: true,
-      avgOpacity: true,
-      avgEnforcementDiscretion: true,
-      avgPaternalism: true,
-      avgProblemSalience: true,
-    },
-    orderBy: { name: "asc" },
-  });
-  if (stored.length === 0) {
+  try {
+    const stored = await prisma.countyFill.findMany({
+      where: { state },
+      select: {
+        state: true,
+        fips: true,
+        source: true,
+        sourcePlace: true,
+        county: true,
+        name: true,
+        lawCount: true,
+        substantiveCount: true,
+        avgOpacity: true,
+        avgEnforcementDiscretion: true,
+        avgPaternalism: true,
+        avgProblemSalience: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    if (stored.length === 0) {
+      return nativeCounties.map(nativeCountyToFill);
+    }
+    return stored.filter(
+      (row): row is CountyFill =>
+        row.source === "county" || row.source === "city",
+    );
+  } catch (err) {
+    console.error(`queryCountyFills(${state}) failed:`, err);
     return nativeCounties.map(nativeCountyToFill);
   }
-  return stored.filter(
-    (row): row is CountyFill =>
-      row.source === "county" || row.source === "city",
-  );
 }
