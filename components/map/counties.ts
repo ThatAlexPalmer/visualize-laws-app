@@ -2,7 +2,7 @@ import { feature } from "topojson-client";
 import type { GeoPermissibleObjects } from "d3-geo";
 
 import { isCountyKindSlug, normalizePlaceKey } from "@/lib/types";
-import type { JurisdictionAgg } from "@/lib/types";
+import type { CountyFill, JurisdictionAgg } from "@/lib/types";
 import { fipsToUsps } from "./fips";
 
 export interface CountyFeatureEntry {
@@ -124,4 +124,74 @@ export function joinCountySlugs(
     }
   }
   return fipsToSlug;
+}
+
+export interface CountyFillPaint {
+  source: CountyFill["source"];
+  sourcePlace: string;
+  countySlug: string | null;
+  name: string;
+}
+
+/**
+ * Join map fills to atlas features. Native county rows win a FIPS that exists
+ * in the mesh, then unmatched natives slug-match. One-county city stand-ins
+ * fill leftover FIPS.
+ */
+export function joinCountyFills(
+  features: CountyFeatureEntry[],
+  fills: CountyFill[],
+): Map<string, CountyFillPaint> {
+  const out = new Map<string, CountyFillPaint>();
+  const natives = fills.filter((row) => row.source === "county");
+  const cities = fills.filter((row) => row.source === "city");
+  const knownFips = new Set(features.map((f) => f.fips));
+
+  for (const row of natives) {
+    if (!row.fips || !knownFips.has(row.fips)) continue;
+    out.set(row.fips, {
+      source: "county",
+      sourcePlace: row.sourcePlace,
+      countySlug: row.county,
+      name: row.name,
+    });
+  }
+
+  const unmatchedNatives: JurisdictionAgg[] = natives
+    .filter((row) => !row.fips || !out.has(row.fips))
+    .map((row) => ({
+      level: "county",
+      state: row.state,
+      county: row.county,
+      name: row.name,
+      lawCount: row.lawCount,
+      substantiveCount: row.substantiveCount,
+      avgOpacity: row.avgOpacity,
+      avgEnforcementDiscretion: row.avgEnforcementDiscretion,
+      avgPaternalism: row.avgPaternalism,
+      avgProblemSalience: row.avgProblemSalience,
+    }));
+  const slugMap = joinCountySlugs(features, unmatchedNatives);
+  for (const [fips, slug] of slugMap) {
+    if (out.has(fips)) continue;
+    const row = natives.find((n) => n.county === slug);
+    if (!row) continue;
+    out.set(fips, {
+      source: "county",
+      sourcePlace: row.sourcePlace,
+      countySlug: row.county,
+      name: row.name,
+    });
+  }
+
+  for (const row of cities) {
+    if (!row.fips || out.has(row.fips) || !knownFips.has(row.fips)) continue;
+    out.set(row.fips, {
+      source: "city",
+      sourcePlace: row.sourcePlace,
+      countySlug: null,
+      name: row.name,
+    });
+  }
+  return out;
 }

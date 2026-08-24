@@ -40,6 +40,12 @@ export const UNHINGED_UI: Record<string, string> = {
   "No laws match these filters.": "None of your business, apparently.",
   "Loading\u2026": "summoning chaos\u2026",
   "About": "WHAT IS THIS",
+  "log": "receipts",
+  "Release log": "The tape",
+  "What you can do in each version.":
+    "What we let you do, version by version.",
+  "← back to the map": "← back to the legal panic",
+  "GitHub release": "The tag",
 };
 
 /** Return the label + blurb for an axis, respecting unhinged mode. */

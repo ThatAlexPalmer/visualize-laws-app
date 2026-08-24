@@ -15,6 +15,7 @@ import { matchCountySlug } from "@/lib/types";
 import {
   isCompleteNational,
   type CityAgg,
+  type CountyFill,
   type JurisdictionAgg,
   type JurisdictionDetailResponse,
   type JurisdictionsResponse,
@@ -68,6 +69,19 @@ function isCityAgg(value: unknown): value is CityAgg {
   );
 }
 
+function isCountyFill(value: unknown): value is CountyFill {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.state === "string" &&
+    (typeof value.fips === "string" || value.fips === null) &&
+    (value.source === "county" || value.source === "city") &&
+    typeof value.sourcePlace === "string" &&
+    (typeof value.county === "string" || value.county === null) &&
+    typeof value.name === "string" &&
+    NUMBER_FIELDS.every((field) => typeof value[field] === "number")
+  );
+}
+
 function isJurisdictionsResponse(value: unknown): value is JurisdictionsResponse {
   if (!isRecord(value) || !Array.isArray(value.rows)) return false;
   return (
@@ -82,10 +96,12 @@ function isJurisdictionDetailResponse(
   if (!isRecord(value) || !Array.isArray(value.topLaws)) return false;
   const counties = Array.isArray(value.counties) ? value.counties : [];
   const topCities = Array.isArray(value.topCities) ? value.topCities : [];
+  const countyFills = Array.isArray(value.countyFills) ? value.countyFills : [];
   return (
     (value.jurisdiction === null || isJurisdictionAgg(value.jurisdiction)) &&
     counties.every(isJurisdictionAgg) &&
-    topCities.every(isCityAgg)
+    topCities.every(isCityAgg) &&
+    countyFills.every(isCountyFill)
   );
 }
 
@@ -94,6 +110,7 @@ function normalizeDetail(body: JurisdictionDetailResponse): JurisdictionDetailRe
     jurisdiction: body.jurisdiction,
     topLaws: body.topLaws,
     counties: body.counties ?? [],
+    countyFills: body.countyFills ?? [],
     topCities: body.topCities ?? [],
   };
 }

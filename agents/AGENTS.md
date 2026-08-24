@@ -19,9 +19,10 @@ avoid staleness; expand only when durable.
 - Data layer lives in `data/` (Prisma schema/migrations, DB client, seed pipeline, query functions).
 - API routes in `app/api/*` are the backend and delegate to `data/queries/*`.
 - Styling uses styled-components with strict black/white theme tokens.
-- City/county map is **shipped**: camera zoom over a baked Albers USA mesh, county
-  aggregates (~376), sparse-county copy when n < 8. Empty atlas outlines are a
-  coverage gap (issue #25), not a fill bug.
+- City/county map is **shipped**: camera zoom over a baked Albers USA mesh.
+  Native county aggregates (~376) plus one-county city stand-ins (`county_fills`).
+  Sparse-county copy when n < 8 (native + stand-ins). Multi-county cities stay
+  unpainted (issue #25).
 
 ## Important paths
 
@@ -37,6 +38,8 @@ avoid staleness; expand only when durable.
   (`resolvePlace` lives in jurisdictions).
 - `data/slugs.ts` — place slug variants / atlas join keys. Do not rewrite stored slugs.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
+- `data/cityCounty.ts` + `data/build-city-county.ts` — Census 2020 place join and
+  `city_county` / `county_fills` rebuild (no parquet COPY).
 - `WARP.md` — Warp project rules (loaded automatically in this repo).
 
 ## Local development commands
@@ -48,7 +51,8 @@ avoid staleness; expand only when durable.
 - `pnpm prisma:deploy` / `pnpm prisma:migrate`
 - `pnpm seed` / `pnpm seed --limit 25000` / `pnpm seed --fresh`
 - `pnpm seed --fresh --shards 1 --limit 25000` — Colorado city/county QA sample
-- `pnpm seed --shards ''` — recompute national/state/county aggregates only (no COPY)
+- `pnpm seed --shards ''` — recompute national/state/county aggregates, then city fills
+- `pnpm build:city-county` — rebuild `city_county` + `county_fills` only (no COPY)
 - Remote admin (gitignored env): `pnpm seed:prod` / `pnpm seed:prod --fresh` /
   `pnpm prisma:deploy:prod` / `pnpm db:studio:prod`
 
@@ -91,13 +95,17 @@ avoid staleness; expand only when durable.
   City/County chip must not zoom out. Only ocean / Clear zooms out.
 - Sparse gate **K=8** (`sparseCounties.ts`): n < 8 → outlines + copy, no county
   legend, no fills; scored counties stay clickable. n ≥ 8 → fill scored/joined
-  counties only. Unscored hover is `{Name} · no data`. Clicking an unfilled
-  county is a no-op. Never special-case a state. Never invent county averages
-  from city laws.
-- Empty county polygons (e.g. TX ~177k laws / 0 county slugs) are **coverage**,
-  not a paint bug — issue #25. ~3,231 atlas shapes vs ~376 scored counties.
+  counties only (native + one-county city stand-ins). Unscored hover is
+  `{Name} · no data`. A city stand-in hover is `{County} · {City} code` — not
+  “county law.” Clicking an unfilled county is a no-op. Never special-case a
+  state. Never interpolate scores or paint a multi-county city.
+- Empty outlines remain for unmatched places and multi-county cities
+  (Houston, Dallas, Chicago, NYC, Columbus, Atlanta, Aurora). ~3,231 atlas
+  shapes vs native ~376 plus one-county city fills. Joe Barrow / LOCUS paper
+  grammar: a representative local code, not controlling authority.
 - Do **not** rewrite `laws.city` / `laws.county` in place to Census names
   (breaks LOCUS-v1 re-seed and additive shards). Pretty-print / gazetteer only.
+  `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
 
@@ -138,9 +146,10 @@ Canonical seeder: `data/seed.ts`. Scripts:
 | `pnpm seed …` | `.env.local` (local Docker/host Postgres) |
 | `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
 
-Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + clear local progress),
-`--limit N` (sample; leaves shard un-checkpointed), `--shards 0,1`,
-`--shards ''` (no COPY — recompute national/state/**county** aggregates only).
+Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + city_county +
+county_fills + clear local progress), `--limit N` (sample; leaves shard
+un-checkpointed), `--shards 0,1`, `--shards ''` (no COPY — recompute
+national/state/**county** aggregates, then city fills).
 
 Default `--limit 25000` is Alaska-only (shard 0). City/county QA needs Colorado:
 
@@ -159,7 +168,9 @@ migrate/shadow rules (`deploy` vs `dev`, never shadow a database with data).
 4. Whole-shard resume: `seed_checkpoints` (one row per finished shard `0000`…`0007`).
 5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty
    state code + 1× `county` per `(state, county)` with a non-empty county slug).
-6. `search_vector` is GENERATED — never written by the seeder.
+6. Rebuilds `city_county` + `county_fills` from `laws` + Census 2020 place/county
+   files (`pnpm build:city-county` does this without parquet COPY).
+7. `search_vector` is GENERATED — never written by the seeder.
 
 ### Resilience (remote-aware)
 

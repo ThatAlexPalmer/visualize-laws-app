@@ -56,6 +56,7 @@ if [ -z "$count" ] || [ "$count" = "0" ]; then
 else
   echo "[entrypoint] laws table has $count rows — skipping seed."
   echo "[entrypoint] If the county choropleth is empty after a schema update, recompute aggregates: pnpm seed --shards ''"
+  echo "[entrypoint] One-county city fills: pnpm build:city-county (after pnpm prisma:deploy)"
 fi
 
 # Bind to all interfaces (assembled via printf so the address is unambiguous).

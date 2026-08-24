@@ -1,4 +1,5 @@
 // Shared types and constants — the contract every feature module builds against.
+import { prettySlug } from "./slugs";
 
 /** The four LOCUS scoring axes (camelCase keys used across the app). */
 export type Axis =
@@ -86,17 +87,34 @@ export interface LawsResponse {
   pageSize: number;
 }
 
-export interface JurisdictionAgg {
+export interface AxisAverages {
+  avgOpacity: number;
+  avgEnforcementDiscretion: number;
+  avgPaternalism: number;
+  avgProblemSalience: number;
+}
+
+export interface JurisdictionAgg extends AxisAverages {
   level: string;
   state: string | null;
   county: string | null;
   name: string;
   lawCount: number;
   substantiveCount: number;
-  avgOpacity: number;
-  avgEnforcementDiscretion: number;
-  avgPaternalism: number;
-  avgProblemSalience: number;
+}
+
+export type CountyFillSource = "county" | "city";
+
+/** Map-layer row: a native county score or a one-county city stand-in. */
+export interface CountyFill extends AxisAverages {
+  state: string;
+  fips: string | null;
+  source: CountyFillSource;
+  sourcePlace: string;
+  county: string | null;
+  name: string;
+  lawCount: number;
+  substantiveCount: number;
 }
 
 export type AxisBounds = Record<Axis, [number, number]>;
@@ -132,7 +150,33 @@ export interface JurisdictionDetailResponse {
   jurisdiction: JurisdictionAgg | null;
   topLaws: LawSummary[];
   counties: JurisdictionAgg[];
+  countyFills: CountyFill[];
   topCities: CityAgg[];
+}
+
+export function nativeCountyToFill(row: JurisdictionAgg): CountyFill {
+  return {
+    state: row.state ?? "",
+    fips: null,
+    source: "county",
+    sourcePlace: row.county ?? "",
+    county: row.county,
+    name: row.name,
+    lawCount: row.lawCount,
+    substantiveCount: row.substantiveCount,
+    avgOpacity: row.avgOpacity,
+    avgEnforcementDiscretion: row.avgEnforcementDiscretion,
+    avgPaternalism: row.avgPaternalism,
+    avgProblemSalience: row.avgProblemSalience,
+  };
+}
+
+/** Hover / chip copy for a city stand-in. Not “county law.” */
+export function cityStandInLabel(
+  countyName: string,
+  citySlug: string,
+): string {
+  return `${countyName} · ${prettySlug(citySlug)} code`;
 }
 
 export interface LawDetailResponse {

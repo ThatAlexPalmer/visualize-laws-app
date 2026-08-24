@@ -1,4 +1,4 @@
-import type { Axis, AxisBounds, JurisdictionAgg } from "@/lib/types";
+import type { Axis, AxisAverages, AxisBounds } from "@/lib/types";
 
 /**
  * Per-axis HSL ramp params. Keeping hue constant while sweeping lightness
@@ -19,8 +19,8 @@ const AXIS_HSL: Record<Axis, AxisHSL> = {
   problemSalience:       { hue: 258, satLow: 60, satHigh: 83, litLow: 4, litHigh: 60 }, // purple
 };
 
-/** Maps each axis to the aggregate's average column on a JurisdictionAgg. */
-export const AXIS_TO_AVG: Record<Axis, keyof JurisdictionAgg> = {
+/** Maps each axis to the aggregate's average column. */
+export const AXIS_TO_AVG: Record<Axis, keyof AxisAverages> = {
   opacity: "avgOpacity",
   enforcementDiscretion: "avgEnforcementDiscretion",
   paternalism: "avgPaternalism",
@@ -28,8 +28,8 @@ export const AXIS_TO_AVG: Record<Axis, keyof JurisdictionAgg> = {
 };
 
 /** The average value of a jurisdiction aggregate along the given axis. */
-export function axisValue(agg: JurisdictionAgg, axis: Axis): number {
-  return agg[AXIS_TO_AVG[axis]] as number;
+export function axisValue(agg: AxisAverages, axis: Axis): number {
+  return agg[AXIS_TO_AVG[axis]];
 }
 
 export interface Domain {
@@ -46,7 +46,7 @@ export interface Domain {
  */
 export function computeDomain(
   axis: Axis,
-  rows: JurisdictionAgg[],
+  rows: AxisAverages[],
   bounds?: AxisBounds,
 ): Domain | null {
   const b = bounds?.[axis];

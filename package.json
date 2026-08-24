@@ -1,6 +1,6 @@
 {
   "name": "visualize-laws-app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "license": "BUSL-1.1",
   "description": "Explore the complete LOCUS-v1 corpus of 2.2M U.S. local laws: search, filter, and an interactive canvas map.",
@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit",
     "seed": "dotenv -e .env.local -- tsx data/seed.ts",
     "seed:prod": "dotenv -e .env.prod -- tsx data/seed.ts",
+    "build:city-county": "dotenv -e .env.local -- tsx data/build-city-county.ts",
+    "build:city-county:prod": "dotenv -e .env.prod -- tsx data/build-city-county.ts",
+    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",

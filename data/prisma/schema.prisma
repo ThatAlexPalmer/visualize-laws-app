@@ -92,3 +92,46 @@ model SeedCheckpoint {
 
   @@map("seed_checkpoints")
 }
+
+/// Census 2020 place join for LOCUS city slugs. Additive lookup — does not
+/// rewrite `laws.city` / `laws.county`. Multi-county places are flagged and
+/// never used as a map fill.
+model CityCounty {
+  id          Int     @id @default(autoincrement())
+  state       String
+  city        String
+  countyFips  String? @map("county_fips")
+  countyName  String? @map("county_name")
+  atlasKey    String? @map("atlas_key")
+  matchRule   String  @map("match_rule")
+  multiCounty Boolean @map("multi_county")
+  countyCount Int     @map("county_count")
+
+  @@unique([state, city])
+  @@index([state])
+  @@index([countyFips])
+  @@map("city_county")
+}
+
+/// Map-layer aggregates. Sibling to `jurisdictions` so city stand-ins do not
+/// collide with unique `(level, state, county)`. `source` is `county` | `city`.
+model CountyFill {
+  id                       Int     @id @default(autoincrement())
+  state                    String
+  fips                     String?
+  source                   String
+  sourcePlace              String  @map("source_place")
+  county                   String?
+  name                     String
+  lawCount                 Int     @map("law_count")
+  substantiveCount         Int     @map("substantive_count")
+  avgOpacity               Float   @map("avg_opacity")
+  avgEnforcementDiscretion Float   @map("avg_enforcement_discretion")
+  avgPaternalism           Float   @map("avg_paternalism")
+  avgProblemSalience       Float   @map("avg_problem_salience")
+
+  @@unique([source, state, sourcePlace])
+  @@index([state])
+  @@index([fips])
+  @@map("county_fills")
+}

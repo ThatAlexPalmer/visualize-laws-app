@@ -66,13 +66,16 @@ into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a
 
 - Mesh: 50 state Path2Ds on mount; 3,231 county Path2Ds after a lazy
   `us-atlas/counties-10m.json` import (kept out of the initial JS bundle).
-- Color: the 376 `level='county'` aggregate rows are paints only. Cities have no polygons.
+- Color: native `level='county'` rows plus one-county city stand-ins (`county_fills`).
+  Multi-county cities are not painted. Cities have no polygons of their own.
 - US view fills states. Inside a state, only that state's county outlines are stroked;
-  scored/joined counties fill when **n ≥ 8**. If n &lt; 8, outlines + a line of copy
-  (`sparseCounties.ts`); no county legend. Unscored shapes stay unpainted (`{Name} · no data`).
+  scored/joined counties fill when **n ≥ 8** (native + stand-ins). If n &lt; 8, outlines
+  + a line of copy (`sparseCounties.ts`); no county legend. Unscored hover is
+  `{Name} · no data`. A stand-in hover is `{County} · {City} code`.
 - Hit-test inverts the camera, then `isPointInPath` on the baked paths. Zoom-out drops
   the county mesh immediately (states only).
 - FIPS → lowercase USPS is `components/map/fips.ts`. Place slugs join in `data/slugs.ts`.
+  City stand-ins join by Census FIPS (`joinCountyFills`).
 - QuickSearch may zoom to a state and highlight a county; it does not remesh.
 
 ## Development Commands
@@ -95,7 +98,8 @@ pnpm prisma:deploy      # apply migrations (data/prisma/schema.prisma)
 pnpm prisma:migrate     # create/apply a dev migration
 pnpm seed --limit 25000 # fast dev sample (Alaska-only; shard 0)
 pnpm seed --fresh --shards 1 --limit 25000  # Colorado QA (pagosa_springs, el_paso_county)
-pnpm seed --shards ''   # recompute national/state/county aggregates only
+pnpm seed --shards ''   # recompute aggregates + city_county / county_fills
+pnpm build:city-county  # Census join + stand-in fills only (no parquet COPY)
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
 pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 pnpm seed:prod …        # same flags against .env.prod (remote admin only)
@@ -112,8 +116,8 @@ lib/                                # store, theme, styled-components registry, 
 data/
   prisma/                           # schema.prisma + migrations (tsvector/GIN, city indexes)
   queries/                          # laws.ts, jurisdictions.ts (incl. resolvePlace)
-  slugs.ts                          # place slug variants / atlas join keys
-  db.ts, types.ts, seed.ts, db-count.ts
+  slugs.ts, cityCounty.ts           # place keys + Census city→county join
+  db.ts, types.ts, seed.ts, db-count.ts, build-city-county.ts
 components/map/                     # canvas map: geo.ts, camera.ts, sparseCounties.ts, MapPanel.tsx
 next.config.ts, tsconfig.json
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
@@ -132,6 +136,9 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
   The single `national` row carries corpus-wide averages + per-axis `[min,max]` `bounds`
   (JSON) for sliders and the US color scale. County rows (~376 on a full seed) color
   in-state polygons only; they are **not** the mesh. Unique key is `(level, state, county)`.
+- **CityCounty** — Census 2020 place join for LOCUS city slugs (`state`, `city` unique).
+- **CountyFill** — map-layer sibling to `jurisdictions` (`source` = `county` | `city`).
+  Do not reuse `(level, state, county)` for stand-ins.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
 
 ## Seeding
