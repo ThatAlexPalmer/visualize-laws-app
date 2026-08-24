@@ -34,6 +34,16 @@ function placeIlikeSql(
   return `(${column} ILIKE ${likeA} ESCAPE '\\' OR ${column} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
 }
 
+/** Equality on slug variants, not substring ILIKE. */
+export function cityExactSql(
+  raw: string,
+  bind: (value: unknown) => string,
+): string {
+  const [a, b] = slugVariants(raw);
+  if (a === b) return `city IN (${bind(a)})`;
+  return `city IN (${bind(a)}, ${bind(b)})`;
+}
+
 function parseFloatOrNull(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") return null;
   const n = Number(raw);
@@ -186,7 +196,7 @@ export async function queryLaws(
   if (state) where.push(`state = ${bind(state.toLowerCase())}`);
 
   const city = searchParams.get("city")?.trim();
-  if (city) where.push(placeIlikeSql("city", city, bind));
+  if (city) where.push(cityExactSql(city, bind));
 
   const county = searchParams.get("county")?.trim();
   if (county) where.push(placeIlikeSql("county", county, bind));

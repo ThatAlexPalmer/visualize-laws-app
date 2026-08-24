@@ -127,6 +127,10 @@ export function QuickSearch() {
   const lookupAbort = useRef<AbortController | null>(null);
 
   const applyFocus = (focus: PlaceFocus): void => {
+    if (focus.kind === "state") {
+      dispatch({ type: "selectState", state: focus.state });
+      return;
+    }
     if (focus.kind === "county") {
       dispatch({
         type: "selectPlace",
@@ -155,12 +159,14 @@ export function QuickSearch() {
     uniqueOnly: boolean,
   ): Promise<void> => {
     const trimmed = value.trim();
-    dispatch({
-      type: "patchFilters",
-      filters: { q: trimmed || undefined },
-    });
-    if (!trimmed) return;
-    if (uniqueOnly && trimmed.length < MIN_PLACE_ZOOM_CHARS) return;
+    if (!trimmed) {
+      dispatch({ type: "patchFilters", filters: { q: undefined } });
+      return;
+    }
+    if (uniqueOnly && trimmed.length < MIN_PLACE_ZOOM_CHARS) {
+      dispatch({ type: "patchFilters", filters: { q: trimmed } });
+      return;
+    }
 
     lookupAbort.current?.abort();
     const ac = new AbortController();
@@ -171,10 +177,16 @@ export function QuickSearch() {
         uniqueOnly,
         signal: ac.signal,
       });
-      if (ac.signal.aborted || !focus) return;
-      applyFocus(focus);
+      if (ac.signal.aborted) return;
+      if (focus?.kind === "state") {
+        applyFocus(focus);
+        dispatch({ type: "patchFilters", filters: { q: undefined } });
+        return;
+      }
+      dispatch({ type: "patchFilters", filters: { q: trimmed } });
+      if (focus) applyFocus(focus);
     } catch {
-      /* keep q-only search if lookup fails */
+      dispatch({ type: "patchFilters", filters: { q: trimmed } });
     }
   };
 

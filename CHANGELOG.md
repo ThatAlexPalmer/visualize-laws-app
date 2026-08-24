@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- Type a state name (`colorado`) and go to that state, not a city that shares the name.
+- See that state’s full law list, not only laws that mention the word.
+- Read law titles and bodies as formatted text — headings and tables, not raw `####` or `<table>` marks.
+
 ## 1.1.0
 
 After zoom, one-county city codes paint county shapes. Hover says `{County} · {City} code`. Cities in several counties stay empty. Native county scores still win.

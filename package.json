@@ -1,6 +1,6 @@
 {
   "name": "visualize-laws-app",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "license": "BUSL-1.1",
   "description": "Explore the complete LOCUS-v1 corpus of 2.2M U.S. local laws: search, filter, and an interactive canvas map.",
@@ -15,7 +15,7 @@
     "seed:prod": "dotenv -e .env.prod -- tsx data/seed.ts",
     "build:city-county": "dotenv -e .env.local -- tsx data/build-city-county.ts",
     "build:city-county:prod": "dotenv -e .env.prod -- tsx data/build-city-county.ts",
-    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts",
+    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",
@@ -41,6 +41,10 @@
     "pg-copy-streams": "^6.0.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
     "styled-components": "^6.4.3",
     "topojson-client": "^3.1.0",
     "us-atlas": "^3.0.1"

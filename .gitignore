@@ -44,3 +44,4 @@ yarn-error.log*
 
 # Vercel CLI link (project/org ids; do not commit)
 .vercel
+/.pnpm-store
