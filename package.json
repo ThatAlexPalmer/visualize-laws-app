@@ -15,7 +15,7 @@
     "seed:prod": "dotenv -e .env.prod -- tsx data/seed.ts",
     "build:city-county": "dotenv -e .env.local -- tsx data/build-city-county.ts",
     "build:city-county:prod": "dotenv -e .env.prod -- tsx data/build-city-county.ts",
-    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts",
+    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts data/queries/laws.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",
