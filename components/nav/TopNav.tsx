@@ -498,6 +498,17 @@ export function TopNav() {
               {aboutLabel}
             </SheetAction>
             <SheetAction
+              as={Link}
+              href="/log"
+              aria-current={pathname === "/log" ? "page" : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateFromMenu("/log");
+              }}
+            >
+              {ui("log", unhinged)}
+            </SheetAction>
+            <SheetAction
               as="a"
               href={REPOSITORY_URL}
               target="_blank"
