@@ -217,7 +217,7 @@ export function LawModal() {
             </Close>
             <Title as="h3" $size="xl">
               {(detail ?? law).header?.trim() ? (
-                <LawMarkdown>{(detail ?? law).header ?? ""}</LawMarkdown>
+                <LawMarkdown title>{(detail ?? law).header ?? ""}</LawMarkdown>
               ) : (
                 "Untitled provision"
               )}

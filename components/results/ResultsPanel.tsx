@@ -378,7 +378,9 @@ export function ResultsPanel() {
                   <RowMain>
                     <RowTitle>
                       {law.header?.trim() ? (
-                        <LawMarkdown compact>{law.header}</LawMarkdown>
+                        <LawMarkdown compact title>
+                          {law.header}
+                        </LawMarkdown>
                       ) : (
                         "Untitled provision"
                       )}

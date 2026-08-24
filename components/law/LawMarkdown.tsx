@@ -107,12 +107,24 @@ const Wrap = styled.div<{ $compact?: boolean }>`
     `}
 `;
 
+const TITLE_TAGS = {
+  h1: "span",
+  h2: "span",
+  h3: "span",
+  h4: "span",
+  h5: "span",
+  h6: "span",
+  p: "span",
+} as const;
+
 export function LawMarkdown({
   children,
   compact = false,
+  title = false,
 }: {
   children: string;
   compact?: boolean;
+  title?: boolean;
 }) {
   const text = children.trim();
   if (!text) return null;
@@ -121,6 +133,7 @@ export function LawMarkdown({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, schema]]}
+        components={title || compact ? TITLE_TAGS : undefined}
       >
         {text}
       </ReactMarkdown>
