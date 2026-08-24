@@ -17,6 +17,7 @@ import {
 import { resolveAxisCopy } from "@/lib/copy";
 import { Button, IconButton } from "@/components/ui/buttons";
 import { Card as CardBase, Cluster, Stack } from "@/components/ui/containers";
+import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Heading, Mono } from "@/components/ui/text";
 
 const Overlay = styled(motion.div)`
@@ -118,7 +119,6 @@ const Body = styled.div`
   margin-top: ${({ theme }) => theme.space(4)};
   padding-top: ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g12};
-  white-space: pre-wrap;
   line-height: 1.6;
   color: ${({ theme }) => theme.colors.g90};
   font-size: ${({ theme }) => theme.fontSize.md};
@@ -216,7 +216,11 @@ export function LawModal() {
               ×
             </Close>
             <Title as="h3" $size="xl">
-              {(detail ?? law).header?.trim() || "Untitled provision"}
+              {(detail ?? law).header?.trim() ? (
+                <LawMarkdown>{(detail ?? law).header ?? ""}</LawMarkdown>
+              ) : (
+                "Untitled provision"
+              )}
             </Title>
             <Sub>
               {stateName((detail ?? law).state)}
@@ -259,7 +263,9 @@ export function LawModal() {
             </ScoreGrid>
 
             {detail ? (
-              <Body>{detail.content}</Body>
+              <Body>
+                <LawMarkdown>{detail.content}</LawMarkdown>
+              </Body>
             ) : detailError ? (
               <BodyStatus role="alert">
                 <span>Could not load the full law text.</span>

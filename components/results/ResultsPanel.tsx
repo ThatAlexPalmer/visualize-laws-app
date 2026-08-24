@@ -18,6 +18,7 @@ import {
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
 import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
+import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Kicker, Mono } from "@/components/ui/text";
 
 function buildQuery(f: LawFilters): string {
@@ -375,7 +376,13 @@ export function ResultsPanel() {
                   transition={{ duration: 0.22, delay: Math.min(i * 0.02, 0.2) }}
                 >
                   <RowMain>
-                    <RowTitle>{law.header?.trim() || "Untitled provision"}</RowTitle>
+                    <RowTitle>
+                      {law.header?.trim() ? (
+                        <LawMarkdown compact>{law.header}</LawMarkdown>
+                      ) : (
+                        "Untitled provision"
+                      )}
+                    </RowTitle>
                     <RowMeta>
                       {stateName(law.state)}
                       {law.city ? ` · ${prettySlug(law.city)}` : ""}

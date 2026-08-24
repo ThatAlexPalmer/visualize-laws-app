@@ -127,6 +127,10 @@ export function QuickSearch() {
   const lookupAbort = useRef<AbortController | null>(null);
 
   const applyFocus = (focus: PlaceFocus): void => {
+    if (focus.kind === "state") {
+      dispatch({ type: "selectState", state: focus.state });
+      return;
+    }
     if (focus.kind === "county") {
       dispatch({
         type: "selectPlace",

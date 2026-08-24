@@ -1,4 +1,4 @@
-import type { PlaceMatch } from "@/lib/types";
+import { STATE_NAMES, type PlaceMatch } from "@/lib/types";
 import {
   loadCountyFeatures,
   matchAtlasCounties,
@@ -7,9 +7,21 @@ import {
 export const MIN_PLACE_ZOOM_CHARS = 3;
 
 export type PlaceFocus =
+  | { kind: "state"; state: string }
   | { kind: "county"; state: string; county: string }
   | { kind: "city"; state: string; city: string }
   | { kind: "atlas"; state: string; name: string };
+
+/** Exact USPS code or full name. Prefixes (`col`) do not match. */
+export function matchStateQuery(q: string): string | null {
+  const t = q.trim().toLowerCase();
+  if (!t) return null;
+  if (t.length === 2 && STATE_NAMES[t]) return t;
+  for (const [code, name] of Object.entries(STATE_NAMES)) {
+    if (name.toLowerCase() === t) return code;
+  }
+  return null;
+}
 
 export function pickPlace<T extends { state: string; lawCount: number }>(
   places: T[],
@@ -41,10 +53,8 @@ function toCityFocus(row: PlaceMatch | null): PlaceFocus | null {
 }
 
 /**
- * Prefer a city unless the query says county/parish/borough.
- * `uniqueOnly` still zooms when several states share one city name (Miami FL
- * vs OK) by taking the largest; it will not steal a city search for a
- * smaller same-named county (Miami County, KS).
+ * State name/code first. Then a city unless the query says county/parish/borough.
+ * `uniqueOnly` still zooms when several states share a city name by taking the largest.
  */
 export async function resolveQueryFocus(
   q: string,
@@ -56,6 +66,9 @@ export async function resolveQueryFocus(
 ): Promise<PlaceFocus | null> {
   const trimmed = q.trim();
   if (!trimmed) return null;
+
+  const stateCode = matchStateQuery(trimmed);
+  if (stateCode) return { kind: "state", state: stateCode };
 
   const [counties, cities] = await Promise.all([
     lookupPlaces("county", trimmed, opts.signal),
