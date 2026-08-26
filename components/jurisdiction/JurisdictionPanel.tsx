@@ -25,6 +25,7 @@ import {
   SectionLabel,
   Stack,
 } from "@/components/ui/containers";
+import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Heading } from "@/components/ui/text";
 
 const Panel = styled(PanelBase)<{ $placement: "rail" | "mobile" }>`
@@ -147,7 +148,8 @@ const LawRow = styled.button`
   }
 `;
 
-const LawText = styled.span`
+const LawText = styled.div`
+  min-width: 0;
   font-size: ${({ theme }) => theme.fontSize.sm};
   white-space: nowrap;
   overflow: hidden;
@@ -387,7 +389,15 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                         type="button"
                         onClick={() => dispatch({ type: "openLaw", law })}
                       >
-                        <LawText>{law.header?.trim() || "Untitled provision"}</LawText>
+                        <LawText>
+                          {law.header?.trim() ? (
+                            <LawMarkdown compact title>
+                              {law.header}
+                            </LawMarkdown>
+                          ) : (
+                            "Untitled provision"
+                          )}
+                        </LawText>
                         <LawVal>{law[state.axis].toFixed(2)}</LawVal>
                       </LawRow>
                     ))}

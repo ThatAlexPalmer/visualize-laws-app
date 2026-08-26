@@ -50,12 +50,31 @@ function parseFloatOrNull(raw: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// --- Approximate totals -----------------------------------------------------
+/**
+ * Unfiltered US or a single state — the rail already shows `jurisdictions.law_count`.
+ * Extra filters (q, city, county, function, topic, substantive, sliders) keep
+ * the planner estimate. Sort / page do not count as extra filters.
+ */
+export function shouldUseSavedScopeTotal(searchParams: URLSearchParams): boolean {
+  if (searchParams.get("q")?.trim()) return false;
+  if (searchParams.get("city")?.trim()) return false;
+  if (searchParams.get("county")?.trim()) return false;
+  if (searchParams.get("function")?.trim()) return false;
+  if (searchParams.get("topic")?.trim()) return false;
+  const isSubstantive = searchParams.get("isSubstantive");
+  if (isSubstantive === "true" || isSubstantive === "false") return false;
+  for (const axis of AXES) {
+    if (parseFloatOrNull(searchParams.get(`${axis.key}Min`)) !== null) return false;
+    if (parseFloatOrNull(searchParams.get(`${axis.key}Max`)) !== null) return false;
+  }
+  return true;
+}
+
+// --- Totals -----------------------------------------------------------------
 //
-// The pager only needs a row *count* to size itself; it does not need an exact
-// value. An exact count(*) over the filtered 2.2M-row table costs hundreds of
-// ms–seconds and runs on every page step, so instead we read the planner's
-// estimate, which is effectively instant.
+// Bare US / state reuses `jurisdictions.law_count` (same number as the rail).
+// Extra filters still use a planner estimate: count(*) over 2.2M filtered rows
+// is too expensive for every page step.
 
 /**
  * Pull the estimated row count from an `EXPLAIN (FORMAT JSON)` result. Postgres
@@ -92,6 +111,19 @@ async function estimateTotalFromCatalog(): Promise<number | null> {
     );
     const total = rows[0]?.total;
     return typeof total === "number" && total > 0 ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Saved `jurisdictions.law_count` for the US or one state — same number the rail shows. */
+async function savedScopeLawCount(state: string | null): Promise<number | null> {
+  try {
+    const row = await prisma.jurisdiction.findFirst({
+      where: state ? { level: "state", state } : { level: "national" },
+      select: { lawCount: true },
+    });
+    return row ? row.lawCount : null;
   } catch {
     return null;
   }
@@ -256,25 +288,34 @@ export async function queryLaws(
   `;
 
   try {
-    // `total` is an APPROXIMATE planner estimate, not an exact count(*):
-    //   - No filters: the table's cached row estimate from pg_class.reltuples.
-    //   - Filtered:   the planner's "Plan Rows" via EXPLAIN (FORMAT JSON).
-    // Both are effectively instant and run in parallel with the rows query.
-    const estimatePromise =
-      where.length === 0
-        ? estimateTotalFromCatalog().then(
-            (t) => t ?? estimateFilteredRows("", []),
-          )
-        : estimateFilteredRows(whereSql, params);
+    const useSaved = shouldUseSavedScopeTotal(searchParams);
+    let usedSaved = false;
+    const totalPromise = useSaved
+      ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {
+          if (saved !== null) {
+            usedSaved = true;
+            return saved;
+          }
+          return where.length === 0
+            ? estimateTotalFromCatalog().then(
+                (t) => t ?? estimateFilteredRows("", []),
+              )
+            : estimateFilteredRows(whereSql, params);
+        })
+      : estimateFilteredRows(whereSql, params);
 
-    const [rows, estimate] = await Promise.all([
+    const [rows, counted] = await Promise.all([
       prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),
-      estimatePromise,
+      totalPromise,
     ]);
+
+    if (usedSaved && counted !== null) {
+      return { rows, total: counted, page, pageSize };
+    }
 
     // Never report fewer than the rows the caller can already see on this page.
     const floor = offset + rows.length;
-    const total = Math.max(Math.round(estimate ?? 0), floor);
+    const total = Math.max(Math.round(counted ?? 0), floor);
     return { rows, total, page, pageSize };
   } catch (err) {
     console.error("queryLaws failed:", err);
