@@ -85,8 +85,9 @@ pnpm install            # installs deps; postinstall runs prisma generate (data/
 pnpm dev                # next dev  -> http://localhost:3000
 pnpm build              # next build
 pnpm start              # next start
-pnpm lint               # next lint
+pnpm lint               # eslint .  (Next 16 removed `next lint`)
 pnpm typecheck          # tsc --noEmit
+pnpm test               # tsx --test (city/county, map, place lookup, laws)
 
 pnpm up                 # docker compose up (full stack; 25k sample first run)
 pnpm up:build           # docker compose up --build
@@ -119,7 +120,7 @@ data/
   slugs.ts, cityCounty.ts           # place keys + Census city→county join
   db.ts, types.ts, seed.ts, db-count.ts, build-city-county.ts
 components/map/                     # canvas map: geo.ts, camera.ts, sparseCounties.ts, MapPanel.tsx
-next.config.ts, tsconfig.json
+next.config.ts, tsconfig.json, eslint.config.mjs
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
 
@@ -197,6 +198,14 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   via an absolute host path captured at container-create time. Renaming/moving the folder breaks
   it (empty `/workspace`); the entrypoint fails fast — recreate with `docker compose up -d
   --force-recreate` (data persists in the named volume).
+- **Supported Next line is 16.x** (`next` + `eslint-config-next` together). Do not take a
+  Dependabot major for Next, ESLint, TypeScript, or `@types/node` — those are deliberate
+  maintainer upgrades. Cache Components / Instant Navigations stay off unless a feature asks.
+  `eslint.config.mjs` keeps React Compiler rules off so canvas/map/store effects stay valid.
+- **`pnpm.overrides`** in `package.json` pin transitive packages whose parents have not
+  published a safe range (Nano ID 3.3.18, js-yaml, brace-expansion). Remove an override when
+  the parent tree already resolves the patched version. Do **not** major-override Prisma's
+  `deepmerge-ts@7` (alert #27: trusted local Prisma config only; no patched parent in 6.x/7.x).
 
 ## Environment Variables
 
@@ -207,7 +216,7 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 ## Deployment
 
 Live in production on Vercel at https://visualizelaws.com (Prisma Postgres + Cloudflare DNS). CI runs
-`verify` (lint + typecheck) on PRs; Vercel builds and deploys on merge to `main`. The production
+`verify` (lint + typecheck + test) on PRs; Vercel builds and deploys on merge to `main`. The production
 database is migrated + seeded from a workstation (`pnpm prisma:deploy:prod`, `pnpm seed:prod`) —
 never in the build or CI. Detailed CI/CD, domain, SEO, and seed operator steps are intentionally
 kept out of this file to avoid staleness; see `agents/AGENTS.md` for durable agent/maintainer

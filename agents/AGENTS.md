@@ -45,7 +45,7 @@ avoid staleness; expand only when durable.
 ## Local development commands
 
 - `pnpm install` (prefer pnpm; **no corepack**)
-- `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck`
+- `pnpm dev` / `pnpm build` / `pnpm lint` (`eslint .`) / `pnpm typecheck` / `pnpm test`
 - `pnpm up` / `pnpm up:build` / `pnpm up:full`
 - `pnpm db:up` / `pnpm db:down` / `pnpm db:studio`
 - `pnpm prisma:deploy` / `pnpm prisma:migrate`
@@ -114,6 +114,11 @@ avoid staleness; expand only when durable.
 - Keep changes scoped and logically grouped (atomic commits).
 - Do not commit directly to `main`; branch + PR; Conventional Commits. See `CONTRIBUTING.md`.
 - Prefer `pnpm` (no corepack).
+- Supported Next line is **16.x**. Keep `next` and `eslint-config-next` in lockstep. Do not
+  merge Dependabot semver-major PRs for Next, ESLint, TypeScript, or `@types/node`.
+- `pnpm.overrides` exist only for transitives parents have not patched (Nano ID, js-yaml,
+  brace-expansion). Drop an override when the parent tree is already safe. Do not force
+  `deepmerge-ts@8` through Prisma — dismiss/revisit Dependabot #27 until Prisma ships a fix.
 - Do not run the app/deploy unless the task asks for it.
 - Never stage `.env*`, credentials, or parquet cache (`.locus-cache/`).
 - Prisma **drops/resets** a shadow database. Never pass a URL that has data
@@ -134,6 +139,7 @@ No Cursor Bugbot / Grok GitHub review app (pay-per-use). Reviews are
 - PRs by the repo owner and `dependabot[bot]` only, unless asked.
 - Load this file, `WARP.md`, and issue #25 before judging map / data / migrate diffs.
 - Dependabot: version/compat and whether the bump touches migrate/seed/shadow — no drive-by refactors.
+  Security updates may be grouped; Next/ESLint/TypeScript majors are out of band.
 
 ---
 
