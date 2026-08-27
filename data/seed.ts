@@ -365,7 +365,6 @@ async function copyBatch(client: Client, lines: string[]): Promise<void> {
     `COPY batch (${lines.length} rows)`,
     () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sock = (client as any).connection?.stream as
           | { destroy?: (err?: Error) => void }
           | undefined;

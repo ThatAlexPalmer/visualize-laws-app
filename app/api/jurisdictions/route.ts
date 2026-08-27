@@ -1,5 +1,4 @@
-import { unstable_noStore as noStore } from "next/cache";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import {
   getJurisdictions,
   resolvePlace,
@@ -30,14 +29,14 @@ export async function GET(
     const city = searchParams.get("city");
     const county = searchParams.get("county");
     if (city?.trim() || county?.trim()) {
-      noStore();
+      await connection();
       return NextResponse.json(await resolvePlace({ city, county }), {
         headers: { "Cache-Control": NO_STORE },
       });
     }
     const payload = await getJurisdictions();
     if (!isCompleteNational(payload)) {
-      noStore();
+      await connection();
       return NextResponse.json(payload, {
         headers: { "Cache-Control": NO_STORE },
       });
@@ -47,7 +46,7 @@ export async function GET(
     });
   } catch (error) {
     console.error("GET /api/jurisdictions failed:", error);
-    noStore();
+    await connection();
     return NextResponse.json(
       { error: "Jurisdiction aggregates are temporarily unavailable." },
       { status: 503, headers: { "Cache-Control": NO_STORE } },
