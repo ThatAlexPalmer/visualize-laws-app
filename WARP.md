@@ -101,6 +101,7 @@ pnpm seed --limit 25000 # fast dev sample (Alaska-only; shard 0)
 pnpm seed --fresh --shards 1 --limit 25000  # Colorado QA (pagosa_springs, el_paso_county)
 pnpm seed --shards ''   # recompute aggregates + city_county / county_fills
 pnpm build:city-county  # Census join + stand-in fills only (no parquet COPY)
+pnpm build:fines        # LOCUS-Fines penalty layer only (~40s on a full corpus)
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
 pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 pnpm seed:prod …        # same flags against .env.prod (remote admin only)
@@ -141,6 +142,29 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 - **CountyFill** — map-layer sibling to `jurisdictions` (`source` = `county` | `city`).
   Do not reuse `(level, state, county)` for stand-ins.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
+- **LawFine** — [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines)
+  penalty annotation, unique on `law_id` (FK → `laws`, `ON DELETE CASCADE`). Only the
+  **632,005 model-read rows** (`annotation_source = 'LLM'`) are stored: every dollar
+  amount and every model judgement lives on one. A missing row means *not read by the
+  model* — **not** "this law has no penalty." 83,625 rows carry an amount. Denormalizes
+  `state` / `city` / `county` for per-place aggregates and keeps `content_sha1` so a
+  rebuild is verifiable.
+
+### Fines layer
+
+`data/build-fines.ts` streams the single ~87 MB supplement parquet, keeps model-read
+rows, `COPY`s them into an unlogged staging table, then one server-side `INSERT ... SELECT`
+dedupes and hash-joins them onto `laws`. `data/fines.ts` holds the pure helpers.
+
+- The supplement ships **no law text**. Rows re-attach on seven identity columns whose
+  last member is `content_sha1` = `sha1(content)` truncated to 16 hex chars, recomputed
+  in Postgres via pgcrypto `digest` (core PG has md5/sha2 but no sha1).
+- That key is **not unique** in LOCUS-v1 (2,411 duplicate groups / 5,200 rows), so the
+  fines side is deduped with `DISTINCT ON` before the join. Skipping that fans out.
+- NULL `city` / `county` normalize to `''` on both sides so every predicate stays a
+  hashable equality. `IS NOT DISTINCT FROM` is correct but unhashable and collapses the
+  plan into a nested loop over 2.2M rows.
+- Rebuild-in-place and idempotent: re-running yields identical counts.
 
 ## Seeding
 
@@ -161,9 +185,12 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - Local full corpus (Docker Postgres, shards cached): **~15–40 min**
 - Remote full fresh (`pnpm seed:prod --fresh` from laptop → managed Postgres): **~30–60+ min**,
   with occasional silent stalls; resume without `--fresh` is expected
+- Fines layer on a full corpus (`pnpm build:fines`, parquet cached): **well under a minute**
 - Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 +
-  one `state` per distinct code (~50) + ~**376** `county` rows (full corpus). Existing DBs
-  that skipped docker seed after the city-index migration need `pnpm seed --shards ''`.
+  one `state` per distinct code (~50) + ~**376** `county` rows (full corpus), `law_fines`
+  = **632,005** (**83,625** with an amount). Existing DBs that skipped docker seed after
+  the city-index migration need `pnpm seed --shards ''`; ones predating the fines
+  migration need `pnpm prisma:deploy` then `pnpm build:fines`.
 
 Maintainer/agent detail (single-writer, background logs, verify SQL): **`agents/AGENTS.md`**.
 Do not expand public `README.md` with remote DB / internal agent ops.
@@ -186,6 +213,20 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Empty county polygons are coverage, not a render bug** (issue #25). ~3,231 atlas
   shapes vs ~376 scored counties. Never invent county averages from city laws. Never
   special-case a state.
+- **The two parquet readers are not interchangeable.** `data/seed.ts` uses
+  `@dsnp/parquetjs` for the LOCUS-v1 shards (~56k-row row groups); `data/build-fines.ts`
+  uses `hyparquet` because LOCUS-Fines packs **1,048,576-row row groups** and
+  `@dsnp/parquetjs` materializes a whole row group — it OOMs at the default heap and
+  needs ~7.75 GB RSS. `hyparquet` reads bounded row ranges and peaks near 1.2 GB. Do not
+  "unify" these on the parquetjs reader.
+- **`--fresh` must truncate `law_fines`** — it holds an FK to `laws`, so Postgres rejects
+  the TRUNCATE otherwise, and its rows are keyed by law id, which is not stable across a
+  fresh load. Rebuild it afterwards (the seeder does).
+- **Fine amounts are model output, not ground truth.** Amounts are verified against the
+  source text but the categorical fields are not, and a number meaning something else
+  (a bond, a fee cap) is occasionally read as a fine — the largest stored values are such
+  cases. Prefer medians over means, and surface `grounded = false` / non-null
+  `extraction_flag` as a caveat rather than hiding those rows.
 - Prisma **drops/resets** a shadow database. Never pass a URL that has data (local
   Docker or remote) as `--shadow-database-url`. Never `migrate reset` / `db push`
   against a database you care about. Apply with `prisma:deploy` / `prisma:deploy:prod`.
