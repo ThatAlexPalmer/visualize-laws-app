@@ -61,6 +61,7 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.3",
+    "hyparquet": "^1.29.2",
     "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

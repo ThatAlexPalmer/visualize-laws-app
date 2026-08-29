@@ -15,25 +15,28 @@ datasource db {
 
 /// One LOCUS-v1 law chunk (full record). ~2.2M rows in production.
 model Law {
-  id                     Int      @id @default(autoincrement())
+  id                     Int     @id @default(autoincrement())
   header                 String?
-  content                String   @db.Text
-  isSubstantive          Boolean  @map("is_substantive")
+  content                String  @db.Text
+  isSubstantive          Boolean @map("is_substantive")
   function               String?
   topic                  String?
-  sourceJurisdictionType String?  @map("source_jurisdiction_type")
+  sourceJurisdictionType String? @map("source_jurisdiction_type")
   state                  String
   city                   String?
   county                 String?
-  enforcementDiscretion  Float    @map("enforcement_discretion")
+  enforcementDiscretion  Float   @map("enforcement_discretion")
   opacity                Float
   paternalism            Float
-  problemSalience        Float    @map("problem_salience")
+  problemSalience        Float   @map("problem_salience")
 
   // Full-text search column: a generated tsvector created in the migration SQL
   // (Prisma cannot express GENERATED columns). Tracked here as Unsupported so
   // migrations stay in sync; queried via $queryRaw with websearch_to_tsquery.
   searchVector Unsupported("tsvector")? @map("search_vector")
+
+  /// LOCUS-Fines annotation, when the supplement's model read this row.
+  fines LawFine?
 
   @@index([state])
   @@index([state, county])
@@ -81,6 +84,64 @@ model Jurisdiction {
   @@unique([level, state, county])
   @@index([level])
   @@map("jurisdictions")
+}
+
+/// LOCUS-Fines penalty annotation for one law (`data/build-fines.ts`).
+///
+/// Only rows the supplement actually sent to its model (`annotation_source =
+/// 'LLM'`) are stored — every dollar amount and every model judgement lives on
+/// those rows. A missing row therefore means "not read by the model", which is
+/// NOT the same as "this law has no penalty". Rebuilt from scratch whenever
+/// `laws` is re-seeded, since law ids are not stable across a `--fresh` load.
+model LawFine {
+  id    Int @id @default(autoincrement())
+  lawId Int @unique @map("law_id")
+  law   Law @relation(fields: [lawId], references: [id], onDelete: Cascade)
+
+  // Denormalized jurisdiction identity (verbatim LOCUS slugs) so per-place
+  // aggregates do not have to join back to the 2.2M-row `laws` table.
+  state  String
+  city   String?
+  county String?
+
+  /// First 16 hex chars of sha1(laws.content) — the supplement's join key.
+  contentSha1      String @map("content_sha1")
+  /// Provenance from the source dataset; always 'LLM' for stored rows.
+  annotationSource String @map("annotation_source")
+
+  fineRelevant  Boolean @map("fine_relevant")
+  /// 'code_general' | 'chapter_general' | 'specific'
+  penaltyScope  String? @map("penalty_scope")
+  /// 'amounts_here' | 'cross_reference' | 'implicit'
+  penaltyStated String? @map("penalty_stated")
+  /// 'fixed' | 'fluid'
+  fineStructure String? @map("fine_structure")
+
+  // Dollar amounts, double precision to round-trip the source float64 exactly
+  // (418 values are non-integer; the largest is 5,000,000).
+  fixedAmount               Float? @map("fixed_amount")
+  minAmount                 Float? @map("min_amount")
+  maxAmount                 Float? @map("max_amount")
+  firstViolationAmount      Float? @map("first_violation_amount")
+  secondViolationAmount     Float? @map("second_violation_amount")
+  subsequentViolationAmount Float? @map("subsequent_violation_amount")
+  /// min / max across all six amount fields — the section's true penalty span.
+  effectiveMin              Float? @map("effective_min")
+  effectiveMax              Float? @map("effective_max")
+
+  perDayViolation Boolean  @map("per_day_violation")
+  jailMentioned   Boolean  @map("jail_mentioned")
+  /// 'criminal' | 'civil' | 'both'
+  penaltyNature   String?  @map("penalty_nature")
+  /// 'fragment_incomplete' | 'table_fragment' | 'not_ordinance_text'
+  extractionFlag  String?  @map("extraction_flag")
+  /// false when an amount could not be found in the source text and was dropped.
+  grounded        Boolean?
+
+  @@index([state])
+  @@index([penaltyStated])
+  @@index([effectiveMax])
+  @@map("law_fines")
 }
 
 /// Resumability for the full-dataset seed: one row per completed parquet shard.
