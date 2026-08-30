@@ -53,6 +53,7 @@ import {
   isModelAnnotated,
   type RawFineRow,
 } from "./fines";
+import { PENALTY_MEDIAN_MIN } from "./types";
 
 // --- Configuration ---------------------------------------------------------
 
@@ -176,6 +177,56 @@ SELECT count(*)::bigint AS n FROM (
   GROUP BY ${IDENTITY_COLUMNS.map((c) => `"${c}"`).join(", ")}
 ) t`;
 
+/**
+ * The aggregate expression list, shared by the place / state / national rows
+ * so the three levels cannot drift apart.
+ *
+ * `median_fine` is suppressed below `medianMin` amount sections — a median off
+ * three samples is noise, and 41 of 2,287 places are that thin.
+ */
+function penaltyAggColumns(medianMin: number): string {
+  return `
+    count(*)::int,
+    count(*) FILTER (WHERE effective_max IS NOT NULL)::int,
+    count(*) FILTER (WHERE jail_mentioned)::int,
+    count(*) FILTER (WHERE per_day_violation)::int,
+    CASE WHEN count(*) FILTER (WHERE effective_max IS NOT NULL) >= ${medianMin}
+         THEN percentile_cont(0.5) WITHIN GROUP (ORDER BY effective_max)
+                FILTER (WHERE effective_max IS NOT NULL)
+    END`;
+}
+
+/**
+ * Per-place penalty aggregates for the map's Penalties layer.
+ *
+ * `place` is COALESCE(city, county) — mutually exclusive on a LOCUS row, and
+ * exactly the value `county_fills.source_place` holds, so the map joins
+ * straight onto (state, place).
+ *
+ * The colour metric (amount_sections / penalty_sections) is deliberately not
+ * stored: deriving it at read time means the ratio can never drift from its
+ * own numerator and denominator.
+ */
+function placePenaltiesSql(medianMin: number): string {
+  const cols = penaltyAggColumns(medianMin);
+  return `
+INSERT INTO place_penalties
+  (level, state, place, penalty_sections, amount_sections,
+   jail_sections, per_day_sections, median_fine)
+SELECT 'place', state, COALESCE(city, county), ${cols}
+FROM law_fines
+WHERE COALESCE(city, county, '') <> ''
+GROUP BY state, COALESCE(city, county)
+UNION ALL
+SELECT 'state', state, NULL, ${cols}
+FROM law_fines
+GROUP BY state
+UNION ALL
+SELECT 'national', NULL, NULL, ${cols}
+FROM law_fines
+`;
+}
+
 export interface FinesBuildStats {
   /** Rows in the supplement parquet. */
   parquetRows: number;
@@ -193,6 +244,8 @@ export interface FinesBuildStats {
   matched: number;
   /** Stored rows carrying a dollar amount. */
   withAmount: number;
+  /** `place_penalties` rows at level='place' (one per annotated place). */
+  places: number;
 }
 
 // --- Env (tsx does not auto-load .env) -------------------------------------
@@ -466,12 +519,17 @@ export async function buildFinesTable(
   let matched = 0;
   await client.query("BEGIN");
   try {
-    // law_fines is fully derived from the parquet + laws, so rebuilding it
-    // wholesale is safe. Inside the transaction, readers keep seeing the old
-    // rows until COMMIT.
+    // law_fines and place_penalties are both fully derived from the parquet +
+    // laws, so rebuilding them wholesale is safe. Inside the transaction,
+    // readers keep seeing the previous rows until COMMIT.
     await client.query("TRUNCATE TABLE law_fines RESTART IDENTITY");
     const inserted = await client.query(ATTACH_SQL);
     matched = inserted.rowCount ?? 0;
+
+    // --- 3. Per-place aggregates for the map's Penalties layer -------------
+    await client.query("DELETE FROM place_penalties");
+    await client.query(placePenaltiesSql(PENALTY_MEDIAN_MIN));
+
     await client.query("COMMIT");
   } catch (err) {
     try {
@@ -482,11 +540,15 @@ export async function buildFinesTable(
     throw err;
   }
 
-  const amounts = await client.query<{ n: string }>(
-    "SELECT count(*)::bigint AS n FROM law_fines WHERE effective_max IS NOT NULL",
-  );
+  const summary = await client.query<{ amounts: string; places: string }>(`
+    SELECT
+      (SELECT count(*) FROM law_fines WHERE effective_max IS NOT NULL)::bigint
+        AS amounts,
+      (SELECT count(*) FROM place_penalties WHERE level = 'place')::bigint
+        AS places
+  `);
 
-  // --- 3. Drop staging -----------------------------------------------------
+  // --- 4. Drop staging -----------------------------------------------------
   await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`);
 
   return {
@@ -494,7 +556,8 @@ export async function buildFinesTable(
     staged,
     distinctKeys,
     matched,
-    withAmount: Number(amounts.rows[0]?.n ?? 0),
+    withAmount: Number(summary.rows[0]?.amounts ?? 0),
+    places: Number(summary.rows[0]?.places ?? 0),
   };
 }
 
@@ -522,7 +585,10 @@ export async function runFinesBuild(
         `(${fmt(stats.staged)} staged → ${fmt(stats.distinctKeys)} distinct keys, ` +
         `${rate}% attached)`,
     );
-    console.log(`  with a dollar amount: ${fmt(stats.withAmount)}`);
+    console.log(
+      `  with a dollar amount: ${fmt(stats.withAmount)} · ` +
+        `${fmt(stats.places)} places aggregated`,
+    );
     if (stats.matched < stats.distinctKeys) {
       console.log(
         `  ${fmt(stats.distinctKeys - stats.matched)} keys did not attach — sections ` +

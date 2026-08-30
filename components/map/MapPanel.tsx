@@ -9,6 +9,8 @@ import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
   cityStandInLabel,
+  formatFine,
+  formatShare,
   matchCountySlug,
   nativeCountyToFill,
   normalizePlaceKey,
@@ -17,6 +19,7 @@ import {
   type Axis,
   type CountyFill,
   type JurisdictionAgg,
+  type PenaltyStats,
 } from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
@@ -39,10 +42,10 @@ import {
   type WorldBBox,
 } from "./camera";
 import {
-  axisValue,
-  computeDomain,
+  computeLayerDomain,
+  layerValue,
   normalize,
-  rampColorForAxis,
+  rampColorForLayer,
   type Domain,
 } from "./color";
 import {
@@ -187,6 +190,27 @@ const AXIS_HOVER_STROKE: Record<Axis, string> = {
   problemSalience: "rgba(139,92,246,0.72)",
 };
 
+/** Matches theme.colors.penalty at the same 0.72 alpha as the axis strokes. */
+const PENALTY_HOVER_STROKE = "rgba(16,185,129,0.72)";
+
+/**
+ * Hover copy for the penalties layer.
+ *
+ * A place with no annotation reads "not annotated", never "no penalty" — the
+ * supplement only sent about a third of the corpus to its model, so silence
+ * means nobody looked.
+ */
+function penaltyHoverSuffix(stats: PenaltyStats | null | undefined): string {
+  if (!stats || stats.penaltySections === 0) return " · not annotated";
+  const share = formatShare(stats.amountSections / stats.penaltySections);
+  const sections = stats.penaltySections.toLocaleString("en-US");
+  const median =
+    stats.medianFine === null
+      ? ""
+      : ` · median ${formatFine(stats.medianFine)}`;
+  return ` · ${share} of ${sections} penalty sections state an amount${median}`;
+}
+
 /** State name displayed on top-left of the map canvas. */
 const TitleStack = styled.div`
   position: absolute;
@@ -297,6 +321,9 @@ export function MapPanel({
   const { data, status, retry, stateDetail, stateDetailStatus } =
     useJurisdictions();
   const axis = state.axis;
+  const layer = state.layer;
+  const hoverStroke =
+    layer === "penalties" ? PENALTY_HOVER_STROKE : AXIS_HOVER_STROKE[axis];
   const selectedState = state.selectedState;
   const atlasCountyName = state.atlasCountyName;
   const selectedCountyRaw = state.filters.county ?? null;
@@ -412,11 +439,12 @@ export function MapPanel({
   // in-state county averages (no national bounds — same as the US map).
   const domain: Domain | null = useMemo(
     () =>
-      computeDomain(
+      computeLayerDomain(
+        layer,
         axis,
         countyViewReady && !sparseCounties ? fillRows : rows,
       ),
-      [axis, countyViewReady, sparseCounties, fillRows, rows],
+      [layer, axis, countyViewReady, sparseCounties, fillRows, rows],
   );
 
   const bakeStatePaths = useCallback((): void => {
@@ -505,9 +533,12 @@ export function MapPanel({
 
     for (const e of statePathsRef.current) {
       const agg = e.usps ? aggByUsps.get(e.usps) : undefined;
+      // Null value = not annotated under this layer; leave it unpainted rather
+      // than bottoming out the ramp, which would read as a real low score.
+      const value = agg ? layerValue(agg, layer, axis) : null;
       ctx.fillStyle =
-        agg && domain
-          ? rampColorForAxis(normalize(axisValue(agg, axis), domain), axis)
+        value !== null && domain
+          ? rampColorForLayer(normalize(value, domain), layer, axis)
           : mapAggregatesInFlight
             ? "rgba(255,255,255,0.04)"
             : "rgba(255,255,255,0.015)";
@@ -535,8 +566,11 @@ export function MapPanel({
             ? fillByKey.get(`${paint.source}:${paint.sourcePlace}`)
             : undefined;
           if (!agg || !domain) continue;
-          ctx.fillStyle = rampColorForAxis(
-            normalize(axisValue(agg, axis), domain),
+          const value = layerValue(agg, layer, axis);
+          if (value === null) continue;
+          ctx.fillStyle = rampColorForLayer(
+            normalize(value, domain),
+            layer,
             axis,
           );
           ctx.fill(e.path);
@@ -553,6 +587,7 @@ export function MapPanel({
     paintByFips,
     domain,
     axis,
+    layer,
     sparseCounties,
     mapAggregatesInFlight,
     countiesInFlight,
@@ -605,7 +640,7 @@ export function MapPanel({
         });
         if (hoverEntry) {
           ctx.lineWidth = 1.5 / cam.k;
-          ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
+          ctx.strokeStyle = hoverStroke;
           ctx.stroke(hoverEntry.path);
         }
       } else if (hovered.kind === "state") {
@@ -614,7 +649,7 @@ export function MapPanel({
         );
         if (hoverEntry) {
           ctx.lineWidth = 1.5 / cam.k;
-          ctx.strokeStyle = AXIS_HOVER_STROKE[axis];
+          ctx.strokeStyle = hoverStroke;
           ctx.stroke(hoverEntry.path);
         }
       }
@@ -660,7 +695,7 @@ export function MapPanel({
     selectedCounty,
     selectedCity,
     atlasCountyName,
-    axis,
+    hoverStroke,
     paintByFips,
   ]);
 
@@ -810,7 +845,8 @@ export function MapPanel({
     drawOverlay();
   }, [drawOverlay]);
 
-  // framer-motion crossfade when the active axis changes (skip initial mount).
+  // framer-motion crossfade when the painted metric changes — axis or layer
+  // (skip initial mount).
   useEffect(() => {
     if (firstAxisRun.current) {
       firstAxisRun.current = false;
@@ -821,7 +857,7 @@ export function MapPanel({
       opacity: 1,
       transition: { duration: theme.motion.base, ease: theme.motion.ease },
     });
-  }, [axis, controls]);
+  }, [axis, layer, controls]);
 
   // Hit-test in world space: invert the camera, then isPointInPath on baked paths.
   const pick = useCallback(
@@ -954,7 +990,22 @@ export function MapPanel({
   const hoveredHasScore = Boolean(
     hovered?.kind === "county" && hovered.sourcePlace,
   );
-  const mapLabel = hovered
+  // Penalty stats behind whatever is hovered, for the layer's hover copy.
+  const hoveredPenalties = useMemo<PenaltyStats | null | undefined>(() => {
+    if (layer !== "penalties" || !hovered) return undefined;
+    if (hovered.kind === "state") {
+      return hovered.usps
+        ? (aggByUsps.get(hovered.usps)?.penalties ?? null)
+        : null;
+    }
+    if (!hovered.sourcePlace || !hovered.fillSource) return null;
+    return (
+      fillByKey.get(`${hovered.fillSource}:${hovered.sourcePlace}`)
+        ?.penalties ?? null
+    );
+  }, [layer, hovered, aggByUsps, fillByKey]);
+
+  const baseMapLabel = hovered
     ? hovered.kind === "county"
       ? hovered.fillSource === "city" && hovered.sourcePlace
         ? cityStandInLabel(
@@ -974,6 +1025,13 @@ export function MapPanel({
           : selectedState
             ? stateName(selectedState)
             : null;
+
+  // On the penalties layer, hovering appends the sample behind the colour so
+  // the figure is never mistaken for a score.
+  const mapLabel =
+    hovered && baseMapLabel && hoveredPenalties !== undefined
+      ? `${baseMapLabel}${penaltyHoverSuffix(hoveredPenalties)}`
+      : baseMapLabel;
 
   return (
     <Wrap ref={wrapRef}>

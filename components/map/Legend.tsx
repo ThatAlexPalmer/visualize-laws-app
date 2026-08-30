@@ -6,15 +6,28 @@ import { motion } from "framer-motion";
 
 import { resolveAxisCopy } from "@/lib/copy";
 import { useExplorer } from "@/lib/store";
-import type { Axis, CountyFill, JurisdictionAgg } from "@/lib/types";
-import { nativeCountyToFill } from "@/lib/types";
+import {
+  formatFine,
+  formatShare,
+  nativeCountyToFill,
+  type Axis,
+  type CountyFill,
+  type JurisdictionAgg,
+  type MapLayer,
+  type PenaltyStats,
+} from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
-import { computeDomain, rampColorForAxis, type Domain } from "./color";
+import {
+  computeLayerDomain,
+  rampColorForLayer,
+  type Domain,
+} from "./color";
 import { COUNTY_FILL_MIN, countyScaleReady } from "./sparseCounties";
 
 interface Props {
   axis: Axis;
+  layer: MapLayer;
   axisLabel: string;
   blurb: string;
   domain: Domain | null;
@@ -22,16 +35,26 @@ interface Props {
 
 const EMPTY_ROWS: JurisdictionAgg[] = [];
 
-/** Full-width slot under the map so the card never paints over the canvas. */
+/**
+ * Full-width slot under the map so the card never paints over the canvas.
+ *
+ * Wide and short (~90px), so the penalties stats sit *beside* the legend and
+ * use the band that would otherwise be empty. At <=lg everything stacks, and
+ * the stats collapse into a single card to limit added scroll length.
+ */
 const Slot = styled.div`
   flex-shrink: 0;
   display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: ${({ theme }) => theme.space(3)};
   justify-content: flex-start;
   padding: ${({ theme }) => theme.space(3)} ${({ theme }) => theme.space(4)};
   border-top: 1px solid ${({ theme }) => theme.colors.g08};
   background: ${({ theme }) => theme.colors.bg};
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    flex-direction: column;
     padding: ${({ theme }) => theme.space(3)};
   }
 `;
@@ -94,39 +117,157 @@ const Direction = styled.div`
   margin-top: -${({ theme }) => theme.space(0.5)};
 `;
 
+/** Stat cards filling the band beside the legend on the penalties layer. */
+const Stats = styled(motion.div)`
+  display: flex;
+  gap: ${({ theme }) => theme.space(3)};
+  align-items: stretch;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    /* One card with inline rows on mobile: three stacked cards would add
+       ~240px of scrolling to an already tall column. */
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    padding: ${({ theme }) => theme.space(3)};
+    border: 1px solid ${({ theme }) => theme.colors.g12};
+    background: ${({ theme }) => theme.colors.g04};
+  }
+`;
+
+const Stat = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.space(1)};
+  min-width: 132px;
+  padding: ${({ theme }) => theme.space(3)};
+  border: 1px solid ${({ theme }) => theme.colors.g12};
+  background: ${({ theme }) => theme.colors.g04};
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    min-width: 0;
+    padding: ${({ theme }) => theme.space(1)} 0;
+    border: 0;
+    background: transparent;
+  }
+`;
+
+const StatLabel = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.g60};
+`;
+
+const StatValue = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.lg};
+  color: ${({ theme }) => theme.colors.fg};
+  line-height: 1.1;
+`;
+
+const StatNote = styled.div`
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  color: ${({ theme }) => theme.colors.g60};
+  align-self: center;
+  max-width: 260px;
+  line-height: 1.45;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    max-width: none;
+    margin-top: ${({ theme }) => theme.space(2)};
+  }
+`;
+
 function fmt(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
 
-/** Compact legend: axis label, blurb, and the axis-colored value ramp. */
-export function MapLegend({ axis, axisLabel, blurb, domain }: Props) {
-  const barStyle = {
-    background: `linear-gradient(90deg, ${rampColorForAxis(0, axis)} 0%, ${rampColorForAxis(1, axis)} 100%)`,
-  };
+/** Legend scale text: a percentage on the penalties layer, else a z-score. */
+function fmtDomain(value: number, layer: MapLayer): string {
+  return layer === "penalties" ? formatShare(value) : fmt(value);
+}
+
+/**
+ * The figures that do not work as colour.
+ *
+ * Median fine in particular: 32 of 50 states sit at exactly $500, so painting
+ * it would be two-thirds one flat shade. As a number it is the finding.
+ */
+function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
+  const share =
+    stats.penaltySections > 0
+      ? formatShare(stats.amountSections / stats.penaltySections)
+      : "—";
   return (
-    <Slot>
-      <Box
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <Label>{axisLabel}</Label>
-        <Blurb>{blurb}</Blurb>
-        <Bar style={barStyle} />
-        <Scale>
-          <span>{domain ? fmt(domain.min) : "—"}</span>
-          <span>{domain ? fmt(domain.max) : "—"}</span>
-        </Scale>
-        <Direction>
-          <span>less</span>
-          <span>more</span>
-        </Direction>
-      </Box>
-    </Slot>
+    <Stats
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <Stat>
+        <StatLabel>Typical fine</StatLabel>
+        <StatValue>
+          {stats.medianFine === null ? "—" : formatFine(stats.medianFine)}
+        </StatValue>
+      </Stat>
+      <Stat>
+        <StatLabel>States an amount</StatLabel>
+        <StatValue>{share}</StatValue>
+      </Stat>
+      <Stat>
+        <StatLabel>Mentions jail</StatLabel>
+        <StatValue>
+          {stats.penaltySections > 0
+            ? formatShare(stats.jailSections / stats.penaltySections)
+            : "—"}
+        </StatValue>
+      </Stat>
+      <StatNote>
+        Across {stats.penaltySections.toLocaleString("en-US")} sections a model
+        read for penalties — not the whole corpus.
+      </StatNote>
+    </Stats>
   );
 }
 
-/** Hidden when in-state scored n < K. */
+/** Compact legend: label, blurb, and the layer-colored value ramp. */
+export function MapLegend({ axis, layer, axisLabel, blurb, domain }: Props) {
+  const barStyle = {
+    background:
+      `linear-gradient(90deg, ${rampColorForLayer(0, layer, axis)} 0%, ` +
+      `${rampColorForLayer(1, layer, axis)} 100%)`,
+  };
+  return (
+    <Box
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <Label>{axisLabel}</Label>
+      <Blurb>{blurb}</Blurb>
+      <Bar style={barStyle} />
+      <Scale>
+        <span>{domain ? fmtDomain(domain.min, layer) : "—"}</span>
+        <span>{domain ? fmtDomain(domain.max, layer) : "—"}</span>
+      </Scale>
+      <Direction>
+        <span>less</span>
+        <span>more</span>
+      </Direction>
+    </Box>
+  );
+}
+
+/**
+ * The ramp is hidden when in-state scored n < K, but the penalty stats are
+ * not: they describe the selected scope rather than the county mesh, so they
+ * must survive that early return or they vanish in the eight thin states.
+ */
 export function ConnectedMapLegend({
   countiesBaked,
 }: {
@@ -135,6 +276,7 @@ export function ConnectedMapLegend({
   const { state } = useExplorer();
   const { data, stateDetail } = useJurisdictions();
   const axis = state.axis;
+  const layer = state.layer;
   const selectedState = state.selectedState;
   const rows = data?.rows ?? EMPTY_ROWS;
   const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
@@ -158,22 +300,43 @@ export function ConnectedMapLegend({
 
   const domain = useMemo(
     () =>
-      computeDomain(
+      computeLayerDomain(
+        layer,
         axis,
         countyViewReady && !sparseCounties ? fillRows : rows,
       ),
-    [axis, countyViewReady, sparseCounties, fillRows, rows],
+    [layer, axis, countyViewReady, sparseCounties, fillRows, rows],
   );
 
-  if (sparseCounties) return null;
+  // Penalty figures for the current scope: the selected state, else the nation.
+  const penalties: PenaltyStats | null = selectedState
+    ? (stateDetail?.jurisdiction?.penalties ?? null)
+    : (data?.national?.penalties ?? null);
 
   const axisCopy = resolveAxisCopy(axis, state.unhinged);
+  const showRamp = !sparseCounties;
+  const showStats = layer === "penalties" && penalties !== null;
+
+  if (!showRamp && !showStats) return null;
+
   return (
-    <MapLegend
-      axis={axis}
-      axisLabel={axisCopy.label}
-      blurb={axisCopy.blurb}
-      domain={domain}
-    />
+    <Slot>
+      {showRamp && (
+        <MapLegend
+          axis={axis}
+          layer={layer}
+          axisLabel={
+            layer === "penalties" ? "Penalties" : axisCopy.label
+          }
+          blurb={
+            layer === "penalties"
+              ? "Share of penalty sections that state a dollar amount."
+              : axisCopy.blurb
+          }
+          domain={domain}
+        />
+      )}
+      {showStats && penalties && <PenaltyStatsCards stats={penalties} />}
+    </Slot>
   );
 }

@@ -662,15 +662,18 @@ async function main(): Promise<void> {
   try {
     if (opts.fresh) {
       console.log(
-        "--fresh: truncating laws, law_fines, jurisdictions, seed_checkpoints, city_county, county_fills",
+        "--fresh: truncating laws, law_fines, place_penalties, jurisdictions, " +
+          "seed_checkpoints, city_county, county_fills",
       );
       // Truncate can be slow on a large partial table — disable statement timeout.
       await client.query(`SET statement_timeout = ${AGG_STATEMENT_TIMEOUT_MS}`);
       // law_fines must be in this list: it carries an FK to laws, so Postgres
       // rejects the TRUNCATE otherwise. Its rows are keyed by law id, which is
       // not stable across a fresh load, so they have to be rebuilt anyway.
+      // place_penalties is derived from law_fines, so it goes with it.
       await client.query(
-        "TRUNCATE TABLE laws, law_fines, jurisdictions, seed_checkpoints, city_county, county_fills RESTART IDENTITY",
+        "TRUNCATE TABLE laws, law_fines, place_penalties, jurisdictions, " +
+          "seed_checkpoints, city_county, county_fills RESTART IDENTITY",
       );
       await client.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
       clearProgress();
@@ -773,7 +776,8 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
       console.log(
         `  law_fines: ${fmt(fineStats.matched)} attached from ` +
           `${fmt(fineStats.staged)} model rows · ` +
-          `${fmt(fineStats.withAmount)} with a dollar amount`,
+          `${fmt(fineStats.withAmount)} with a dollar amount · ` +
+          `${fmt(fineStats.places)} places aggregated`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

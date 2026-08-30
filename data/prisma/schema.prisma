@@ -144,6 +144,34 @@ model LawFine {
   @@map("law_fines")
 }
 
+/// Per-place LOCUS-Fines aggregates behind the Penalties map layer
+/// (`data/build-fines.ts`).
+///
+/// A sibling table rather than columns on `Jurisdiction` / `CountyFill`:
+/// `data/build-city-county.ts` rebuilds those with DELETE + re-INSERT, so
+/// penalty columns there would be wiped by an unrelated `pnpm build:city-county`.
+/// `place` is COALESCE(city, county), which equals `CountyFill.sourcePlace`.
+model PlacePenalty {
+  id Int @id @default(autoincrement())
+
+  /// 'national' (state + place null) | 'state' (place null) | 'place'
+  level String
+  state String?
+  place String?
+
+  /// Sections the model read here — the denominator for every share.
+  penaltySections Int    @map("penalty_sections")
+  amountSections  Int    @map("amount_sections")
+  jailSections    Int    @map("jail_sections")
+  perDaySections  Int    @map("per_day_sections")
+  /// null when too few amount sections back it (see PENALTY_MEDIAN_MIN).
+  medianFine      Float? @map("median_fine")
+
+  @@unique([level, state, place])
+  @@index([state])
+  @@map("place_penalties")
+}
+
 /// Resumability for the full-dataset seed: one row per completed parquet shard.
 model SeedCheckpoint {
   id          Int      @id @default(autoincrement())

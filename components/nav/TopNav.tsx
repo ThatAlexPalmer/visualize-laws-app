@@ -304,6 +304,42 @@ const SheetAction = styled.button<{ $active?: boolean }>`
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 `;
 
+/**
+ * Separates the four score axes from the Penalties layer. They both control
+ * what the map is coloured by, but penalties is a share over annotated
+ * sections rather than a z-scored per-law average.
+ */
+const PillDivider = styled.span`
+  align-self: stretch;
+  width: 1px;
+  margin: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(1)};
+  background: ${({ theme }) => theme.colors.g12};
+  flex: 0 0 1px;
+`;
+
+/**
+ * Full-width tile in the 2-column mobile sheet. Spanning both columns avoids
+ * an orphan cell after the 2x2 of axes, and reads as a different kind of
+ * choice.
+ */
+const SheetLayer = styled.button<{ $active: boolean }>`
+  grid-column: span 2;
+  width: 100%;
+  height: 52px;
+  padding: ${({ theme }) => theme.space(3)};
+  border: 1px solid
+    ${({ $active, theme }) => ($active ? theme.colors.penalty : theme.colors.g12)};
+  border-radius: ${({ theme }) => theme.radius.md};
+  background: ${({ $active, theme }) =>
+    $active ? theme.colors.penalty : "transparent"};
+  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+  text-align: center;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+`;
+
 const AxisButton = styled.button<{ $active: boolean }>`
   position: relative;
   background: transparent;
@@ -365,6 +401,16 @@ export function TopNav() {
     }
   };
 
+  const selectPenalties = () => {
+    dispatch({ type: "setLayer", layer: "penalties" });
+    setMenuOpen(false);
+    if (pathname !== "/") {
+      navigationTimer.current = setTimeout(() => router.push("/"), 160);
+    }
+  };
+
+  const penaltiesActive = state.layer === "penalties";
+
   const navigateFromMenu = (href: string) => {
     setMenuOpen(false);
     if (navigationTimer.current) clearTimeout(navigationTimer.current);
@@ -379,7 +425,7 @@ export function TopNav() {
       </Brand>
       <Axes>
         {AXES.map((a) => {
-          const active = state.axis === a.key;
+          const active = !penaltiesActive && state.axis === a.key;
           const copy = resolveAxisCopy(a.key, unhinged);
           return (
             <AxisButton
@@ -399,6 +445,21 @@ export function TopNav() {
             </AxisButton>
           );
         })}
+        <PillDivider aria-hidden="true" />
+        <AxisButton
+          $active={penaltiesActive}
+          onClick={selectPenalties}
+          title="Share of penalty sections that state a dollar amount"
+        >
+          {penaltiesActive && (
+            <PillHighlight
+              layoutId="axis-active"
+              $bg={theme.colors.penalty}
+              transition={{ type: "spring", stiffness: 480, damping: 38 }}
+            />
+          )}
+          {ui("Penalties", unhinged)}
+        </AxisButton>
       </Axes>
       <RightNav>
         <FiltersButton
@@ -452,7 +513,7 @@ export function TopNav() {
               return (
                 <SheetAxis
                   key={axis.key}
-                  $active={state.axis === axis.key}
+                  $active={!penaltiesActive && state.axis === axis.key}
                   $accent={AXIS_ACCENT[axis.key]}
                   onClick={() => selectAxis(axis.key)}
                 >
@@ -460,6 +521,9 @@ export function TopNav() {
                 </SheetAxis>
               );
             })}
+            <SheetLayer $active={penaltiesActive} onClick={selectPenalties}>
+              {ui("Penalties", unhinged)}
+            </SheetLayer>
           </SheetAxes>
           <SheetActions>
             {pathname === "/" ? (

@@ -7,9 +7,75 @@ import type {
   JurisdictionAgg,
   JurisdictionDetailResponse,
   JurisdictionsResponse,
+  PenaltyStats,
   PlaceLookupResponse,
 } from "../types";
 import { nativeCountyToFill } from "../types";
+
+const PENALTY_SELECT = {
+  state: true,
+  place: true,
+  penaltySections: true,
+  amountSections: true,
+  jailSections: true,
+  perDaySections: true,
+  medianFine: true,
+} as const;
+
+function toStats(row: {
+  penaltySections: number;
+  amountSections: number;
+  jailSections: number;
+  perDaySections: number;
+  medianFine: number | null;
+}): PenaltyStats {
+  return {
+    penaltySections: row.penaltySections,
+    amountSections: row.amountSections,
+    jailSections: row.jailSections,
+    perDaySections: row.perDaySections,
+    medianFine: row.medianFine,
+  };
+}
+
+/**
+ * Penalty aggregates keyed by state code, for the US map payload.
+ *
+ * Missing rows are left undefined rather than zero-filled: a place the
+ * supplement never annotated is "not annotated", which the map must render
+ * differently from a place whose sections state no amount.
+ */
+async function penaltiesByState(): Promise<Map<string, PenaltyStats>> {
+  try {
+    const rows = await prisma.placePenalty.findMany({
+      where: { level: "state" },
+      select: PENALTY_SELECT,
+    });
+    return new Map(
+      rows.flatMap((row) => (row.state ? [[row.state, toStats(row)] as const] : [])),
+    );
+  } catch (err) {
+    // The layer is additive: an un-migrated database still renders the scores.
+    console.error("penaltiesByState failed:", err);
+    return new Map();
+  }
+}
+
+/** Penalty aggregates for one state, keyed by place slug (`source_place`). */
+async function penaltiesByPlace(state: string): Promise<Map<string, PenaltyStats>> {
+  try {
+    const rows = await prisma.placePenalty.findMany({
+      where: { level: "place", state },
+      select: PENALTY_SELECT,
+    });
+    return new Map(
+      rows.flatMap((row) => (row.place ? [[row.place, toStats(row)] as const] : [])),
+    );
+  } catch (err) {
+    console.error(`penaltiesByPlace(${state}) failed:`, err);
+    return new Map();
+  }
+}
 
 // The columns that make up a JurisdictionAgg (excludes id + bounds).
 const AGG_SELECT = {
@@ -47,7 +113,7 @@ const LAW_SELECT = {
  * County rows stay off this payload so the US map does not grow to ~3k rows.
  */
 export async function getJurisdictions(): Promise<JurisdictionsResponse> {
-  const [rows, nat] = await Promise.all([
+  const [rows, nat, penalties, nationalPenalty] = await Promise.all([
     prisma.jurisdiction.findMany({
       where: { level: "state" },
       select: AGG_SELECT,
@@ -57,16 +123,27 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
       where: { level: "national" },
       select: { ...AGG_SELECT, bounds: true },
     }),
+    penaltiesByState(),
+    prisma.placePenalty
+      .findFirst({ where: { level: "national" }, select: PENALTY_SELECT })
+      .catch(() => null),
   ]);
 
   const national: JurisdictionsResponse["national"] = nat
     ? {
         ...nat,
         bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
+        penalties: nationalPenalty ? toStats(nationalPenalty) : null,
       }
     : null;
 
-  return { rows, national };
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      penalties: (row.state && penalties.get(row.state)) || null,
+    })),
+    national,
+  };
 }
 
 /**
@@ -164,7 +241,10 @@ export async function getJurisdictionDetail(
       ? matchCountySlug(counties, countyRaw)
       : null;
 
-    const [jurisdiction, topLaws, topCities, countyFills] = await Promise.all([
+    const placePenalties = await penaltiesByPlace(code);
+
+    const [jurisdiction, topLaws, topCities, countyFills, statePenalty] =
+      await Promise.all([
       countySlug
         ? Promise.resolve(
             counties.find((c) => c.county === countySlug) ?? null,
@@ -187,11 +267,27 @@ export async function getJurisdictionDetail(
       // Always state-level: LOCUS rows never set city and county together, so a
       // county-scoped city query would be empty and hide the city chips.
       queryTopCities(code),
-      queryCountyFills(code, counties),
+      queryCountyFills(code, counties, placePenalties),
+      prisma.placePenalty
+        .findFirst({
+          where: { level: "state", state: code },
+          select: PENALTY_SELECT,
+        })
+        .catch(() => null),
     ]);
 
+    // The panel aggregate is the county row when one is selected, otherwise
+    // the state row; match the penalty stats to whichever it is.
+    const panelPenalties = countySlug
+      ? (placePenalties.get(countySlug) ?? null)
+      : statePenalty
+        ? toStats(statePenalty)
+        : null;
+
     return {
-      jurisdiction: jurisdiction ?? null,
+      jurisdiction: jurisdiction
+        ? { ...jurisdiction, penalties: panelPenalties }
+        : null,
       topLaws,
       counties,
       countyFills,
@@ -212,6 +308,7 @@ export async function getJurisdictionDetail(
 async function queryCountyFills(
   state: string,
   nativeCounties: JurisdictionAgg[],
+  penalties: Map<string, PenaltyStats>,
 ): Promise<CountyFill[]> {
   try {
     const stored = await prisma.countyFill.findMany({
@@ -233,12 +330,22 @@ async function queryCountyFills(
       orderBy: { name: "asc" },
     });
     if (stored.length === 0) {
-      return nativeCounties.map(nativeCountyToFill);
+      return nativeCounties.map(nativeCountyToFill).map((fill) => ({
+        ...fill,
+        penalties: penalties.get(fill.sourcePlace) ?? null,
+      }));
     }
-    return stored.filter(
-      (row): row is CountyFill =>
-        row.source === "county" || row.source === "city",
-    );
+    return stored
+      .filter(
+        (row): row is CountyFill =>
+          row.source === "county" || row.source === "city",
+      )
+      .map((row) => ({
+        // `source_place` is the city or county slug, which is exactly the key
+        // place_penalties uses — no mapping needed.
+        ...row,
+        penalties: penalties.get(row.sourcePlace) ?? null,
+      }));
   } catch (err) {
     console.error(`queryCountyFills(${state}) failed:`, err);
     return nativeCounties.map(nativeCountyToFill);
