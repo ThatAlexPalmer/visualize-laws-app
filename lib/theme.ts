@@ -21,6 +21,10 @@ export const theme = {
       paternalism: "#F97316",
       problemSalience: "#8B5CF6",
     },
+    // Penalties layer accent. Hue ~160 sits clear of all four axis hues
+    // (red 4, orange 22, blue 217, purple 258) so the layer reads as a
+    // different kind of thing rather than a fifth score.
+    penalty: "#10B981",
   },
   // 4px base spacing scale
   space: (n: number) => `${n * 4}px`,

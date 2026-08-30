@@ -1,4 +1,11 @@
-import type { Axis, AxisAverages, AxisBounds } from "@/lib/types";
+import {
+  amountShare,
+  type Axis,
+  type AxisAverages,
+  type AxisBounds,
+  type MapLayer,
+  type PenaltyStats,
+} from "@/lib/types";
 
 /**
  * Per-axis HSL ramp params. Keeping hue constant while sweeping lightness
@@ -101,4 +108,81 @@ export function rampColorForAxis(t: number, axis: Axis): string {
   const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
   const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
   return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
+}
+
+// --- Penalties layer -------------------------------------------------------
+
+/** Hue ~160, clear of every axis hue so the layer reads as its own thing. */
+const PENALTY_HSL: AxisHSL = {
+  hue: 160,
+  satLow: 55,
+  satHigh: 84,
+  litLow: 4,
+  litHigh: 52,
+};
+
+export function rampColorForPenalties(t: number): string {
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  const p = PENALTY_HSL;
+  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
+  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
+  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
+}
+
+/** A row that either layer can paint. */
+export type LayerRow = AxisAverages & { penalties?: PenaltyStats | null };
+
+/**
+ * The value a row contributes under the active layer, or null when it cannot
+ * be painted. Null is meaningful for penalties: the place was never annotated,
+ * which is not the same as stating no amount.
+ */
+export function layerValue(
+  row: LayerRow,
+  layer: MapLayer,
+  axis: Axis,
+): number | null {
+  if (layer === "penalties") return amountShare(row.penalties);
+  return axisValue(row, axis);
+}
+
+/**
+ * Domain for the active layer.
+ *
+ * The penalties domain is always derived from the rows on screen and never
+ * from national `bounds`: it is a bounded share, so a plain linear stretch
+ * across the visible min/max keeps the contrast readable at both zoom levels.
+ * No log or percentile clamp is needed — that is only a hazard for the raw
+ * dollar amounts, which this layer deliberately does not paint.
+ */
+export function computeLayerDomain(
+  layer: MapLayer,
+  axis: Axis,
+  rows: LayerRow[],
+  bounds?: AxisBounds,
+): Domain | null {
+  if (layer !== "penalties") return computeDomain(axis, rows, bounds);
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const r of rows) {
+    const v = amountShare(r.penalties);
+    if (v === null || !Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (max <= min) return { min: Math.max(0, min - 0.01), max: min + 0.01 };
+  return { min, max };
+}
+
+/** Ramp colour for the active layer at position `t`. */
+export function rampColorForLayer(
+  t: number,
+  layer: MapLayer,
+  axis: Axis,
+): string {
+  return layer === "penalties"
+    ? rampColorForPenalties(t)
+    : rampColorForAxis(t, axis);
 }

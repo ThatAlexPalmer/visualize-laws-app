@@ -40,7 +40,47 @@ avoid staleness; expand only when durable.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
 - `data/cityCounty.ts` + `data/build-city-county.ts` — Census 2020 place join and
   `city_county` / `county_fills` rebuild (no parquet COPY).
+- `data/fines.ts` + `data/build-fines.ts` — LOCUS-Fines identity key / COPY encoding and
+  the `law_fines` rebuild. Uses `hyparquet`, not `@dsnp/parquetjs` (see the fines runbook).
 - `WARP.md` — Warp project rules (loaded automatically in this repo).
+
+## Docker is the dev environment (read before changing anything)
+
+This project runs in Docker. **The container does not rebuild itself, and it does not pick up
+every change.** Assuming it does is how you "fix" something and see no effect.
+
+What is live vs. baked:
+
+- **Bind-mounted, hot-reloads**: the repo at `/workspace`. App/`data/` TypeScript edits apply
+  immediately.
+- **Baked into the image**: `Dockerfile` and `docker/entrypoint.sh` (they are `COPY`ed to
+  `/usr/local/bin/entrypoint.sh`). Host edits do nothing until `pnpm up:build`
+  (`docker compose up --build`). If you change the entrypoint, you **must** rebuild or your
+  change is a silent no-op.
+- **Named volume `visualize_laws_node_modules`**, mounted over `/workspace/node_modules`.
+  Docker fills a named volume only at first creation, so it shadows the image's copy from then
+  on. **`--build` does not install a newly added dependency.** Use
+  `docker compose exec app pnpm install`.
+- **The generated Prisma client lives in that volume**, so it is stale after any
+  `schema.prisma` change. A stale client has no delegate for the new model:
+  `prisma.<newModel>` is `undefined`, and property access on it throws *synchronously* —
+  which is enough to take down an entire route, not just the new feature. The entrypoint runs
+  `pnpm prisma:generate` before `prisma:deploy` so a rebuilt container self-heals; otherwise
+  `docker compose exec app pnpm prisma:generate`.
+
+After pulling a branch that touches schema, deps, or the entrypoint:
+
+```bash
+pnpm up:build                              # picks up Dockerfile / entrypoint changes
+docker compose exec app pnpm install       # picks up new deps into the volume
+docker compose exec app pnpm prisma:generate
+```
+
+**Never `docker compose down -v`.** It destroys `visualize_laws_pgdata` along with everything
+else — that is the seeded ~2.2M-row corpus, and reseeding it is a 15-40 minute job. To refresh
+deps, remove just that one volume
+(`docker volume rm visualize-laws-app_visualize_laws_node_modules`) or run `pnpm install`
+inside the container.
 
 ## Local development commands
 
@@ -53,8 +93,10 @@ avoid staleness; expand only when durable.
 - `pnpm seed --fresh --shards 1 --limit 25000` — Colorado city/county QA sample
 - `pnpm seed --shards ''` — recompute national/state/county aggregates, then city fills
 - `pnpm build:city-county` — rebuild `city_county` + `county_fills` only (no COPY)
+- `pnpm build:fines` — rebuild `law_fines` only; `--restage` discards a partial staging
+  table instead of resuming it
 - Remote admin (gitignored env): `pnpm seed:prod` / `pnpm seed:prod --fresh` /
-  `pnpm prisma:deploy:prod` / `pnpm db:studio:prod`
+  `pnpm prisma:deploy:prod` / `pnpm db:studio:prod` / `pnpm build:fines:prod`
 
 ## Env files (agents)
 
@@ -82,6 +124,12 @@ avoid staleness; expand only when durable.
   `Loading counties in {State}.` Sparse copy only after the request has settled.
 - City and county slugs are mutually exclusive on a law row (LOCUS-v1). County
   `Jurisdiction` rows (~376 on a full seed) are paints only; they are not the mesh.
+- `law_fines` holds only the **632,005 model-read** LOCUS-Fines rows. An absent row means
+  the supplement never sent that law to its model — it does **not** mean the law has no
+  penalty. Never render a missing row as “no fine.”
+- Penalty filters (`hasFine`, `jail`, `perDay`, `fineMin`, `fineMax`, `penaltyNature`) narrow
+  to that subset, so they must keep disabling the saved-total shortcut in
+  `shouldUseSavedScopeTotal`. `penaltyNature` is whitelisted before it reaches SQL.
 - Seed is resumable; see **Seeding runbook** below.
 
 ## City / county map (invariants)
@@ -108,6 +156,25 @@ avoid staleness; expand only when durable.
   `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
+
+## Penalties map layer (invariants)
+
+- It is a **layer, not a fifth axis**: `layer: "scores" | "penalties"` in `lib/store.tsx`,
+  separate from `axis`, and selecting any axis returns to `scores`. Do not add a fines entry
+  to `Axis` / `AXES` / `AxisAverages` — those are z-scored per-law averages with slider
+  semantics that a share does not have.
+- Colour is **`amount_sections / penalty_sections`**, derived via `amountShare()`, never
+  stored. Denominator is model-read sections; dividing by all laws correlates with sampling
+  (r = 0.46) instead of with the codes (r = 0.11).
+- **Never paint median fine.** 32 of 50 states are exactly $500. It is shown as a number in
+  the legend strip and hover only. It is genuinely informative at county level, which is why
+  the hover carries it.
+- No annotation → no fill and `not annotated` on hover. Never `no penalty`.
+- The legend stat cards must stay mounted outside the `sparseCounties` early return in
+  `components/map/Legend.tsx`, or the eight thin states lose their figures.
+- `place_penalties` is rebuilt only by `pnpm build:fines`. Running `pnpm build:city-county`
+  afterwards is safe — that was the reason for a sibling table rather than columns on
+  `jurisdictions` / `county_fills`.
 
 ## Working conventions
 
@@ -152,10 +219,13 @@ Canonical seeder: `data/seed.ts`. Scripts:
 | `pnpm seed …` | `.env.local` (local Docker/host Postgres) |
 | `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
 
-Flags: `--fresh` (TRUNCATE laws + jurisdictions + seed_checkpoints + city_county +
-county_fills + clear local progress), `--limit N` (sample; leaves shard
+Flags: `--fresh` (TRUNCATE laws + **law_fines** + jurisdictions + seed_checkpoints +
+city_county + county_fills + clear local progress), `--limit N` (sample; leaves shard
 un-checkpointed), `--shards 0,1`, `--shards ''` (no COPY — recompute
 national/state/**county** aggregates, then city fills).
+
+`law_fines` is in the `--fresh` truncate list because it holds an FK to `laws`; leaving
+it out makes Postgres reject the whole TRUNCATE.
 
 Default `--limit 25000` is Alaska-only (shard 0). City/county QA needs Colorado:
 
@@ -176,7 +246,9 @@ migrate/shadow rules (`deploy` vs `dev`, never shadow a database with data).
    state code + 1× `county` per `(state, county)` with a non-empty county slug).
 6. Rebuilds `city_county` + `county_fills` from `laws` + Census 2020 place/county
    files (`pnpm build:city-county` does this without parquet COPY).
-7. `search_vector` is GENERATED — never written by the seeder.
+7. Rebuilds `law_fines` from the LOCUS-Fines supplement (`pnpm build:fines` standalone).
+   Non-fatal: a failure warns and the seed still finishes.
+8. `search_vector` is GENERATED — never written by the seeder.
 
 ### Resilience (remote-aware)
 
@@ -235,6 +307,32 @@ Notes:
   (effectively one operator) and should be delegated to a long-running agent/session so the main
   chat stays free.
 
+### Fines layer runbook (`law_fines`)
+
+Separate builder: `data/build-fines.ts` (`pnpm build:fines` / `pnpm build:fines:prod`).
+Also runs at the end of `pnpm seed`, non-fatally.
+
+- **Different parquet reader, on purpose.** LOCUS-Fines is one ~87 MB file with
+  **1,048,576-row row groups**; the LOCUS-v1 shards use ~56k. `@dsnp/parquetjs`
+  materializes an entire row group, so it OOMs at the default heap here and needs
+  ~7.75 GB RSS to finish. The builder uses `hyparquet` with bounded 50k-row ranges and
+  peaks near 1.2 GB. Do not “unify” the two readers.
+- **Only model-read rows are stored** (`annotation_source = 'LLM'`): 632,005 of the
+  2,211,516 published rows. The other 1,579,511 are rule-derived from LOCUS fields and
+  carry no amounts.
+- **The join key is not unique.** The supplement's seven identity columns repeat across
+  2,411 groups / 5,200 rows of LOCUS-v1, so staging is deduped with `DISTINCT ON` before
+  the join; the join then re-expands one annotation across each identical law row.
+- **Resumable.** Staging (`law_fines_import`, unlogged) survives a crash and a rerun
+  resumes from its row count. `pnpm build:fines --restage` discards it instead. Staging
+  is dropped on success. The final attach is one transaction, so readers keep seeing the
+  previous `law_fines` until it commits.
+- **Timings** (full corpus, parquet cached): local Docker **~40 s** end to end. Remote is
+  dominated by the COPY of 632k narrow rows over the WAN plus one server-side hash join;
+  budget **~10–30 min** and expect the same stall/reconnect behaviour as the corpus seed.
+- Run remote builds background + logged, single writer, exactly like `seed:prod`
+  (`pkill -9 -f 'data/build-fines.ts'` to check for orphans).
+
 ### Verification (after any full seed)
 
 Expect:
@@ -244,9 +342,17 @@ Expect:
 - `jurisdictions`: **1** `national` + **one `state` row per distinct non-empty state**
   (50 in current corpus) + ~**376** `county` rows
 - `national.law_count` should match `count(*)` on `laws`
+- `law_fines` **= 632,005**, of which **83,625** have a non-null `effective_max`;
+  `count(distinct law_id)` must equal the row count. Other exact expectations:
+  `fine_relevant` 324,516 · `penalty_stated = 'amounts_here'` 100,488 ·
+  `per_day_violation` 44,797 · `jail_mentioned` 35,635 · `grounded IS false` 465 ·
+  non-null `extraction_flag` 15,897. These are the supplement's own counts, so any
+  drift means the join lost or duplicated rows.
 - Existing DBs that already have `laws` but no county aggregates (skipped docker
   seed after the city-index migration) need `pnpm seed --shards ''` — indexes
   alone will not fill the choropleth
+- Existing DBs predating the fines migration need `pnpm prisma:deploy` then
+  `pnpm build:fines`
 
 Read-only check pattern (never echo connection strings):
 

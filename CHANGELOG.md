@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+- Open a law and see the fine it states — the amount or range, whether each day counts again, and whether jail is on the table.
+- Filter to laws that state a fine, mention jail, or charge per day.
+- Colour the map by how often a place's code states a dollar fine, with the typical fine shown as a figure beside the legend.
+
+Adds the [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines) supplement as
+`law_fines` (632,005 model-read rows) plus `place_penalties` aggregates. Only rows the
+supplement's model actually read are stored, so a law with no penalty record was not annotated
+— it does not mean the law carries no penalty. Amounts are checked against the source text;
+the surrounding judgements are not.
+
+Production: merge does not migrate or seed. After the Vercel deploy, from a workstation with
+`.env.prod`: `pnpm prisma:deploy:prod` then `pnpm build:fines:prod`. Do not `seed:prod`.
+
 ## 1.1.1
 
 - Type a state name (`colorado`) and go to that state, not a city that shares the name.

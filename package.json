@@ -1,6 +1,6 @@
 {
   "name": "visualize-laws-app",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "license": "BUSL-1.1",
   "description": "Explore the complete LOCUS-v1 corpus of 2.2M U.S. local laws: search, filter, and an interactive canvas map.",
@@ -15,7 +15,9 @@
     "seed:prod": "dotenv -e .env.prod -- tsx data/seed.ts",
     "build:city-county": "dotenv -e .env.local -- tsx data/build-city-county.ts",
     "build:city-county:prod": "dotenv -e .env.prod -- tsx data/build-city-county.ts",
-    "test": "tsx --test data/cityCounty.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts data/queries/laws.test.ts",
+    "build:fines": "dotenv -e .env.local -- tsx data/build-fines.ts",
+    "build:fines:prod": "dotenv -e .env.prod -- tsx data/build-fines.ts",
+    "test": "tsx --test data/cityCounty.test.ts data/fines.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts data/queries/laws.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",
@@ -61,6 +63,7 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.3",
+    "hyparquet": "^1.29.2",
     "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

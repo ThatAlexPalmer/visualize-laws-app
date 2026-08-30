@@ -10,6 +10,9 @@ import { useExplorer } from "@/lib/store";
 import {
   AXES,
   DEFAULT_SCORE_RANGE,
+  amountShare,
+  formatFine,
+  formatShare,
   matchCountySlug,
   prettySlug,
   stateName,
@@ -208,6 +211,20 @@ const RetryState = styled(Empty)`
   gap: ${({ theme }) => theme.space(2)};
 `;
 
+/** Fines readout in the rail. Present on every layer, not just the Fines one. */
+const FineRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  color: ${({ theme }) => theme.colors.g76};
+`;
+
+const FineNum = styled.span`
+  color: ${({ theme }) => theme.colors.penalty};
+`;
+
 const AVG_BY_AXIS = {
   opacity: "avgOpacity",
   enforcementDiscretion: "avgEnforcementDiscretion",
@@ -350,6 +367,31 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                   );
                 })}
               </Stack>
+
+              {agg.penalties && agg.penalties.penaltySections > 0 && (
+                <>
+                  <SectionLabel>{ui("Fines", unhinged)}</SectionLabel>
+                  <Stack $gap={2}>
+                    <FineRow>
+                      <span>{ui("Typical fine", unhinged)}</span>
+                      <FineNum>
+                        {agg.penalties.medianFine === null
+                          ? "—"
+                          : formatFine(agg.penalties.medianFine)}
+                      </FineNum>
+                    </FineRow>
+                    <FineRow>
+                      <span>{ui("State a fine", unhinged)}</span>
+                      <FineNum>
+                        {(() => {
+                          const share = amountShare(agg.penalties);
+                          return share === null ? "—" : formatShare(share);
+                        })()}
+                      </FineNum>
+                    </FineRow>
+                  </Stack>
+                </>
+              )}
 
               {topCities.length > 0 && (
                 <>

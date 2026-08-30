@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
-import type { Axis, LawFilters, LawSummary } from "./types";
+import type { Axis, LawFilters, LawSummary, MapLayer } from "./types";
 
 /**
  * Global UI state shared across the map, sidebar, results, and modal.
@@ -9,6 +9,12 @@ import type { Axis, LawFilters, LawSummary } from "./types";
  */
 export interface ExplorerState {
   axis: Axis;
+  /**
+   * What the choropleth encodes. Separate from `axis` on purpose: the four
+   * axes are z-scored per-law scores, while the penalties layer is a share of
+   * the sections a model read. Selecting an axis returns to the scores layer.
+   */
+  layer: MapLayer;
   filters: LawFilters;
   selectedState: string | null;
   /** Atlas-only county focus (no LOCUS slug). Fit/highlight only — not a results filter. */
@@ -31,6 +37,7 @@ const initialFilters: LawFilters = {
 
 const initialState: ExplorerState = {
   axis: "opacity",
+  layer: "scores",
   filters: initialFilters,
   selectedState: null,
   atlasCountyName: null,
@@ -42,6 +49,7 @@ const initialState: ExplorerState = {
 
 export type ExplorerAction =
   | { type: "setAxis"; axis: Axis }
+  | { type: "setLayer"; layer: MapLayer }
   | { type: "patchFilters"; filters: Partial<LawFilters> }
   | { type: "setPage"; page: number }
   | { type: "resetFilters" }
@@ -62,7 +70,11 @@ export type ExplorerAction =
 function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
   switch (action.type) {
     case "setAxis":
-      return { ...state, axis: action.axis };
+      // Picking an axis means "show me the scores", so it leaves the
+      // penalties layer as well as setting the axis.
+      return { ...state, axis: action.axis, layer: "scores" };
+    case "setLayer":
+      return { ...state, layer: action.layer };
     case "patchFilters": {
       // Any filter change (other than page itself) resets to page 1.
       // City and county are mutually exclusive: setting one clears the other.

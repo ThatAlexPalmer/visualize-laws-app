@@ -12,6 +12,7 @@
  *   pnpm seed --shards 0,1     # only the given shards
  *   pnpm seed --fresh          # TRUNCATE laws + jurisdictions + checkpoints + fills
  *   pnpm build:city-county     # rebuild city fills only (no parquet COPY)
+ *   pnpm build:fines           # rebuild the LOCUS-Fines layer only
  *
  * Design notes:
  *   - `laws.search_vector` is a GENERATED column; it is never written here.
@@ -43,6 +44,7 @@ import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
 import { buildCityCountyTables } from "./build-city-county";
+import { buildFinesTable } from "./build-fines";
 import { STATE_NAMES } from "./types";
 
 // --- Configuration ---------------------------------------------------------
@@ -660,12 +662,18 @@ async function main(): Promise<void> {
   try {
     if (opts.fresh) {
       console.log(
-        "--fresh: truncating laws, jurisdictions, seed_checkpoints, city_county, county_fills",
+        "--fresh: truncating laws, law_fines, place_penalties, jurisdictions, " +
+          "seed_checkpoints, city_county, county_fills",
       );
       // Truncate can be slow on a large partial table — disable statement timeout.
       await client.query(`SET statement_timeout = ${AGG_STATEMENT_TIMEOUT_MS}`);
+      // law_fines must be in this list: it carries an FK to laws, so Postgres
+      // rejects the TRUNCATE otherwise. Its rows are keyed by law id, which is
+      // not stable across a fresh load, so they have to be rebuilt anyway.
+      // place_penalties is derived from law_fines, so it goes with it.
       await client.query(
-        "TRUNCATE TABLE laws, jurisdictions, seed_checkpoints, city_county, county_fills RESTART IDENTITY",
+        "TRUNCATE TABLE laws, law_fines, place_penalties, jurisdictions, " +
+          "seed_checkpoints, city_county, county_fills RESTART IDENTITY",
       );
       await client.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
       clearProgress();
@@ -759,6 +767,22 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(
         `  city/county build skipped (${msg}). Run \`pnpm build:city-county\` after migrate.`,
+      );
+    }
+
+    console.log("Building law_fines (LOCUS-Fines supplement)…");
+    try {
+      const fineStats = await buildFinesTable(client, { connectionString });
+      console.log(
+        `  law_fines: ${fmt(fineStats.matched)} attached from ` +
+          `${fmt(fineStats.staged)} model rows · ` +
+          `${fmt(fineStats.withAmount)} with a dollar amount · ` +
+          `${fmt(fineStats.places)} places aggregated`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `  fines build skipped (${msg}). Run \`pnpm build:fines\` after migrate.`,
       );
     }
 

@@ -2,8 +2,9 @@
 # visualizelaws.com container entrypoint:
 #   0. sanity-check the /workspace bind mount (fail fast with the real cause)
 #   1. wait for Postgres to accept TCP connections
-#   2. apply migrations, then sample-seed only if the laws table is empty
-#   3. start the Next.js dev server (hot reload) on :3000
+#   2. regenerate the Prisma client (node_modules is a volume; it goes stale)
+#   3. apply migrations, then sample-seed only if the laws table is empty
+#   4. start the Next.js dev server (hot reload) on :3000
 set -e
 
 # 0. The app source is bind-mounted at /workspace. If it's empty/stale — e.g. the
@@ -35,7 +36,18 @@ until node --input-type=commonjs -e "const s=require('net').connect(${db_port},'
 done
 echo "[entrypoint] postgres is accepting connections."
 
-# 2. Apply migrations once; surface the real error if this fails.
+# 2. Regenerate the Prisma client before migrating. node_modules lives in a
+#    named volume and `prisma generate` otherwise only runs on `postinstall`,
+#    so a container created before a schema change keeps a stale client: the
+#    new model is simply missing from it and every query against that model
+#    throws. Cheap (~1s) and makes `docker compose up` self-heal after a pull.
+echo "[entrypoint] generating the prisma client..."
+if ! pnpm prisma:generate; then
+  echo "[entrypoint] FATAL: prisma generate failed (see output above)."
+  exit 1
+fi
+
+# 3. Apply migrations once; surface the real error if this fails.
 echo "[entrypoint] applying migrations..."
 if ! pnpm prisma:deploy; then
   echo "[entrypoint] FATAL: prisma migrate deploy failed (see output above)."

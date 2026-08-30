@@ -4,10 +4,14 @@ import { slugVariants } from "../slugs";
 import {
   AXES,
   AXIS_BY_KEY,
-  type Axis,
+  FINE_SORT_KEY,
+  isPenaltyNature,
+  isSortKey,
+  type LawFines,
   type LawRecord,
   type LawSummary,
   type LawsResponse,
+  type SortKey,
 } from "../types";
 
 // Server-side filter / sort / pagination over the `laws` table.
@@ -22,6 +26,13 @@ function escapeLike(raw: string): string {
   return raw.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+// Every predicate is qualified with `laws.`. The rows query LEFT JOINs
+// law_fines, which carries its own state / city / county columns, so an
+// unqualified reference is ambiguous — Postgres errors and queryLaws swallows
+// it into an empty result, silently returning zero matches for any place
+// filter.
+const T = "laws";
+
 /** ILIKE both slug variants so "Pagosa Springs" matches `pagosa_springs`. */
 function placeIlikeSql(
   column: "city" | "county",
@@ -29,9 +40,10 @@ function placeIlikeSql(
   bind: (value: unknown) => string,
 ): string {
   const [a, b] = slugVariants(raw);
+  const col = `${T}.${column}`;
   const likeA = bind(`%${escapeLike(a)}%`);
-  if (a === b) return `${column} ILIKE ${likeA} ESCAPE '\\'`;
-  return `(${column} ILIKE ${likeA} ESCAPE '\\' OR ${column} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
+  if (a === b) return `${col} ILIKE ${likeA} ESCAPE '\\'`;
+  return `(${col} ILIKE ${likeA} ESCAPE '\\' OR ${col} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
 }
 
 /** Equality on slug variants, not substring ILIKE. */
@@ -40,8 +52,8 @@ export function cityExactSql(
   bind: (value: unknown) => string,
 ): string {
   const [a, b] = slugVariants(raw);
-  if (a === b) return `city IN (${bind(a)})`;
-  return `city IN (${bind(a)}, ${bind(b)})`;
+  if (a === b) return `${T}.city IN (${bind(a)})`;
+  return `${T}.city IN (${bind(a)}, ${bind(b)})`;
 }
 
 function parseFloatOrNull(raw: string | null): number | null {
@@ -56,6 +68,9 @@ function parseFloatOrNull(raw: string | null): number | null {
  * the planner estimate. Sort / page do not count as extra filters.
  */
 export function shouldUseSavedScopeTotal(searchParams: URLSearchParams): boolean {
+  // Sorting by fine restricts to laws that state one, so the saved scope count
+  // would be wildly high.
+  if (searchParams.get("sort") === FINE_SORT_KEY) return false;
   if (searchParams.get("q")?.trim()) return false;
   if (searchParams.get("city")?.trim()) return false;
   if (searchParams.get("county")?.trim()) return false;
@@ -67,7 +82,59 @@ export function shouldUseSavedScopeTotal(searchParams: URLSearchParams): boolean
     if (parseFloatOrNull(searchParams.get(`${axis.key}Min`)) !== null) return false;
     if (parseFloatOrNull(searchParams.get(`${axis.key}Max`)) !== null) return false;
   }
+  // Any penalty filter narrows to the model-read subset, so the saved
+  // jurisdiction total would badly overstate the result count.
+  if (hasPenaltyFilter(searchParams)) return false;
   return true;
+}
+
+/** True when any LOCUS-Fines filter is active. */
+export function hasPenaltyFilter(searchParams: URLSearchParams): boolean {
+  if (searchParams.get("hasFine") === "true") return true;
+  if (searchParams.get("perDay") === "true") return true;
+  if (searchParams.get("jail") === "true") return true;
+  if (parseFloatOrNull(searchParams.get("fineMin")) !== null) return true;
+  if (parseFloatOrNull(searchParams.get("fineMax")) !== null) return true;
+  const nature = searchParams.get("penaltyNature")?.trim();
+  return Boolean(nature && isPenaltyNature(nature));
+}
+
+/**
+ * Build the `EXISTS (... law_fines ...)` predicate for the active penalty
+ * filters, or null when none are set.
+ *
+ * All of them collapse into a single EXISTS so the planner does one
+ * semi-join rather than one per filter. Every value is bound; `penaltyNature`
+ * is additionally whitelisted against the source vocabulary.
+ */
+function penaltyExistsSql(
+  searchParams: URLSearchParams,
+  bind: (value: unknown) => string,
+): string | null {
+  const conds: string[] = [];
+
+  if (searchParams.get("hasFine") === "true") {
+    conds.push("lf.effective_max IS NOT NULL");
+  }
+  if (searchParams.get("perDay") === "true") {
+    conds.push("lf.per_day_violation");
+  }
+  if (searchParams.get("jail") === "true") {
+    conds.push("lf.jail_mentioned");
+  }
+
+  const min = parseFloatOrNull(searchParams.get("fineMin"));
+  if (min !== null) conds.push(`lf.effective_max >= ${bind(min)}`);
+  const max = parseFloatOrNull(searchParams.get("fineMax"));
+  if (max !== null) conds.push(`lf.effective_min <= ${bind(max)}`);
+
+  const nature = searchParams.get("penaltyNature")?.trim();
+  if (nature && isPenaltyNature(nature)) {
+    conds.push(`lf.penalty_nature = ${bind(nature)}`);
+  }
+
+  if (conds.length === 0) return null;
+  return `EXISTS (SELECT 1 FROM law_fines lf WHERE lf.law_id = laws.id AND ${conds.join(" AND ")})`;
 }
 
 // --- Totals -----------------------------------------------------------------
@@ -139,9 +206,10 @@ async function savedScopeLawCount(state: string | null): Promise<number | null> 
 async function estimateFilteredRows(
   whereSql: string,
   params: unknown[],
+  fromSql = "laws",
 ): Promise<number | null> {
   try {
-    const sql = `EXPLAIN (FORMAT JSON) SELECT 1 FROM laws ${whereSql}`;
+    const sql = `EXPLAIN (FORMAT JSON) SELECT 1 FROM ${fromSql} ${whereSql}`;
     const result = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
       sql,
       ...params,
@@ -154,35 +222,140 @@ async function estimateFilteredRows(
 
 // Summary columns returned by list endpoints. Full content is fetched only when
 // a user opens a law, keeping filter/page responses small.
+//
+// Qualified with the `laws` alias throughout because the rows query always
+// LEFT JOINs law_fines — the stated fine rides along on every list row so it
+// stays visible regardless of which map layer is selected.
 const SUMMARY_SELECT_COLUMNS = `
-  id,
-  header,
-  is_substantive AS "isSubstantive",
-  "function",
-  topic,
-  source_jurisdiction_type AS "sourceJurisdictionType",
-  state,
-  city,
-  county,
-  opacity,
-  enforcement_discretion AS "enforcementDiscretion",
-  paternalism,
-  problem_salience AS "problemSalience"
+  laws.id,
+  laws.header,
+  laws.is_substantive AS "isSubstantive",
+  laws."function",
+  laws.topic,
+  laws.source_jurisdiction_type AS "sourceJurisdictionType",
+  laws.state,
+  laws.city,
+  laws.county,
+  laws.opacity,
+  laws.enforcement_discretion AS "enforcementDiscretion",
+  laws.paternalism,
+  laws.problem_salience AS "problemSalience",
+  lfs.effective_max AS "fine"
 `;
 
-const DETAIL_SELECT_COLUMNS = `
-  ${SUMMARY_SELECT_COLUMNS},
-  content
+// The summary columns plus content, qualified with the `l` alias for the
+// law_fines join.
+// Spelled out rather than derived, so a change to the summary list is a
+// deliberate edit here too.
+const DETAIL_SELECT_COLUMNS_QUALIFIED = `
+  l.id,
+  l.header,
+  l.is_substantive AS "isSubstantive",
+  l."function",
+  l.topic,
+  l.source_jurisdiction_type AS "sourceJurisdictionType",
+  l.state,
+  l.city,
+  l.county,
+  l.opacity,
+  l.enforcement_discretion AS "enforcementDiscretion",
+  l.paternalism,
+  l.problem_salience AS "problemSalience",
+  l.content
 `;
 
-export async function getLawById(id: number): Promise<LawRecord | null> {
-  const rows = await prisma.$queryRaw<LawRecord[]>`
-    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS)}
-    FROM laws
-    WHERE id = ${id}
+const FINES_SELECT_COLUMNS = `
+  f.fine_relevant AS "fineRelevant",
+  f.penalty_scope AS "penaltyScope",
+  f.penalty_stated AS "penaltyStated",
+  f.fine_structure AS "fineStructure",
+  f.fixed_amount AS "fixedAmount",
+  f.min_amount AS "minAmount",
+  f.max_amount AS "maxAmount",
+  f.first_violation_amount AS "firstViolationAmount",
+  f.second_violation_amount AS "secondViolationAmount",
+  f.subsequent_violation_amount AS "subsequentViolationAmount",
+  f.effective_min AS "effectiveMin",
+  f.effective_max AS "effectiveMax",
+  f.per_day_violation AS "perDayViolation",
+  f.jail_mentioned AS "jailMentioned",
+  f.penalty_nature AS "penaltyNature",
+  f.extraction_flag AS "extractionFlag",
+  f.grounded
+`;
+
+export interface LawDetail {
+  law: LawRecord;
+  /** null when the supplement's model never read this law. */
+  fines: LawFines | null;
+}
+
+type DetailRow = LawRecord & Partial<LawFines>;
+
+/**
+ * One law plus its LOCUS-Fines annotation, if the supplement's model read it.
+ * A LEFT JOIN keeps the law available either way — an absent annotation is not
+ * an error and must not be shown as "no penalty".
+ */
+export async function getLawById(id: number): Promise<LawDetail | null> {
+  const rows = await prisma.$queryRaw<DetailRow[]>`
+    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
+           ${Prisma.raw(FINES_SELECT_COLUMNS)}
+    FROM laws l
+    LEFT JOIN law_fines f ON f.law_id = l.id
+    WHERE l.id = ${id}
     LIMIT 1
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+
+  const {
+    fineRelevant,
+    penaltyScope,
+    penaltyStated,
+    fineStructure,
+    fixedAmount,
+    minAmount,
+    maxAmount,
+    firstViolationAmount,
+    secondViolationAmount,
+    subsequentViolationAmount,
+    effectiveMin,
+    effectiveMax,
+    perDayViolation,
+    jailMentioned,
+    penaltyNature,
+    extractionFlag,
+    grounded,
+    ...law
+  } = row;
+
+  // `fine_relevant` is NOT NULL in law_fines, so a null here means the LEFT
+  // JOIN found no annotation rather than an annotation that says false.
+  const fines: LawFines | null =
+    fineRelevant === null || fineRelevant === undefined
+      ? null
+      : {
+          fineRelevant,
+          penaltyScope: penaltyScope ?? null,
+          penaltyStated: penaltyStated ?? null,
+          fineStructure: fineStructure ?? null,
+          fixedAmount: fixedAmount ?? null,
+          minAmount: minAmount ?? null,
+          maxAmount: maxAmount ?? null,
+          firstViolationAmount: firstViolationAmount ?? null,
+          secondViolationAmount: secondViolationAmount ?? null,
+          subsequentViolationAmount: subsequentViolationAmount ?? null,
+          effectiveMin: effectiveMin ?? null,
+          effectiveMax: effectiveMax ?? null,
+          perDayViolation: perDayViolation ?? false,
+          jailMentioned: jailMentioned ?? false,
+          penaltyNature: penaltyNature ?? null,
+          extractionFlag: extractionFlag ?? null,
+          grounded: grounded ?? null,
+        };
+
+  return { law: law as LawRecord, fines };
 }
 
 /** Run a filtered/sorted/paginated query for laws from URL search params. */
@@ -218,14 +391,14 @@ export async function queryLaws(
     slugAParam = bind(slugA);
     slugBParam = slugA === slugB ? slugAParam : bind(slugB);
     where.push(
-      `(search_vector @@ websearch_to_tsquery('english', ${qParam})` +
-        ` OR city IN (${slugAParam}, ${slugBParam})` +
-        ` OR county IN (${slugAParam}, ${slugBParam}))`,
+      `(${T}.search_vector @@ websearch_to_tsquery('english', ${qParam})` +
+        ` OR ${T}.city IN (${slugAParam}, ${slugBParam})` +
+        ` OR ${T}.county IN (${slugAParam}, ${slugBParam}))`,
     );
   }
 
   const state = searchParams.get("state")?.trim();
-  if (state) where.push(`state = ${bind(state.toLowerCase())}`);
+  if (state) where.push(`${T}.state = ${bind(state.toLowerCase())}`);
 
   const city = searchParams.get("city")?.trim();
   if (city) where.push(cityExactSql(city, bind));
@@ -234,55 +407,79 @@ export async function queryLaws(
   if (county) where.push(placeIlikeSql("county", county, bind));
 
   const fn = searchParams.get("function")?.trim();
-  if (fn) where.push(`"function" = ${bind(fn)}`);
+  if (fn) where.push(`${T}."function" = ${bind(fn)}`);
 
   const topic = searchParams.get("topic")?.trim();
-  if (topic) where.push(`topic = ${bind(topic)}`);
+  if (topic) where.push(`${T}.topic = ${bind(topic)}`);
 
   const isSubstantive = searchParams.get("isSubstantive");
   if (isSubstantive === "true" || isSubstantive === "false") {
-    where.push(`is_substantive = ${bind(isSubstantive === "true")}`);
+    where.push(`${T}.is_substantive = ${bind(isSubstantive === "true")}`);
   }
 
   // Per-axis numeric range filters (e.g. opacityMin / opacityMax).
   for (const axis of AXES) {
     const min = parseFloatOrNull(searchParams.get(`${axis.key}Min`));
     const max = parseFloatOrNull(searchParams.get(`${axis.key}Max`));
-    if (min !== null) where.push(`${axis.column} >= ${bind(min)}`);
-    if (max !== null) where.push(`${axis.column} <= ${bind(max)}`);
+    if (min !== null) where.push(`${T}.${axis.column} >= ${bind(min)}`);
+    if (max !== null) where.push(`${T}.${axis.column} <= ${bind(max)}`);
   }
+
+  // LOCUS-Fines filters, as one semi-join against law_fines.
+  const penaltySql = penaltyExistsSql(searchParams, bind);
+  if (penaltySql) where.push(penaltySql);
+
+  // The rows query always joins law_fines so the stated fine can ride along.
+  const ROWS_FROM = "laws LEFT JOIN law_fines lfs ON lfs.law_id = laws.id";
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-  // Sort: whitelist the column (from AXES) and direction. Always append a stable
-  // secondary key on id so pagination is deterministic. When q is present,
-  // relevance wins per the search contract; otherwise keep the existing sort/id
-  // ordering.
-  const sortKey = searchParams.get("sort") as Axis | null;
-  const sortMeta = sortKey ? AXIS_BY_KEY[sortKey] : undefined;
+  // Sort: whitelist the key and direction. Always append a stable secondary
+  // key on id so pagination is deterministic. When q is present, relevance
+  // wins per the search contract; otherwise keep the existing sort/id ordering.
+  const rawSort = searchParams.get("sort");
+  const sortKey: SortKey | null =
+    rawSort && isSortKey(rawSort) ? rawSort : null;
+  const sortByFine = sortKey === FINE_SORT_KEY;
   const dir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
+
+  // Sorting by fine only ranks laws that state one — there is nothing to order
+  // the rest by. Requiring the amount also lets the planner walk
+  // `law_fines_effective_max_idx` instead of sorting 2.2M rows.
+  const rowsWhere = sortByFine
+    ? [...where, "lfs.effective_max IS NOT NULL"]
+    : where;
+  const rowsWhereSql = rowsWhere.length
+    ? `WHERE ${rowsWhere.join(" AND ")}`
+    : "";
+
   let orderSql: string;
   if (qParam && slugAParam && slugBParam) {
     // IS TRUE so NULL city/county (the usual LOCUS shape) do not sort first
     // under DESC NULLS FIRST and bury the slug hits this clause exists to boost.
     orderSql =
-      `ORDER BY ((city IN (${slugAParam}, ${slugBParam}))` +
-      ` OR (county IN (${slugAParam}, ${slugBParam}))) IS TRUE DESC,` +
-      ` ts_rank_cd(search_vector, websearch_to_tsquery('english', ${qParam})) DESC, id ASC`;
-  } else if (sortMeta) {
-    orderSql = `ORDER BY ${sortMeta.column} ${dir}, id ASC`;
+      `ORDER BY ((laws.city IN (${slugAParam}, ${slugBParam}))` +
+      ` OR (laws.county IN (${slugAParam}, ${slugBParam}))) IS TRUE DESC,` +
+      ` ts_rank_cd(laws.search_vector, websearch_to_tsquery('english', ${qParam})) DESC, laws.id ASC`;
+  } else if (sortByFine) {
+    orderSql = `ORDER BY lfs.effective_max ${dir}, laws.id ASC`;
+  } else if (sortKey) {
+    orderSql = `ORDER BY laws.${AXIS_BY_KEY[sortKey].column} ${dir}, laws.id ASC`;
   } else {
-    orderSql = `ORDER BY id ASC`;
+    orderSql = `ORDER BY laws.id ASC`;
   }
 
   // The rows query appends its own LIMIT/OFFSET params after the WHERE params.
   const limitParam = `$${params.length + 1}`;
   const offsetParam = `$${params.length + 2}`;
   const rowsParams = [...params, pageSize, offset];
+  // LEFT JOIN, always: the stated fine rides along on every row so the results
+  // list shows it on any layer. It cannot drop rows or fan out — law_fines is
+  // unique on law_id.
   const rowsSql = `
     SELECT ${SUMMARY_SELECT_COLUMNS}
-    FROM laws
-    ${whereSql}
+    FROM ${ROWS_FROM}
+    ${rowsWhereSql}
     ${orderSql}
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
@@ -302,7 +499,13 @@ export async function queryLaws(
               )
             : estimateFilteredRows(whereSql, params);
         })
-      : estimateFilteredRows(whereSql, params);
+      : // The fine sort narrows to laws that state one, so the estimate has to
+        // see the join and that predicate — otherwise it counts the whole corpus.
+        estimateFilteredRows(
+          rowsWhereSql,
+          params,
+          sortByFine ? ROWS_FROM : "laws",
+        );
 
     const [rows, counted] = await Promise.all([
       prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),

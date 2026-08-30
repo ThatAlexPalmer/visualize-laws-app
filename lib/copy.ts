@@ -23,11 +23,23 @@ export const UNHINGED_AXES: Record<Axis, { label: string; blurb: string }> = {
   },
 };
 
+/** Fines layer label + legend blurb. Not an axis. */
+export const FINES_COPY = {
+  label: "Fines",
+  blurb: "How often this place's code states a dollar fine.",
+} as const;
+
 /** Static UI string replacements. Key = the normal string. */
 export const UNHINGED_UI: Record<string, string> = {
   "Search & Filters": "FIND YOUR OPPRESSOR",
   "Reset": "FORGET EVERYTHING",
   "Scores": "VIBES",
+  "Fines": "THE BILL",
+  "Typical fine": "The usual sting",
+  "State a fine": "Named a price",
+  "Any type": "WHATEVER HURTS",
+  "These only include laws checked for a stated fine, so the list gets shorter.":
+    "Only the priced ones. The rest we never opened.",
   "Substantive": "ACTUAL LAWS",
   "Procedural": "RED TAPE",
   "Any function": "WHO KNOWS",
@@ -56,6 +68,20 @@ export function resolveAxisCopy(
   if (unhinged) return UNHINGED_AXES[axis];
   const a = AXIS_BY_KEY[axis];
   return { label: a.label, blurb: a.blurb };
+}
+
+/** Fines layer copy. Funny mode gets THE BILL. */
+export function resolveFinesCopy(unhinged: boolean): {
+  label: string;
+  blurb: string;
+} {
+  if (unhinged) {
+    return {
+      label: "THE BILL",
+      blurb: "How often they actually named a price.",
+    };
+  }
+  return { label: FINES_COPY.label, blurb: FINES_COPY.blurb };
 }
 
 /** Return a static UI string, falling back to the key if no mapping exists. */

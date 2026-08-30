@@ -101,6 +101,7 @@ pnpm seed --limit 25000 # fast dev sample (Alaska-only; shard 0)
 pnpm seed --fresh --shards 1 --limit 25000  # Colorado QA (pagosa_springs, el_paso_county)
 pnpm seed --shards ''   # recompute aggregates + city_county / county_fills
 pnpm build:city-county  # Census join + stand-in fills only (no parquet COPY)
+pnpm build:fines        # LOCUS-Fines penalty layer only (~40s on a full corpus)
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
 pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
 pnpm seed:prod …        # same flags against .env.prod (remote admin only)
@@ -140,7 +141,57 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 - **CityCounty** — Census 2020 place join for LOCUS city slugs (`state`, `city` unique).
 - **CountyFill** — map-layer sibling to `jurisdictions` (`source` = `county` | `city`).
   Do not reuse `(level, state, county)` for stand-ins.
+- **PlacePenalty** — per-place fines aggregates behind the Penalties layer, keyed
+  `(level, state, place)` where `level` is `national` | `state` | `place` and `place` is
+  `COALESCE(city, county)` (= `county_fills.source_place`). A **sibling table on purpose**:
+  `build-city-county.ts` rebuilds `jurisdictions` / `county_fills` with DELETE + INSERT, so
+  penalty columns living there would be wiped by an unrelated `pnpm build:city-county`.
+  Owned and rebuilt by `pnpm build:fines`.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
+- **LawFine** — [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines)
+  penalty annotation, unique on `law_id` (FK → `laws`, `ON DELETE CASCADE`). Only the
+  **632,005 model-read rows** (`annotation_source = 'LLM'`) are stored: every dollar
+  amount and every model judgement lives on one. A missing row means *not read by the
+  model* — **not** "this law has no penalty." 83,625 rows carry an amount. Denormalizes
+  `state` / `city` / `county` for per-place aggregates and keeps `content_sha1` so a
+  rebuild is verifiable.
+
+### Fines layer
+
+`data/build-fines.ts` streams the single ~87 MB supplement parquet, keeps model-read
+rows, `COPY`s them into an unlogged staging table, then one server-side `INSERT ... SELECT`
+dedupes and hash-joins them onto `laws`. `data/fines.ts` holds the pure helpers.
+
+- The supplement ships **no law text**. Rows re-attach on seven identity columns whose
+  last member is `content_sha1` = `sha1(content)` truncated to 16 hex chars, recomputed
+  in Postgres via pgcrypto `digest` (core PG has md5/sha2 but no sha1).
+- That key is **not unique** in LOCUS-v1 (2,411 duplicate groups / 5,200 rows), so the
+  fines side is deduped with `DISTINCT ON` before the join. Skipping that fans out.
+- NULL `city` / `county` normalize to `''` on both sides so every predicate stays a
+  hashable equality. `IS NOT DISTINCT FROM` is correct but unhashable and collapses the
+  plan into a nested loop over 2.2M rows.
+- Rebuild-in-place and idempotent: re-running yields identical counts.
+
+### Penalties map layer
+
+A **fifth layer, not a fifth axis**. `lib/store.tsx` carries `layer: "scores" | "penalties"`
+alongside `axis`; picking any axis returns to `scores`. The four axes stay a clean
+`Record<Axis, …>` contract — they are z-scored per-law averages, while penalties are counts
+over the subset a model read, with no per-law scalar to put behind a slider.
+
+- **Colour = `amount_sections / penalty_sections`**, derived at read time via `amountShare()`
+  so it cannot drift from its own numerator. Denominator is **model-read sections, never all
+  laws**: measured across states the share is uncorrelated with how much of a state the model
+  read (r = 0.11), while dividing by all laws is not (r = 0.46).
+- **Do not paint median fine.** 32 of 50 states sit at exactly $500 (the modal municipal cap;
+  23,480 of 83,625 amounts are $500), so a median choropleth is two-thirds one flat shade.
+  Median is surfaced as a **number** in the legend strip and hover, where it is the finding.
+  It does spread at county level (NC $37.50–$5,000 across 16 values), hence the hover figure.
+- A place with no annotation is **not painted** and hovers `not annotated` — never `no penalty`.
+- `median_fine` is NULL below `PENALTY_MEDIAN_MIN` (5) amount sections; 48 of 2,287 places.
+- The legend `Slot` is a stat strip: ramp card plus penalty figures, filling the band that is
+  otherwise dead beside the 260px legend. The stat cards mount **outside** the
+  `sparseCounties` early return, or they vanish in the eight thin states.
 
 ## Seeding
 
@@ -161,9 +212,12 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
 - Local full corpus (Docker Postgres, shards cached): **~15–40 min**
 - Remote full fresh (`pnpm seed:prod --fresh` from laptop → managed Postgres): **~30–60+ min**,
   with occasional silent stalls; resume without `--fresh` is expected
+- Fines layer on a full corpus (`pnpm build:fines`, parquet cached): **well under a minute**
 - Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 +
-  one `state` per distinct code (~50) + ~**376** `county` rows (full corpus). Existing DBs
-  that skipped docker seed after the city-index migration need `pnpm seed --shards ''`.
+  one `state` per distinct code (~50) + ~**376** `county` rows (full corpus), `law_fines`
+  = **632,005** (**83,625** with an amount). Existing DBs that skipped docker seed after
+  the city-index migration need `pnpm seed --shards ''`; ones predating the fines
+  migration need `pnpm prisma:deploy` then `pnpm build:fines`.
 
 Maintainer/agent detail (single-writer, background logs, verify SQL): **`agents/AGENTS.md`**.
 Do not expand public `README.md` with remote DB / internal agent ops.
@@ -186,6 +240,43 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Empty county polygons are coverage, not a render bug** (issue #25). ~3,231 atlas
   shapes vs ~376 scored counties. Never invent county averages from city laws. Never
   special-case a state.
+- **The two parquet readers are not interchangeable.** `data/seed.ts` uses
+  `@dsnp/parquetjs` for the LOCUS-v1 shards (~56k-row row groups); `data/build-fines.ts`
+  uses `hyparquet` because LOCUS-Fines packs **1,048,576-row row groups** and
+  `@dsnp/parquetjs` materializes a whole row group — it OOMs at the default heap and
+  needs ~7.75 GB RSS. `hyparquet` reads bounded row ranges and peaks near 1.2 GB. Do not
+  "unify" these on the parquetjs reader.
+- **`--fresh` must truncate `law_fines`** — it holds an FK to `laws`, so Postgres rejects
+  the TRUNCATE otherwise, and its rows are keyed by law id, which is not stable across a
+  fresh load. Rebuild it afterwards (the seeder does).
+- **Fine amounts are model output, not ground truth.** Amounts are verified against the
+  source text but the categorical fields are not, and a number meaning something else
+  (a bond, a fee cap) is occasionally read as a fine. Prefer medians over means, never a mean.
+- **`grounded` / `extraction_flag` do NOT catch the miscategorised top end.** All **19 rows
+  ≥ $1M are `grounded = true`, and only 3 carry an `extraction_flag`** — `grounded` means the
+  number appears in the source text, not that it is a fine. The largest stored values are
+  $5,000,000 on *Delivery of cash or checks to the city auditor* (Minot ND) and *Bed and
+  breakfast* (Hot Springs AR). Sorting by `Fine ↓` therefore puts junk at the top **by
+  design**; show it honestly with the model-output caveat rather than filtering on those
+  flags, which would not work.
+- **Fines stay visible on every layer.** The stated fine rides along on each results row, the
+  `Fine` sort button sits beside the four axis sorts, and the rail carries a fines block —
+  none of it is gated on the Fines layer being selected. Sorting by fine implies the law
+  states one (0.5 ms on `law_fines_effective_max_idx`) and disables the saved scope total.
+- **The rows query LEFT JOINs `law_fines`, so every `WHERE` predicate must be `laws.`-qualified.**
+  `law_fines` carries its own `state` / `city` / `county`; an unqualified reference is
+  ambiguous, Postgres errors, and `queryLaws` swallows it into an empty result — i.e. every
+  place filter silently returns zero matches.
+- **Naming a fine tracks problem salience.** Within the model-read set, sections that state
+  an amount average **+1.17** problem salience against **+0.36** for those that do not
+  (unread sections sit at −0.37). `place_penalties.salience_amount` /
+  `salience_no_amount` store this per scope; it is the measurable link between the fines
+  layer and the four axes.
+- **A penalty filter is not a corpus filter.** `hasFine` / `jail` / `perDay` / `fineMin` /
+  `fineMax` / `penaltyNature` narrow to the model-read subset, so they disable the saved
+  `jurisdictions.law_count` shortcut (`shouldUseSavedScopeTotal`) — otherwise the result
+  total would badly overstate the match count. `penaltyNature` is whitelisted before it
+  reaches SQL; everything else is bound.
 - Prisma **drops/resets** a shadow database. Never pass a URL that has data (local
   Docker or remote) as `--shadow-database-url`. Never `migrate reset` / `db push`
   against a database you care about. Apply with `prisma:deploy` / `prisma:deploy:prod`.
@@ -198,6 +289,26 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   via an absolute host path captured at container-create time. Renaming/moving the folder breaks
   it (empty `/workspace`); the entrypoint fails fast — recreate with `docker compose up -d
   --force-recreate` (data persists in the named volume).
+- **This project runs in Docker. The container does not pick up every change.** Only
+  `/workspace` (app source) is bind-mounted, so `.ts`/`.tsx` edits hot-reload. Everything
+  else is baked into the image or lives in a named volume:
+  - `docker/entrypoint.sh` and `Dockerfile` are `COPY`ed into the image. Editing them on the
+    host does **nothing** until `pnpm up:build` (`docker compose up --build`). A "fix" to the
+    entrypoint that was never rebuilt is a silent no-op.
+  - `node_modules` is the named volume `visualize_laws_node_modules`, mounted **over**
+    `/workspace/node_modules`. Docker populates a named volume only when it is first created,
+    so it shadows the image copy forever after — **`--build` alone does not install a new
+    dependency**. After adding or bumping a package: `docker compose exec app pnpm install`.
+  - The **generated Prisma client lives in that volume**, so it goes stale after any
+    `schema.prisma` change. A stale client has no delegate for the new model, and
+    `prisma.<newModel>` is `undefined` — property access on it throws *synchronously*, which
+    is how a missing optional table can take down a whole route. The entrypoint now runs
+    `pnpm prisma:generate` before `prisma:deploy` so a rebuilt container self-heals; on a
+    container you have not rebuilt, run `docker compose exec app pnpm prisma:generate`.
+  - **Never `docker compose down -v`** to "reset" the container: that also destroys
+    `visualize_laws_pgdata`, i.e. the seeded ~2.2M-row corpus. Remove the single volume
+    instead (`docker volume rm visualize-laws-app_visualize_laws_node_modules`) or, better,
+    just `pnpm install` inside the container.
 - **Supported Next line is 16.x** (`next` + `eslint-config-next` together). Do not take a
   Dependabot major for Next, ESLint, TypeScript, or `@types/node` — those are deliberate
   maintainer upgrades. Cache Components / Instant Navigations stay off unless a feature asks.
