@@ -39,6 +39,14 @@ function buildQuery(f: LawFilters): string {
       p.set(`${a.key}Max`, String(r.max));
     }
   }
+  // Penalty filters. Only "on" is meaningful: each narrows to laws the
+  // LOCUS-Fines model read, so an explicit `false` would be meaningless.
+  if (f.hasFine) p.set("hasFine", "true");
+  if (f.perDay) p.set("perDay", "true");
+  if (f.jail) p.set("jail", "true");
+  if (f.fineMin !== undefined) p.set("fineMin", String(f.fineMin));
+  if (f.fineMax !== undefined) p.set("fineMax", String(f.fineMax));
+  if (f.penaltyNature) p.set("penaltyNature", f.penaltyNature);
   if (f.sort) {
     p.set("sort", f.sort.axis);
     p.set("dir", f.sort.dir);

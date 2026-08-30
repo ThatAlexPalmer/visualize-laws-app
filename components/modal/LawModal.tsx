@@ -9,9 +9,13 @@ import { useExplorer } from "@/lib/store";
 import {
   AXES,
   DEFAULT_SCORE_RANGE,
+  penaltyAbsenceLabel,
+  penaltyAmountLabel,
+  penaltyCaveat,
   prettySlug,
   stateName,
   type LawDetailResponse,
+  type LawFines,
   type LawRecord,
 } from "@/lib/types";
 import { resolveAxisCopy } from "@/lib/copy";
@@ -124,6 +128,101 @@ const Body = styled.div`
   font-size: ${({ theme }) => theme.fontSize.md};
 `;
 
+const Penalty = styled.section`
+  margin-top: ${({ theme }) => theme.space(5)};
+  padding-top: ${({ theme }) => theme.space(4)};
+  border-top: 1px solid ${({ theme }) => theme.colors.g12};
+`;
+
+const PenaltyHead = styled(Mono)`
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.g60};
+`;
+
+const PenaltyAmount = styled.div`
+  margin-top: ${({ theme }) => theme.space(2)};
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: ${({ theme }) => theme.fontSize.xl};
+  color: ${({ theme }) => theme.colors.fg};
+  line-height: 1.15;
+`;
+
+const PenaltyNone = styled.div`
+  margin-top: ${({ theme }) => theme.space(2)};
+  color: ${({ theme }) => theme.colors.g76};
+  font-size: ${({ theme }) => theme.fontSize.md};
+`;
+
+const PenaltyNote = styled.p`
+  margin: ${({ theme }) => theme.space(3)} 0 0;
+  font-size: ${({ theme }) => theme.fontSize.sm};
+  line-height: 1.5;
+  color: ${({ theme }) => theme.colors.g60};
+`;
+
+const Caveat = styled(PenaltyNote)`
+  padding-left: ${({ theme }) => theme.space(3)};
+  border-left: 1px solid ${({ theme }) => theme.colors.g20};
+  color: ${({ theme }) => theme.colors.g76};
+`;
+
+const SCOPE_LABEL: Record<string, string> = {
+  code_general: "Applies code-wide",
+  chapter_general: "Applies to this chapter",
+  specific: "Applies to specific conduct",
+};
+
+const NATURE_LABEL: Record<string, string> = {
+  criminal: "Criminal",
+  civil: "Civil",
+  both: "Criminal and civil",
+};
+
+/**
+ * Penalty annotation from LOCUS-Fines. Rendered only when the supplement's
+ * model actually read this law; the caller passes null otherwise, because an
+ * absent annotation means "not read", not "no penalty".
+ */
+function PenaltyBlock({ fines }: { fines: LawFines }) {
+  const amount = penaltyAmountLabel(fines);
+  const caveat = penaltyCaveat(fines);
+  const scope = fines.penaltyScope ? SCOPE_LABEL[fines.penaltyScope] : null;
+  const nature = fines.penaltyNature ? NATURE_LABEL[fines.penaltyNature] : null;
+
+  const tags = [
+    nature,
+    fines.perDayViolation ? "Each day is a separate violation" : null,
+    fines.jailMentioned ? "Jail mentioned" : null,
+  ].filter((t): t is string => Boolean(t));
+
+  return (
+    <Penalty aria-label="Stated penalty">
+      <PenaltyHead as="h4">Penalty</PenaltyHead>
+      {amount ? (
+        <PenaltyAmount>{amount}</PenaltyAmount>
+      ) : (
+        <PenaltyNone>{penaltyAbsenceLabel(fines)}</PenaltyNone>
+      )}
+      {(scope || tags.length > 0) && (
+        <Chips>
+          {scope && <Chip>{scope}</Chip>}
+          {tags.map((tag) => (
+            <Chip key={tag}>{tag}</Chip>
+          ))}
+        </Chips>
+      )}
+      {caveat && <Caveat>{caveat}</Caveat>}
+      <PenaltyNote>
+        Read from the section text by a model, not by a lawyer. Amounts are
+        checked against the text; the labels above are not.
+      </PenaltyNote>
+    </Penalty>
+  );
+}
+
 const BodyStatus = styled(Body)`
   display: flex;
   flex-direction: column;
@@ -145,6 +244,7 @@ export function LawModal() {
   const { unhinged } = state;
   const law = state.selectedLaw;
   const [detail, setDetail] = useState<LawRecord | null>(null);
+  const [fines, setFines] = useState<LawFines | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const close = () => dispatch({ type: "closeLaw" });
@@ -152,6 +252,7 @@ export function LawModal() {
   useEffect(() => {
     if (!law) {
       setDetail(null);
+      setFines(null);
       setDetailError(false);
       return;
     }
@@ -159,6 +260,7 @@ export function LawModal() {
     const ctrl = new AbortController();
     let active = true;
     setDetail(null);
+    setFines(null);
     setDetailError(false);
 
     fetch(`/api/laws/${law.id}`, { signal: ctrl.signal, cache: "no-store" })
@@ -166,9 +268,10 @@ export function LawModal() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<LawDetailResponse>;
       })
-      .then(({ law: fullLaw }) => {
+      .then(({ law: fullLaw, fines: lawFines }) => {
         if (!active) return;
         setDetail(fullLaw);
+        setFines(lawFines ?? null);
       })
       .catch(() => {
         if (!active || ctrl.signal.aborted) return;
@@ -261,6 +364,8 @@ export function LawModal() {
                 );
               })}
             </ScoreGrid>
+
+            {fines && <PenaltyBlock fines={fines} />}
 
             {detail ? (
               <Body>

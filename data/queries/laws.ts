@@ -4,7 +4,9 @@ import { slugVariants } from "../slugs";
 import {
   AXES,
   AXIS_BY_KEY,
+  isPenaltyNature,
   type Axis,
+  type LawFines,
   type LawRecord,
   type LawSummary,
   type LawsResponse,
@@ -67,7 +69,59 @@ export function shouldUseSavedScopeTotal(searchParams: URLSearchParams): boolean
     if (parseFloatOrNull(searchParams.get(`${axis.key}Min`)) !== null) return false;
     if (parseFloatOrNull(searchParams.get(`${axis.key}Max`)) !== null) return false;
   }
+  // Any penalty filter narrows to the model-read subset, so the saved
+  // jurisdiction total would badly overstate the result count.
+  if (hasPenaltyFilter(searchParams)) return false;
   return true;
+}
+
+/** True when any LOCUS-Fines filter is active. */
+export function hasPenaltyFilter(searchParams: URLSearchParams): boolean {
+  if (searchParams.get("hasFine") === "true") return true;
+  if (searchParams.get("perDay") === "true") return true;
+  if (searchParams.get("jail") === "true") return true;
+  if (parseFloatOrNull(searchParams.get("fineMin")) !== null) return true;
+  if (parseFloatOrNull(searchParams.get("fineMax")) !== null) return true;
+  const nature = searchParams.get("penaltyNature")?.trim();
+  return Boolean(nature && isPenaltyNature(nature));
+}
+
+/**
+ * Build the `EXISTS (... law_fines ...)` predicate for the active penalty
+ * filters, or null when none are set.
+ *
+ * All of them collapse into a single EXISTS so the planner does one
+ * semi-join rather than one per filter. Every value is bound; `penaltyNature`
+ * is additionally whitelisted against the source vocabulary.
+ */
+function penaltyExistsSql(
+  searchParams: URLSearchParams,
+  bind: (value: unknown) => string,
+): string | null {
+  const conds: string[] = [];
+
+  if (searchParams.get("hasFine") === "true") {
+    conds.push("lf.effective_max IS NOT NULL");
+  }
+  if (searchParams.get("perDay") === "true") {
+    conds.push("lf.per_day_violation");
+  }
+  if (searchParams.get("jail") === "true") {
+    conds.push("lf.jail_mentioned");
+  }
+
+  const min = parseFloatOrNull(searchParams.get("fineMin"));
+  if (min !== null) conds.push(`lf.effective_max >= ${bind(min)}`);
+  const max = parseFloatOrNull(searchParams.get("fineMax"));
+  if (max !== null) conds.push(`lf.effective_min <= ${bind(max)}`);
+
+  const nature = searchParams.get("penaltyNature")?.trim();
+  if (nature && isPenaltyNature(nature)) {
+    conds.push(`lf.penalty_nature = ${bind(nature)}`);
+  }
+
+  if (conds.length === 0) return null;
+  return `EXISTS (SELECT 1 FROM law_fines lf WHERE lf.law_id = laws.id AND ${conds.join(" AND ")})`;
 }
 
 // --- Totals -----------------------------------------------------------------
@@ -170,19 +224,119 @@ const SUMMARY_SELECT_COLUMNS = `
   problem_salience AS "problemSalience"
 `;
 
-const DETAIL_SELECT_COLUMNS = `
-  ${SUMMARY_SELECT_COLUMNS},
-  content
+// The summary columns plus content, qualified with the `l` alias for the
+// law_fines join.
+// Spelled out rather than derived, so a change to the summary list is a
+// deliberate edit here too.
+const DETAIL_SELECT_COLUMNS_QUALIFIED = `
+  l.id,
+  l.header,
+  l.is_substantive AS "isSubstantive",
+  l."function",
+  l.topic,
+  l.source_jurisdiction_type AS "sourceJurisdictionType",
+  l.state,
+  l.city,
+  l.county,
+  l.opacity,
+  l.enforcement_discretion AS "enforcementDiscretion",
+  l.paternalism,
+  l.problem_salience AS "problemSalience",
+  l.content
 `;
 
-export async function getLawById(id: number): Promise<LawRecord | null> {
-  const rows = await prisma.$queryRaw<LawRecord[]>`
-    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS)}
-    FROM laws
-    WHERE id = ${id}
+const FINES_SELECT_COLUMNS = `
+  f.fine_relevant AS "fineRelevant",
+  f.penalty_scope AS "penaltyScope",
+  f.penalty_stated AS "penaltyStated",
+  f.fine_structure AS "fineStructure",
+  f.fixed_amount AS "fixedAmount",
+  f.min_amount AS "minAmount",
+  f.max_amount AS "maxAmount",
+  f.first_violation_amount AS "firstViolationAmount",
+  f.second_violation_amount AS "secondViolationAmount",
+  f.subsequent_violation_amount AS "subsequentViolationAmount",
+  f.effective_min AS "effectiveMin",
+  f.effective_max AS "effectiveMax",
+  f.per_day_violation AS "perDayViolation",
+  f.jail_mentioned AS "jailMentioned",
+  f.penalty_nature AS "penaltyNature",
+  f.extraction_flag AS "extractionFlag",
+  f.grounded
+`;
+
+export interface LawDetail {
+  law: LawRecord;
+  /** null when the supplement's model never read this law. */
+  fines: LawFines | null;
+}
+
+type DetailRow = LawRecord & Partial<LawFines>;
+
+/**
+ * One law plus its LOCUS-Fines annotation, if the supplement's model read it.
+ * A LEFT JOIN keeps the law available either way — an absent annotation is not
+ * an error and must not be shown as "no penalty".
+ */
+export async function getLawById(id: number): Promise<LawDetail | null> {
+  const rows = await prisma.$queryRaw<DetailRow[]>`
+    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
+           ${Prisma.raw(FINES_SELECT_COLUMNS)}
+    FROM laws l
+    LEFT JOIN law_fines f ON f.law_id = l.id
+    WHERE l.id = ${id}
     LIMIT 1
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+
+  const {
+    fineRelevant,
+    penaltyScope,
+    penaltyStated,
+    fineStructure,
+    fixedAmount,
+    minAmount,
+    maxAmount,
+    firstViolationAmount,
+    secondViolationAmount,
+    subsequentViolationAmount,
+    effectiveMin,
+    effectiveMax,
+    perDayViolation,
+    jailMentioned,
+    penaltyNature,
+    extractionFlag,
+    grounded,
+    ...law
+  } = row;
+
+  // `fine_relevant` is NOT NULL in law_fines, so a null here means the LEFT
+  // JOIN found no annotation rather than an annotation that says false.
+  const fines: LawFines | null =
+    fineRelevant === null || fineRelevant === undefined
+      ? null
+      : {
+          fineRelevant,
+          penaltyScope: penaltyScope ?? null,
+          penaltyStated: penaltyStated ?? null,
+          fineStructure: fineStructure ?? null,
+          fixedAmount: fixedAmount ?? null,
+          minAmount: minAmount ?? null,
+          maxAmount: maxAmount ?? null,
+          firstViolationAmount: firstViolationAmount ?? null,
+          secondViolationAmount: secondViolationAmount ?? null,
+          subsequentViolationAmount: subsequentViolationAmount ?? null,
+          effectiveMin: effectiveMin ?? null,
+          effectiveMax: effectiveMax ?? null,
+          perDayViolation: perDayViolation ?? false,
+          jailMentioned: jailMentioned ?? false,
+          penaltyNature: penaltyNature ?? null,
+          extractionFlag: extractionFlag ?? null,
+          grounded: grounded ?? null,
+        };
+
+  return { law: law as LawRecord, fines };
 }
 
 /** Run a filtered/sorted/paginated query for laws from URL search params. */
@@ -251,6 +405,10 @@ export async function queryLaws(
     if (min !== null) where.push(`${axis.column} >= ${bind(min)}`);
     if (max !== null) where.push(`${axis.column} <= ${bind(max)}`);
   }
+
+  // LOCUS-Fines filters, as one semi-join against law_fines.
+  const penaltySql = penaltyExistsSql(searchParams, bind);
+  if (penaltySql) where.push(penaltySql);
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 

@@ -28,11 +28,12 @@ export async function GET(
   }
 
   try {
-    const law = await getLawById(id);
-    if (!law) {
+    const detail = await getLawById(id);
+    if (!detail) {
       return NextResponse.json({ error: "Law not found." }, { status: 404 });
     }
-    return NextResponse.json({ law });
+    // `fines` is null when the supplement's model never read this law.
+    return NextResponse.json({ law: detail.law, fines: detail.fines });
   } catch (err) {
     console.error(`getLawById(${id}) failed:`, err);
     return NextResponse.json(

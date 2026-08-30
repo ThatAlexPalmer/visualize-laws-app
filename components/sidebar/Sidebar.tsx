@@ -14,6 +14,7 @@ import {
   TOPICS,
   prettySlug,
   type Axis,
+  type PenaltyNature,
   type ScoreRange,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
@@ -54,6 +55,17 @@ const SUBSTANTIVE_OPTS: { label: string; value: boolean | undefined }[] = [
   { label: "All", value: undefined },
   { label: "Substantive", value: true },
   { label: "Procedural", value: false },
+];
+
+const FINE_OPTS: { label: string; value: boolean | undefined }[] = [
+  { label: "All", value: undefined },
+  { label: "States a fine", value: true },
+];
+
+const NATURE_OPTS: { label: string; value: PenaltyNature }[] = [
+  { label: "Criminal", value: "criminal" },
+  { label: "Civil", value: "civil" },
+  { label: "Criminal and civil", value: "both" },
 ];
 
 const MobileAside = styled(motion.aside)<{ $open: boolean }>`
@@ -148,6 +160,30 @@ const HeaderActions = styled.div`
   display: flex;
   align-items: center;
   gap: ${({ theme }) => theme.space(2)};
+`;
+
+/** Two independent booleans, so toggles rather than an exclusive Segmented. */
+const ToggleRow = styled.div`
+  display: flex;
+  gap: ${({ theme }) => theme.space(2)};
+`;
+
+const ToggleChip = styled(Button)<{ $on: boolean }>`
+  flex: 1;
+  background: ${({ $on, theme }) => ($on ? theme.colors.fg : "transparent")};
+  border-color: ${({ $on, theme }) => ($on ? theme.colors.fg : theme.colors.g20)};
+  color: ${({ $on, theme }) => ($on ? theme.colors.bg : theme.colors.g76)};
+
+  &:hover:not(:disabled) {
+    color: ${({ $on, theme }) => ($on ? theme.colors.bg : theme.colors.fg)};
+  }
+`;
+
+const FieldHint = styled.p`
+  margin: 0;
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  line-height: 1.45;
+  color: ${({ theme }) => theme.colors.g60};
 `;
 
 // The Reset control reuses the Button primitive (ghost variant); it only dims
@@ -500,6 +536,98 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
             );
           })}
         </Segmented>
+      </Field>
+
+      <Field as={motion.div} variants={item}>
+        <SectionLabel>{ui("Penalties", unhinged)}</SectionLabel>
+        <Segmented>
+          {FINE_OPTS.map((opt) => {
+            const active = (filters.hasFine ?? undefined) === opt.value;
+            return (
+              <SegItem
+                key={opt.label}
+                type="button"
+                $active={active}
+                onClick={() =>
+                  dispatch({
+                    type: "patchFilters",
+                    filters: { hasFine: opt.value },
+                  })
+                }
+              >
+                {active && (
+                  <PillHighlight
+                    layoutId={`${idPrefix}-fine-pill`}
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  />
+                )}
+                {ui(opt.label, unhinged)}
+              </SegItem>
+            );
+          })}
+        </Segmented>
+
+        <ToggleRow>
+          <ToggleChip
+            type="button"
+            $variant="ghost"
+            $pill
+            $size="sm"
+            $on={filters.jail === true}
+            aria-pressed={filters.jail === true}
+            onClick={() =>
+              dispatch({
+                type: "patchFilters",
+                filters: { jail: filters.jail ? undefined : true },
+              })
+            }
+          >
+            {ui("Jail", unhinged)}
+          </ToggleChip>
+          <ToggleChip
+            type="button"
+            $variant="ghost"
+            $pill
+            $size="sm"
+            $on={filters.perDay === true}
+            aria-pressed={filters.perDay === true}
+            onClick={() =>
+              dispatch({
+                type: "patchFilters",
+                filters: { perDay: filters.perDay ? undefined : true },
+              })
+            }
+          >
+            {ui("Per day", unhinged)}
+          </ToggleChip>
+        </ToggleRow>
+
+        <Select
+          id={`${idPrefix}-penalty-nature`}
+          aria-label="Penalty type"
+          value={filters.penaltyNature ?? ""}
+          onChange={(e) =>
+            dispatch({
+              type: "patchFilters",
+              filters: {
+                penaltyNature:
+                  (e.target.value as PenaltyNature) || undefined,
+              },
+            })
+          }
+        >
+          <option value="">{ui("Any penalty type", unhinged)}</option>
+          {NATURE_OPTS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
+
+        <FieldHint>
+          Penalty filters only reach laws a model has read for fines, so they
+          return fewer results than the corpus holds.
+        </FieldHint>
       </Field>
     </>
   );
