@@ -141,6 +141,12 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 - **CityCounty** — Census 2020 place join for LOCUS city slugs (`state`, `city` unique).
 - **CountyFill** — map-layer sibling to `jurisdictions` (`source` = `county` | `city`).
   Do not reuse `(level, state, county)` for stand-ins.
+- **PlacePenalty** — per-place fines aggregates behind the Penalties layer, keyed
+  `(level, state, place)` where `level` is `national` | `state` | `place` and `place` is
+  `COALESCE(city, county)` (= `county_fills.source_place`). A **sibling table on purpose**:
+  `build-city-county.ts` rebuilds `jurisdictions` / `county_fills` with DELETE + INSERT, so
+  penalty columns living there would be wiped by an unrelated `pnpm build:city-county`.
+  Owned and rebuilt by `pnpm build:fines`.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
 - **LawFine** — [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines)
   penalty annotation, unique on `law_id` (FK → `laws`, `ON DELETE CASCADE`). Only the
@@ -165,6 +171,27 @@ dedupes and hash-joins them onto `laws`. `data/fines.ts` holds the pure helpers.
   hashable equality. `IS NOT DISTINCT FROM` is correct but unhashable and collapses the
   plan into a nested loop over 2.2M rows.
 - Rebuild-in-place and idempotent: re-running yields identical counts.
+
+### Penalties map layer
+
+A **fifth layer, not a fifth axis**. `lib/store.tsx` carries `layer: "scores" | "penalties"`
+alongside `axis`; picking any axis returns to `scores`. The four axes stay a clean
+`Record<Axis, …>` contract — they are z-scored per-law averages, while penalties are counts
+over the subset a model read, with no per-law scalar to put behind a slider.
+
+- **Colour = `amount_sections / penalty_sections`**, derived at read time via `amountShare()`
+  so it cannot drift from its own numerator. Denominator is **model-read sections, never all
+  laws**: measured across states the share is uncorrelated with how much of a state the model
+  read (r = 0.11), while dividing by all laws is not (r = 0.46).
+- **Do not paint median fine.** 32 of 50 states sit at exactly $500 (the modal municipal cap;
+  23,480 of 83,625 amounts are $500), so a median choropleth is two-thirds one flat shade.
+  Median is surfaced as a **number** in the legend strip and hover, where it is the finding.
+  It does spread at county level (NC $37.50–$5,000 across 16 values), hence the hover figure.
+- A place with no annotation is **not painted** and hovers `not annotated` — never `no penalty`.
+- `median_fine` is NULL below `PENALTY_MEDIAN_MIN` (5) amount sections; 48 of 2,287 places.
+- The legend `Slot` is a stat strip: ramp card plus penalty figures, filling the band that is
+  otherwise dead beside the 260px legend. The stat cards mount **outside** the
+  `sparseCounties` early return, or they vanish in the eight thin states.
 
 ## Seeding
 
@@ -225,8 +252,14 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Fine amounts are model output, not ground truth.** Amounts are verified against the
   source text but the categorical fields are not, and a number meaning something else
   (a bond, a fee cap) is occasionally read as a fine — the largest stored values are such
-  cases. Prefer medians over means, and surface `grounded = false` / non-null
-  `extraction_flag` as a caveat rather than hiding those rows.
+  cases (the top `effective_max` is $5,000,000 on a section about delivering cash to a city
+  auditor). Prefer medians over means, never a mean, and surface `grounded = false` /
+  non-null `extraction_flag` as a caveat rather than hiding those rows.
+- **A penalty filter is not a corpus filter.** `hasFine` / `jail` / `perDay` / `fineMin` /
+  `fineMax` / `penaltyNature` narrow to the model-read subset, so they disable the saved
+  `jurisdictions.law_count` shortcut (`shouldUseSavedScopeTotal`) — otherwise the result
+  total would badly overstate the match count. `penaltyNature` is whitelisted before it
+  reaches SQL; everything else is bound.
 - Prisma **drops/resets** a shadow database. Never pass a URL that has data (local
   Docker or remote) as `--shadow-database-url`. Never `migrate reset` / `db push`
   against a database you care about. Apply with `prisma:deploy` / `prisma:deploy:prod`.

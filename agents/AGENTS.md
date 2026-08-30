@@ -89,6 +89,9 @@ avoid staleness; expand only when durable.
 - `law_fines` holds only the **632,005 model-read** LOCUS-Fines rows. An absent row means
   the supplement never sent that law to its model — it does **not** mean the law has no
   penalty. Never render a missing row as “no fine.”
+- Penalty filters (`hasFine`, `jail`, `perDay`, `fineMin`, `fineMax`, `penaltyNature`) narrow
+  to that subset, so they must keep disabling the saved-total shortcut in
+  `shouldUseSavedScopeTotal`. `penaltyNature` is whitelisted before it reaches SQL.
 - Seed is resumable; see **Seeding runbook** below.
 
 ## City / county map (invariants)
@@ -115,6 +118,25 @@ avoid staleness; expand only when durable.
   `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
+
+## Penalties map layer (invariants)
+
+- It is a **layer, not a fifth axis**: `layer: "scores" | "penalties"` in `lib/store.tsx`,
+  separate from `axis`, and selecting any axis returns to `scores`. Do not add a fines entry
+  to `Axis` / `AXES` / `AxisAverages` — those are z-scored per-law averages with slider
+  semantics that a share does not have.
+- Colour is **`amount_sections / penalty_sections`**, derived via `amountShare()`, never
+  stored. Denominator is model-read sections; dividing by all laws correlates with sampling
+  (r = 0.46) instead of with the codes (r = 0.11).
+- **Never paint median fine.** 32 of 50 states are exactly $500. It is shown as a number in
+  the legend strip and hover only. It is genuinely informative at county level, which is why
+  the hover carries it.
+- No annotation → no fill and `not annotated` on hover. Never `no penalty`.
+- The legend stat cards must stay mounted outside the `sparseCounties` early return in
+  `components/map/Legend.tsx`, or the eight thin states lose their figures.
+- `place_penalties` is rebuilt only by `pnpm build:fines`. Running `pnpm build:city-county`
+  afterwards is safe — that was the reason for a sibling table rather than columns on
+  `jurisdictions` / `county_fills`.
 
 ## Working conventions
 
