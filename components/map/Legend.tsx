@@ -170,21 +170,27 @@ const StatValue = styled.div`
   line-height: 1.1;
 `;
 
-const StatNote = styled.div`
-  font-size: ${({ theme }) => theme.fontSize.xs};
+/** The comparison half of a stat, dimmed so the headline number leads. */
+const StatAside = styled.span`
   color: ${({ theme }) => theme.colors.g60};
-  align-self: center;
-  max-width: 260px;
-  line-height: 1.45;
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
 
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    max-width: none;
-    margin-top: ${({ theme }) => theme.space(2)};
-  }
+const StatSub = styled.div`
+  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: ${({ theme }) => theme.colors.g60};
 `;
 
 function fmt(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/** A z-scored average, sign always shown so the comparison reads at a glance. */
+function signed(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return `${rounded >= 0 ? "+" : "−"}${Math.abs(rounded).toFixed(2)}`;
 }
 
 /** Legend scale text: a percentage on the penalties layer, else a z-score. */
@@ -203,6 +209,18 @@ function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
     stats.penaltySections > 0
       ? formatShare(stats.amountSections / stats.penaltySections)
       : "—";
+
+  // The link between this layer and the four axes: within the sections a model
+  // read, the ones naming a dollar figure score markedly higher on problem
+  // salience. Hidden when either side is too thin to mean anything.
+  const salience =
+    stats.salienceAmount !== null && stats.salienceNoAmount !== null
+      ? {
+          withFine: signed(stats.salienceAmount),
+          without: signed(stats.salienceNoAmount),
+        }
+      : null;
+
   return (
     <Stats
       initial={{ opacity: 0, y: 8 }}
@@ -216,21 +234,19 @@ function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
         </StatValue>
       </Stat>
       <Stat>
-        <StatLabel>States an amount</StatLabel>
+        <StatLabel>Name a fine</StatLabel>
         <StatValue>{share}</StatValue>
       </Stat>
-      <Stat>
-        <StatLabel>Mentions jail</StatLabel>
-        <StatValue>
-          {stats.penaltySections > 0
-            ? formatShare(stats.jailSections / stats.penaltySections)
-            : "—"}
-        </StatValue>
-      </Stat>
-      <StatNote>
-        Across {stats.penaltySections.toLocaleString("en-US")} sections a model
-        read for penalties — not the whole corpus.
-      </StatNote>
+      {salience && (
+        <Stat title="Average problem salience, among sections a model read">
+          <StatLabel>Problem salience</StatLabel>
+          <StatValue>
+            {salience.withFine}
+            <StatAside> vs {salience.without}</StatAside>
+          </StatValue>
+          <StatSub>with a fine · without</StatSub>
+        </Stat>
+      )}
     </Stats>
   );
 }
@@ -325,12 +341,10 @@ export function ConnectedMapLegend({
         <MapLegend
           axis={axis}
           layer={layer}
-          axisLabel={
-            layer === "penalties" ? "Penalties" : axisCopy.label
-          }
+          axisLabel={layer === "penalties" ? "Fines" : axisCopy.label}
           blurb={
             layer === "penalties"
-              ? "Share of penalty sections that state a dollar amount."
+              ? "Share of the sections a model read that name a dollar fine."
               : axisCopy.blurb
           }
           domain={domain}

@@ -66,7 +66,19 @@ export interface LawFilters {
   penaltyNature?: PenaltyNature;
   page: number;
   pageSize: number;
-  sort?: { axis: Axis; dir: "asc" | "desc" } | null;
+  sort?: { key: SortKey; dir: "asc" | "desc" } | null;
+}
+
+/**
+ * What the results list is ordered by. The four axes plus the stated fine —
+ * sorting by `fine` implies the law states one, since there is nothing to rank
+ * otherwise.
+ */
+export type SortKey = Axis | "fine";
+export const FINE_SORT_KEY = "fine" as const;
+
+export function isSortKey(value: string): value is SortKey {
+  return value === FINE_SORT_KEY || value in AXIS_BY_KEY;
 }
 
 /** `penalty_nature` vocabulary. Whitelisted before it reaches SQL. */
@@ -118,6 +130,12 @@ export interface LawSummary {
   enforcementDiscretion: number;
   paternalism: number;
   problemSalience: number;
+  /**
+   * The stated fine, when the supplement's model read this law and found one.
+   * Carried on the list row so fines stay visible on every layer, not only
+   * when the Fines layer is selected.
+   */
+  fine?: number | null;
 }
 
 export interface LawRecord extends LawSummary {
@@ -154,6 +172,14 @@ export interface PenaltyStats {
   perDaySections: number;
   /** null when too few amount sections back it to be meaningful. */
   medianFine: number | null;
+  /**
+   * Average problem salience among read sections that name an amount, and
+   * among those that do not. Both sides come from inside the read set, so the
+   * gap between them is a real signal rather than a sampling artifact:
+   * corpus-wide it is +1.17 against +0.36. Null when the sample is too thin.
+   */
+  salienceAmount: number | null;
+  salienceNoAmount: number | null;
 }
 
 /**
@@ -224,6 +250,33 @@ export function penaltyAbsenceLabel(fines: LawFines): string {
     default:
       return "States no penalty of its own.";
   }
+}
+
+/**
+ * The second hover line on the Fines layer: what the colour actually means for
+ * this place, in plain words.
+ *
+ * Deliberately short and sentence-case — it renders under the place name, not
+ * inside it. Returns null when there is nothing to say.
+ *
+ * A place the model never read reads "not annotated", never "no fines": the
+ * supplement only sent about a third of the corpus to its model.
+ */
+export function fineHoverLine(
+  stats: PenaltyStats | null | undefined,
+): string | null {
+  if (!stats || stats.penaltySections === 0) return "not annotated";
+
+  const share = formatShare(stats.amountSections / stats.penaltySections);
+  const read = stats.penaltySections.toLocaleString("en-US");
+  const typical =
+    stats.medianFine === null
+      ? null
+      : `typical ${formatFine(stats.medianFine)}`;
+
+  return [`${share} name a fine`, typical, `${read} sections read`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**

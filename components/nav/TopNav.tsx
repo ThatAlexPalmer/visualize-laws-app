@@ -305,22 +305,8 @@ const SheetAction = styled.button<{ $active?: boolean }>`
 `;
 
 /**
- * Separates the four score axes from the Penalties layer. They both control
- * what the map is coloured by, but penalties is a share over annotated
- * sections rather than a z-scored per-law average.
- */
-const PillDivider = styled.span`
-  align-self: stretch;
-  width: 1px;
-  margin: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(1)};
-  background: ${({ theme }) => theme.colors.g12};
-  flex: 0 0 1px;
-`;
-
-/**
  * Full-width tile in the 2-column mobile sheet. Spanning both columns avoids
- * an orphan cell after the 2x2 of axes, and reads as a different kind of
- * choice.
+ * an orphan cell after the 2x2 of axes.
  */
 const SheetLayer = styled.button<{ $active: boolean }>`
   grid-column: span 2;
@@ -445,11 +431,10 @@ export function TopNav() {
             </AxisButton>
           );
         })}
-        <PillDivider aria-hidden="true" />
         <AxisButton
           $active={penaltiesActive}
           onClick={selectPenalties}
-          title="Share of penalty sections that state a dollar amount"
+          title="Share of sections a model read that name a dollar fine"
         >
           {penaltiesActive && (
             <PillHighlight
@@ -458,7 +443,7 @@ export function TopNav() {
               transition={{ type: "spring", stiffness: 480, damping: 38 }}
             />
           )}
-          {ui("Penalties", unhinged)}
+          {ui("Fines", unhinged)}
         </AxisButton>
       </Axes>
       <RightNav>
@@ -522,7 +507,7 @@ export function TopNav() {
               );
             })}
             <SheetLayer $active={penaltiesActive} onClick={selectPenalties}>
-              {ui("Penalties", unhinged)}
+              {ui("Fines", unhinged)}
             </SheetLayer>
           </SheetAxes>
           <SheetActions>

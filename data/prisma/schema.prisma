@@ -167,6 +167,11 @@ model PlacePenalty {
   /// null when too few amount sections back it (see PENALTY_MEDIAN_MIN).
   medianFine      Float? @map("median_fine")
 
+  /// Average problem salience inside the read set, split by whether the
+  /// section names an amount. The measurable link to the four axes.
+  salienceAmount   Float? @map("salience_amount")
+  salienceNoAmount Float? @map("salience_no_amount")
+
   @@unique([level, state, place])
   @@index([state])
   @@map("place_penalties")

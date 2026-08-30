@@ -9,8 +9,7 @@ import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
 import {
   cityStandInLabel,
-  formatFine,
-  formatShare,
+  fineHoverLine,
   matchCountySlug,
   nativeCountyToFill,
   normalizePlaceKey,
@@ -192,24 +191,6 @@ const AXIS_HOVER_STROKE: Record<Axis, string> = {
 
 /** Matches theme.colors.penalty at the same 0.72 alpha as the axis strokes. */
 const PENALTY_HOVER_STROKE = "rgba(16,185,129,0.72)";
-
-/**
- * Hover copy for the penalties layer.
- *
- * A place with no annotation reads "not annotated", never "no penalty" — the
- * supplement only sent about a third of the corpus to its model, so silence
- * means nobody looked.
- */
-function penaltyHoverSuffix(stats: PenaltyStats | null | undefined): string {
-  if (!stats || stats.penaltySections === 0) return " · not annotated";
-  const share = formatShare(stats.amountSections / stats.penaltySections);
-  const sections = stats.penaltySections.toLocaleString("en-US");
-  const median =
-    stats.medianFine === null
-      ? ""
-      : ` · median ${formatFine(stats.medianFine)}`;
-  return ` · ${share} of ${sections} penalty sections state an amount${median}`;
-}
 
 /** State name displayed on top-left of the map canvas. */
 const TitleStack = styled.div`
@@ -1005,7 +986,7 @@ export function MapPanel({
     );
   }, [layer, hovered, aggByUsps, fillByKey]);
 
-  const baseMapLabel = hovered
+  const mapLabel = hovered
     ? hovered.kind === "county"
       ? hovered.fillSource === "city" && hovered.sourcePlace
         ? cityStandInLabel(
@@ -1026,12 +1007,13 @@ export function MapPanel({
             ? stateName(selectedState)
             : null;
 
-  // On the penalties layer, hovering appends the sample behind the colour so
-  // the figure is never mistaken for a score.
-  const mapLabel =
-    hovered && baseMapLabel && hoveredPenalties !== undefined
-      ? `${baseMapLabel}${penaltyHoverSuffix(hoveredPenalties)}`
-      : baseMapLabel;
+  // The fines figures go on their own line, in the small sentence-case style.
+  // They must never enter `mapLabel`: that renders as the 22px uppercase place
+  // name, which turns a sentence into a three-line wall of shouting.
+  const fineLine =
+    hovered && hoveredPenalties !== undefined
+      ? fineHoverLine(hoveredPenalties)
+      : null;
 
   return (
     <Wrap ref={wrapRef}>
@@ -1074,6 +1056,7 @@ export function MapPanel({
       )}
       <TitleStack>
         <StateLabel>{mapLabel ?? ""}</StateLabel>
+        {fineLine && <SparseLine>{fineLine}</SparseLine>}
         {loadingLine && <SparseLine>{loadingLine}</SparseLine>}
         {!loadingLine && sparseCopy && (
           <SparseLine>{sparseCopy.line}</SparseLine>

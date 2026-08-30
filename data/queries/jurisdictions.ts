@@ -20,6 +20,8 @@ const PENALTY_SELECT = {
   jailSections: true,
   perDaySections: true,
   medianFine: true,
+  salienceAmount: true,
+  salienceNoAmount: true,
 } as const;
 
 function toStats(row: {
@@ -28,6 +30,8 @@ function toStats(row: {
   jailSections: number;
   perDaySections: number;
   medianFine: number | null;
+  salienceAmount: number | null;
+  salienceNoAmount: number | null;
 }): PenaltyStats {
   return {
     penaltySections: row.penaltySections,
@@ -35,6 +39,8 @@ function toStats(row: {
     jailSections: row.jailSections,
     perDaySections: row.perDaySections,
     medianFine: row.medianFine,
+    salienceAmount: row.salienceAmount,
+    salienceNoAmount: row.salienceNoAmount,
   };
 }
 

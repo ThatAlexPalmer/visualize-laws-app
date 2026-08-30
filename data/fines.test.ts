@@ -15,6 +15,12 @@ import {
   toNullableNum,
   type RawFineRow,
 } from "./fines";
+import {
+  amountShare,
+  fineHoverLine,
+  formatFine,
+  type PenaltyStats,
+} from "./types";
 
 /**
  * Real rows from the head of the supplement, paired with the `content_sha1`
@@ -211,4 +217,58 @@ test("a rule-derived row still encodes with a tri-state null grounded", () => {
   const fields = line.slice(0, -1).split("\t");
   assert.equal(fields[FINES_STAGING_COLUMNS.indexOf("grounded")], "\\N");
   assert.equal(fields[FINES_STAGING_COLUMNS.indexOf("fine_relevant")], "f");
+});
+
+// --- Presentation ----------------------------------------------------------
+
+function stats(over: Partial<PenaltyStats> = {}): PenaltyStats {
+  return {
+    penaltySections: 47772,
+    amountSections: 5738,
+    jailSections: 291,
+    perDaySections: 4873,
+    medianFine: 500,
+    salienceAmount: 1.166,
+    salienceNoAmount: 0.361,
+    ...over,
+  };
+}
+
+test("formatFine shows cents only when the amount has them", () => {
+  assert.equal(formatFine(500), "$500");
+  assert.equal(formatFine(5_000_000), "$5,000,000");
+  assert.equal(formatFine(37.5), "$37.50");
+  assert.equal(formatFine(0), "$0");
+});
+
+test("amountShare divides by sections read, and is null when nothing was read", () => {
+  assert.equal(amountShare(stats({ penaltySections: 200, amountSections: 50 })), 0.25);
+  assert.equal(amountShare(stats({ penaltySections: 0, amountSections: 0 })), null);
+  assert.equal(amountShare(null), null);
+  assert.equal(amountShare(undefined), null);
+});
+
+test("fineHoverLine reads as a sentence, not dataset jargon", () => {
+  // Texas, the worked example: short enough to sit on one line under the
+  // place name rather than becoming a wall of shouted capitals.
+  assert.equal(
+    fineHoverLine(stats()),
+    "12% name a fine · typical $500 · 47,772 sections read",
+  );
+});
+
+test("fineHoverLine says 'not annotated', never 'no fines'", () => {
+  // An absent annotation means nobody looked — the supplement only sent about
+  // a third of the corpus to its model.
+  for (const value of [null, undefined, stats({ penaltySections: 0 })]) {
+    const line = fineHoverLine(value);
+    assert.equal(line, "not annotated");
+    assert.ok(!/no fine/i.test(line ?? ""));
+  }
+});
+
+test("fineHoverLine drops the median when it was suppressed as too thin", () => {
+  const line = fineHoverLine(stats({ medianFine: null }));
+  assert.ok(!line?.includes("typical"), line ?? "");
+  assert.equal(line, "12% name a fine · 47,772 sections read");
 });

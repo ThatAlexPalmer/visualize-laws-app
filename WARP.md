@@ -251,10 +251,27 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   fresh load. Rebuild it afterwards (the seeder does).
 - **Fine amounts are model output, not ground truth.** Amounts are verified against the
   source text but the categorical fields are not, and a number meaning something else
-  (a bond, a fee cap) is occasionally read as a fine — the largest stored values are such
-  cases (the top `effective_max` is $5,000,000 on a section about delivering cash to a city
-  auditor). Prefer medians over means, never a mean, and surface `grounded = false` /
-  non-null `extraction_flag` as a caveat rather than hiding those rows.
+  (a bond, a fee cap) is occasionally read as a fine. Prefer medians over means, never a mean.
+- **`grounded` / `extraction_flag` do NOT catch the miscategorised top end.** All **19 rows
+  ≥ $1M are `grounded = true`, and only 3 carry an `extraction_flag`** — `grounded` means the
+  number appears in the source text, not that it is a fine. The largest stored values are
+  $5,000,000 on *Delivery of cash or checks to the city auditor* (Minot ND) and *Bed and
+  breakfast* (Hot Springs AR). Sorting by `Fine ↓` therefore puts junk at the top **by
+  design**; show it honestly with the model-output caveat rather than filtering on those
+  flags, which would not work.
+- **Fines stay visible on every layer.** The stated fine rides along on each results row, the
+  `Fine` sort button sits beside the four axis sorts, and the rail carries a fines block —
+  none of it is gated on the Fines layer being selected. Sorting by fine implies the law
+  states one (0.5 ms on `law_fines_effective_max_idx`) and disables the saved scope total.
+- **The rows query LEFT JOINs `law_fines`, so every `WHERE` predicate must be `laws.`-qualified.**
+  `law_fines` carries its own `state` / `city` / `county`; an unqualified reference is
+  ambiguous, Postgres errors, and `queryLaws` swallows it into an empty result — i.e. every
+  place filter silently returns zero matches.
+- **Naming a fine tracks problem salience.** Within the model-read set, sections that state
+  an amount average **+1.17** problem salience against **+0.36** for those that do not
+  (unread sections sit at −0.37). `place_penalties.salience_amount` /
+  `salience_no_amount` store this per scope; it is the measurable link between the fines
+  layer and the four axes.
 - **A penalty filter is not a corpus filter.** `hasFine` / `jail` / `perDay` / `fineMin` /
   `fineMax` / `penaltyNature` narrow to the model-read subset, so they disable the saved
   `jurisdictions.law_count` shortcut (`shouldUseSavedScopeTotal`) — otherwise the result

@@ -187,12 +187,20 @@ SELECT count(*)::bigint AS n FROM (
 function penaltyAggColumns(medianMin: number): string {
   return `
     count(*)::int,
-    count(*) FILTER (WHERE effective_max IS NOT NULL)::int,
-    count(*) FILTER (WHERE jail_mentioned)::int,
-    count(*) FILTER (WHERE per_day_violation)::int,
-    CASE WHEN count(*) FILTER (WHERE effective_max IS NOT NULL) >= ${medianMin}
-         THEN percentile_cont(0.5) WITHIN GROUP (ORDER BY effective_max)
-                FILTER (WHERE effective_max IS NOT NULL)
+    count(*) FILTER (WHERE f.effective_max IS NOT NULL)::int,
+    count(*) FILTER (WHERE f.jail_mentioned)::int,
+    count(*) FILTER (WHERE f.per_day_violation)::int,
+    CASE WHEN count(*) FILTER (WHERE f.effective_max IS NOT NULL) >= ${medianMin}
+         THEN percentile_cont(0.5) WITHIN GROUP (ORDER BY f.effective_max)
+                FILTER (WHERE f.effective_max IS NOT NULL)
+    END,
+    CASE WHEN count(*) FILTER (WHERE f.effective_max IS NOT NULL) >= ${medianMin}
+         THEN avg(l.problem_salience)
+                FILTER (WHERE f.effective_max IS NOT NULL)
+    END,
+    CASE WHEN count(*) FILTER (WHERE f.effective_max IS NULL) >= ${medianMin}
+         THEN avg(l.problem_salience)
+                FILTER (WHERE f.effective_max IS NULL)
     END`;
 }
 
@@ -209,21 +217,25 @@ function penaltyAggColumns(medianMin: number): string {
  */
 function placePenaltiesSql(medianMin: number): string {
   const cols = penaltyAggColumns(medianMin);
+  // Joined to `laws` for problem_salience. One pass over 632k rows against the
+  // laws primary key — cheap next to the attach that precedes it.
+  const from = "FROM law_fines f JOIN laws l ON l.id = f.law_id";
   return `
 INSERT INTO place_penalties
   (level, state, place, penalty_sections, amount_sections,
-   jail_sections, per_day_sections, median_fine)
-SELECT 'place', state, COALESCE(city, county), ${cols}
-FROM law_fines
-WHERE COALESCE(city, county, '') <> ''
-GROUP BY state, COALESCE(city, county)
+   jail_sections, per_day_sections, median_fine,
+   salience_amount, salience_no_amount)
+SELECT 'place', f.state, COALESCE(f.city, f.county), ${cols}
+${from}
+WHERE COALESCE(f.city, f.county, '') <> ''
+GROUP BY f.state, COALESCE(f.city, f.county)
 UNION ALL
-SELECT 'state', state, NULL, ${cols}
-FROM law_fines
-GROUP BY state
+SELECT 'state', f.state, NULL, ${cols}
+${from}
+GROUP BY f.state
 UNION ALL
 SELECT 'national', NULL, NULL, ${cols}
-FROM law_fines
+${from}
 `;
 }
 

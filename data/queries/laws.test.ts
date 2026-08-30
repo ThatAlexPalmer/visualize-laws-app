@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { hasPenaltyFilter, shouldUseSavedScopeTotal } from "./laws";
+import { isSortKey } from "../types";
 
 test("shouldUseSavedScopeTotal: US and state-only reuse the saved total", () => {
   assert.equal(shouldUseSavedScopeTotal(new URLSearchParams()), true);
@@ -75,6 +76,36 @@ test("hasPenaltyFilter ignores absent, false and malformed values", () => {
   assert.equal(hasPenaltyFilter(new URLSearchParams("fineMin=")), false);
   // 0 is a real lower bound and must count.
   assert.equal(hasPenaltyFilter(new URLSearchParams("fineMin=0")), true);
+});
+
+test("isSortKey accepts the four axes plus fine, and nothing else", () => {
+  for (const key of [
+    "opacity",
+    "enforcementDiscretion",
+    "paternalism",
+    "problemSalience",
+    "fine",
+  ]) {
+    assert.equal(isSortKey(key), true, key);
+  }
+  // Anything else is dropped rather than interpolated into ORDER BY.
+  for (const key of ["content", "id", "effective_max", "", "fine; DROP"]) {
+    assert.equal(isSortKey(key), false, key);
+  }
+});
+
+test("sorting by fine disables the saved scope total", () => {
+  // Fine sort only ranks laws that state one, so the saved jurisdiction count
+  // would be far too high.
+  assert.equal(
+    shouldUseSavedScopeTotal(new URLSearchParams("state=co&sort=fine&dir=desc")),
+    false,
+  );
+  // An axis sort still reuses it — sorting alone does not narrow the set.
+  assert.equal(
+    shouldUseSavedScopeTotal(new URLSearchParams("state=co&sort=opacity")),
+    true,
+  );
 });
 
 test("penaltyNature is whitelisted against the source vocabulary", () => {

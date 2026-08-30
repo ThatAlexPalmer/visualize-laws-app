@@ -8,12 +8,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import {
   AXES,
+  FINE_SORT_KEY,
+  formatFine,
   prettySlug,
   stateName,
-  type Axis,
   type LawFilters,
   type LawSummary,
   type LawsResponse,
+  type SortKey,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { Button } from "@/components/ui/buttons";
@@ -48,18 +50,19 @@ function buildQuery(f: LawFilters): string {
   if (f.fineMax !== undefined) p.set("fineMax", String(f.fineMax));
   if (f.penaltyNature) p.set("penaltyNature", f.penaltyNature);
   if (f.sort) {
-    p.set("sort", f.sort.axis);
+    p.set("sort", f.sort.key);
     p.set("dir", f.sort.dir);
   }
   return p.toString();
 }
 
+/** desc → asc → off, per column. */
 function nextSort(
   current: LawFilters["sort"],
-  axis: Axis,
+  key: SortKey,
 ): LawFilters["sort"] {
-  if (!current || current.axis !== axis) return { axis, dir: "desc" };
-  if (current.dir === "desc") return { axis, dir: "asc" };
+  if (!current || current.key !== key) return { key, dir: "desc" };
+  if (current.dir === "desc") return { key, dir: "asc" };
   return null;
 }
 
@@ -197,6 +200,20 @@ const Score = styled.div<{ $active: boolean }>`
   }
 `;
 
+/**
+ * The stated fine, shown on every row regardless of the active map layer —
+ * this is what keeps fines from disappearing when a score axis is selected.
+ * Stays visible at the narrow breakpoint where the scores collapse.
+ */
+const Fine = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 52px;
+  color: ${({ theme }) => theme.colors.penalty};
+`;
+
 const ScoreKey = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 9px;
@@ -325,7 +342,7 @@ export function ResultsPanel() {
         </Kicker>
         <SortBar $gap={1}>
           {AXES.map((a) => {
-            const active = filters.sort?.axis === a.key;
+            const active = filters.sort?.key === a.key;
             const arrow = active ? (filters.sort?.dir === "asc" ? " ↑" : " ↓") : "";
             return (
               <SortButton
@@ -346,6 +363,26 @@ export function ResultsPanel() {
               </SortButton>
             );
           })}
+          {/* Ranking by fine only makes sense for laws that state one, so this
+              narrows to those — which is also what "biggest fine in the US"
+              means. Present on every layer. */}
+          <SortButton
+            $active={filters.sort?.key === FINE_SORT_KEY}
+            onClick={() =>
+              dispatch({
+                type: "patchFilters",
+                filters: { sort: nextSort(filters.sort, FINE_SORT_KEY) },
+              })
+            }
+            title="Sort by the stated fine (laws that state one)"
+          >
+            {ui("Fine", unhinged)}
+            {filters.sort?.key === FINE_SORT_KEY
+              ? filters.sort.dir === "asc"
+                ? " ↑"
+                : " ↓"
+              : ""}
+          </SortButton>
         </SortBar>
       </Toolbar>
 
@@ -403,11 +440,22 @@ export function ResultsPanel() {
                   </RowMain>
                   <Scores>
                     {AXES.map((a) => (
-                      <Score key={a.key} $active={state.axis === a.key}>
+                      <Score
+                        key={a.key}
+                        $active={
+                          state.layer === "scores" && state.axis === a.key
+                        }
+                      >
                         <ScoreKey>{resolveAxisCopy(a.key, unhinged).label.slice(0, 3).toUpperCase()}</ScoreKey>
                         <ScoreVal>{fmt(law[a.key])}</ScoreVal>
                       </Score>
                     ))}
+                    {law.fine != null && (
+                      <Fine>
+                        <ScoreKey>FINE</ScoreKey>
+                        <ScoreVal>{formatFine(law.fine)}</ScoreVal>
+                      </Fine>
+                    )}
                   </Scores>
                 </ResultRow>
               ))}
