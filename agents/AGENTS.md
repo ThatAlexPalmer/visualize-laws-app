@@ -44,6 +44,44 @@ avoid staleness; expand only when durable.
   the `law_fines` rebuild. Uses `hyparquet`, not `@dsnp/parquetjs` (see the fines runbook).
 - `WARP.md` — Warp project rules (loaded automatically in this repo).
 
+## Docker is the dev environment (read before changing anything)
+
+This project runs in Docker. **The container does not rebuild itself, and it does not pick up
+every change.** Assuming it does is how you "fix" something and see no effect.
+
+What is live vs. baked:
+
+- **Bind-mounted, hot-reloads**: the repo at `/workspace`. App/`data/` TypeScript edits apply
+  immediately.
+- **Baked into the image**: `Dockerfile` and `docker/entrypoint.sh` (they are `COPY`ed to
+  `/usr/local/bin/entrypoint.sh`). Host edits do nothing until `pnpm up:build`
+  (`docker compose up --build`). If you change the entrypoint, you **must** rebuild or your
+  change is a silent no-op.
+- **Named volume `visualize_laws_node_modules`**, mounted over `/workspace/node_modules`.
+  Docker fills a named volume only at first creation, so it shadows the image's copy from then
+  on. **`--build` does not install a newly added dependency.** Use
+  `docker compose exec app pnpm install`.
+- **The generated Prisma client lives in that volume**, so it is stale after any
+  `schema.prisma` change. A stale client has no delegate for the new model:
+  `prisma.<newModel>` is `undefined`, and property access on it throws *synchronously* —
+  which is enough to take down an entire route, not just the new feature. The entrypoint runs
+  `pnpm prisma:generate` before `prisma:deploy` so a rebuilt container self-heals; otherwise
+  `docker compose exec app pnpm prisma:generate`.
+
+After pulling a branch that touches schema, deps, or the entrypoint:
+
+```bash
+pnpm up:build                              # picks up Dockerfile / entrypoint changes
+docker compose exec app pnpm install       # picks up new deps into the volume
+docker compose exec app pnpm prisma:generate
+```
+
+**Never `docker compose down -v`.** It destroys `visualize_laws_pgdata` along with everything
+else — that is the seeded ~2.2M-row corpus, and reseeding it is a 15-40 minute job. To refresh
+deps, remove just that one volume
+(`docker volume rm visualize-laws-app_visualize_laws_node_modules`) or run `pnpm install`
+inside the container.
+
 ## Local development commands
 
 - `pnpm install` (prefer pnpm; **no corepack**)

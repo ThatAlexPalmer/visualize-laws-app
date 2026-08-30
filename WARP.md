@@ -272,6 +272,26 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   via an absolute host path captured at container-create time. Renaming/moving the folder breaks
   it (empty `/workspace`); the entrypoint fails fast — recreate with `docker compose up -d
   --force-recreate` (data persists in the named volume).
+- **This project runs in Docker. The container does not pick up every change.** Only
+  `/workspace` (app source) is bind-mounted, so `.ts`/`.tsx` edits hot-reload. Everything
+  else is baked into the image or lives in a named volume:
+  - `docker/entrypoint.sh` and `Dockerfile` are `COPY`ed into the image. Editing them on the
+    host does **nothing** until `pnpm up:build` (`docker compose up --build`). A "fix" to the
+    entrypoint that was never rebuilt is a silent no-op.
+  - `node_modules` is the named volume `visualize_laws_node_modules`, mounted **over**
+    `/workspace/node_modules`. Docker populates a named volume only when it is first created,
+    so it shadows the image copy forever after — **`--build` alone does not install a new
+    dependency**. After adding or bumping a package: `docker compose exec app pnpm install`.
+  - The **generated Prisma client lives in that volume**, so it goes stale after any
+    `schema.prisma` change. A stale client has no delegate for the new model, and
+    `prisma.<newModel>` is `undefined` — property access on it throws *synchronously*, which
+    is how a missing optional table can take down a whole route. The entrypoint now runs
+    `pnpm prisma:generate` before `prisma:deploy` so a rebuilt container self-heals; on a
+    container you have not rebuilt, run `docker compose exec app pnpm prisma:generate`.
+  - **Never `docker compose down -v`** to "reset" the container: that also destroys
+    `visualize_laws_pgdata`, i.e. the seeded ~2.2M-row corpus. Remove the single volume
+    instead (`docker volume rm visualize-laws-app_visualize_laws_node_modules`) or, better,
+    just `pnpm install` inside the container.
 - **Supported Next line is 16.x** (`next` + `eslint-config-next` together). Do not take a
   Dependabot major for Next, ESLint, TypeScript, or `@types/node` — those are deliberate
   maintainer upgrades. Cache Components / Instant Navigations stay off unless a feature asks.

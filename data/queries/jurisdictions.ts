@@ -61,6 +61,42 @@ async function penaltiesByState(): Promise<Map<string, PenaltyStats>> {
   }
 }
 
+/**
+ * The single national penalty row, or null.
+ *
+ * Guarded like the others and never called inline inside a `Promise.all`
+ * array: if the generated Prisma client predates the PlacePenalty model,
+ * `prisma.placePenalty` is undefined and the property access throws
+ * *synchronously*, before any `.catch()` can attach — which took the whole
+ * map down rather than just dropping this layer.
+ */
+async function nationalPenalty(): Promise<PenaltyStats | null> {
+  try {
+    const row = await prisma.placePenalty.findFirst({
+      where: { level: "national" },
+      select: PENALTY_SELECT,
+    });
+    return row ? toStats(row) : null;
+  } catch (err) {
+    console.error("nationalPenalty failed:", err);
+    return null;
+  }
+}
+
+/** The one state-level penalty row, or null. Guarded like the rest. */
+async function statePenaltyFor(state: string): Promise<PenaltyStats | null> {
+  try {
+    const row = await prisma.placePenalty.findFirst({
+      where: { level: "state", state },
+      select: PENALTY_SELECT,
+    });
+    return row ? toStats(row) : null;
+  } catch (err) {
+    console.error(`statePenaltyFor(${state}) failed:`, err);
+    return null;
+  }
+}
+
 /** Penalty aggregates for one state, keyed by place slug (`source_place`). */
 async function penaltiesByPlace(state: string): Promise<Map<string, PenaltyStats>> {
   try {
@@ -113,7 +149,9 @@ const LAW_SELECT = {
  * County rows stay off this payload so the US map does not grow to ~3k rows.
  */
 export async function getJurisdictions(): Promise<JurisdictionsResponse> {
-  const [rows, nat, penalties, nationalPenalty] = await Promise.all([
+  // Scores first, on their own. The penalties layer is additive and must never
+  // be able to blank the map: if it fails, the choropleth still renders.
+  const [rows, nat] = await Promise.all([
     prisma.jurisdiction.findMany({
       where: { level: "state" },
       select: AGG_SELECT,
@@ -123,26 +161,25 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
       where: { level: "national" },
       select: { ...AGG_SELECT, bounds: true },
     }),
-    penaltiesByState(),
-    prisma.placePenalty
-      .findFirst({ where: { level: "national" }, select: PENALTY_SELECT })
-      .catch(() => null),
   ]);
 
-  const national: JurisdictionsResponse["national"] = nat
-    ? {
-        ...nat,
-        bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
-        penalties: nationalPenalty ? toStats(nationalPenalty) : null,
-      }
-    : null;
+  const [penalties, national] = await Promise.all([
+    penaltiesByState(),
+    nationalPenalty(),
+  ]);
 
   return {
     rows: rows.map((row) => ({
       ...row,
       penalties: (row.state && penalties.get(row.state)) || null,
     })),
-    national,
+    national: nat
+      ? {
+          ...nat,
+          bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
+          penalties: national,
+        }
+      : null,
   };
 }
 
@@ -243,7 +280,7 @@ export async function getJurisdictionDetail(
 
     const placePenalties = await penaltiesByPlace(code);
 
-    const [jurisdiction, topLaws, topCities, countyFills, statePenalty] =
+    const [jurisdiction, topLaws, topCities, countyFills, statePenaltyStats] =
       await Promise.all([
       countySlug
         ? Promise.resolve(
@@ -268,21 +305,14 @@ export async function getJurisdictionDetail(
       // county-scoped city query would be empty and hide the city chips.
       queryTopCities(code),
       queryCountyFills(code, counties, placePenalties),
-      prisma.placePenalty
-        .findFirst({
-          where: { level: "state", state: code },
-          select: PENALTY_SELECT,
-        })
-        .catch(() => null),
+      statePenaltyFor(code),
     ]);
 
     // The panel aggregate is the county row when one is selected, otherwise
     // the state row; match the penalty stats to whichever it is.
     const panelPenalties = countySlug
       ? (placePenalties.get(countySlug) ?? null)
-      : statePenalty
-        ? toStats(statePenalty)
-        : null;
+      : statePenaltyStats;
 
     return {
       jurisdiction: jurisdiction
