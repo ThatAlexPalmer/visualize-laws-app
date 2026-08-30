@@ -82,10 +82,10 @@ After applying the city-index migration on a database that already has laws, rec
 pnpm seed --shards ''
 ```
 
-### penalty data
+### fines data
 
 `pnpm seed` also loads the [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines)
-supplement, which annotates laws with the penalties they state. To (re)build just that layer on a
+supplement, which annotates laws with the fines they state. To (re)build just that layer on a
 database that already has laws:
 
 ```bash
@@ -93,9 +93,8 @@ pnpm prisma:deploy
 pnpm build:fines
 ```
 
-Only the rows the supplement's model actually read are stored, so a law with no penalty record
-means it was not annotated — not that it carries no penalty. Amounts are model output: they are
-checked against the source text, but the surrounding judgements are not.
+Only annotated rows are stored, so a law with no fine record was not checked — not that it
+carries no fine. Amounts are checked against the source text; the surrounding labels are not.
 
 ## common commands
 

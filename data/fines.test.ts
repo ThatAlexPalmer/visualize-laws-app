@@ -251,10 +251,7 @@ test("amountShare divides by sections read, and is null when nothing was read", 
 test("fineHoverLine reads as a sentence, not dataset jargon", () => {
   // Texas, the worked example: short enough to sit on one line under the
   // place name rather than becoming a wall of shouted capitals.
-  assert.equal(
-    fineHoverLine(stats()),
-    "12% name a fine · typical $500 · 47,772 sections read",
-  );
+  assert.equal(fineHoverLine(stats()), "12% state a fine · typical $500");
 });
 
 test("fineHoverLine says 'not annotated', never 'no fines'", () => {
@@ -270,5 +267,11 @@ test("fineHoverLine says 'not annotated', never 'no fines'", () => {
 test("fineHoverLine drops the median when it was suppressed as too thin", () => {
   const line = fineHoverLine(stats({ medianFine: null }));
   assert.ok(!line?.includes("typical"), line ?? "");
-  assert.equal(line, "12% name a fine · 47,772 sections read");
+  assert.equal(line, "12% state a fine");
+});
+
+test("fineHoverLine does not mention how many sections were read", () => {
+  const line = fineHoverLine(stats());
+  assert.ok(!/sections read/i.test(line ?? ""), line ?? "");
+  assert.ok(!/model/i.test(line ?? ""), line ?? "");
 });

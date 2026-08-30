@@ -199,8 +199,8 @@ function PenaltyBlock({ fines }: { fines: LawFines }) {
   ].filter((t): t is string => Boolean(t));
 
   return (
-    <Penalty aria-label="Stated penalty">
-      <PenaltyHead as="h4">Penalty</PenaltyHead>
+    <Penalty aria-label="Stated fine">
+      <PenaltyHead as="h4">Fines</PenaltyHead>
       {amount ? (
         <PenaltyAmount>{amount}</PenaltyAmount>
       ) : (
@@ -216,8 +216,8 @@ function PenaltyBlock({ fines }: { fines: LawFines }) {
       )}
       {caveat && <Caveat>{caveat}</Caveat>}
       <PenaltyNote>
-        Read from the section text by a model, not by a lawyer. Amounts are
-        checked against the text; the labels above are not.
+        Taken from the section text. The dollar amount is checked against the
+        wording; the tags are a best guess.
       </PenaltyNote>
     </Penalty>
   );

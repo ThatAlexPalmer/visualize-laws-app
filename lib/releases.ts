@@ -21,7 +21,7 @@ export const RELEASES: readonly AppRelease[] = [
     notes: [
       "Open a law and see the fine it states — the amount, whether each day counts again, and whether jail is mentioned.",
       "Filter to laws that state a fine, mention jail, or charge per day.",
-      "Colour the map by how much of a place’s code carries a stated dollar penalty.",
+      "Colour the map by how often a place’s code states a dollar fine.",
     ],
   },
   {

@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useExplorer } from "@/lib/store";
 import { AXES, type Axis } from "@/lib/types";
 import { theme } from "@/lib/theme";
-import { resolveAxisCopy, ui } from "@/lib/copy";
+import { resolveAxisCopy, resolveFinesCopy, ui } from "@/lib/copy";
 import { Mono, MonoLink } from "@/components/ui/text";
 import { PillHighlight } from "@/components/ui/forms";
 import { REPOSITORY_URL } from "@/lib/attribution";
@@ -354,6 +354,7 @@ export function TopNav() {
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelOpen = menuOpen || state.filtersOpen;
   const aboutLabel = ui("About", unhinged);
+  const finesCopy = resolveFinesCopy(unhinged);
 
   useEffect(() => {
     return () => {
@@ -434,7 +435,7 @@ export function TopNav() {
         <AxisButton
           $active={penaltiesActive}
           onClick={selectPenalties}
-          title="Share of sections a model read that name a dollar fine"
+          title={finesCopy.blurb}
         >
           {penaltiesActive && (
             <PillHighlight
@@ -443,7 +444,7 @@ export function TopNav() {
               transition={{ type: "spring", stiffness: 480, damping: 38 }}
             />
           )}
-          {ui("Fines", unhinged)}
+          {finesCopy.label}
         </AxisButton>
       </Axes>
       <RightNav>
@@ -507,7 +508,7 @@ export function TopNav() {
               );
             })}
             <SheetLayer $active={penaltiesActive} onClick={selectPenalties}>
-              {ui("Fines", unhinged)}
+              {finesCopy.label}
             </SheetLayer>
           </SheetAxes>
           <SheetActions>

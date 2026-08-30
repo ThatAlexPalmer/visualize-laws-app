@@ -539,7 +539,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <SectionLabel>{ui("Penalties", unhinged)}</SectionLabel>
+        <SectionLabel>{ui("Fines", unhinged)}</SectionLabel>
         <Segmented>
           {FINE_OPTS.map((opt) => {
             const active = (filters.hasFine ?? undefined) === opt.value;
@@ -604,7 +604,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
 
         <Select
           id={`${idPrefix}-penalty-nature`}
-          aria-label="Penalty type"
+          aria-label="Fine type"
           value={filters.penaltyNature ?? ""}
           onChange={(e) =>
             dispatch({
@@ -616,7 +616,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
             })
           }
         >
-          <option value="">{ui("Any penalty type", unhinged)}</option>
+          <option value="">{ui("Any type", unhinged)}</option>
           {NATURE_OPTS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
@@ -625,8 +625,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
         </Select>
 
         <FieldHint>
-          Penalty filters only reach laws a model has read for fines, so they
-          return fewer results than the corpus holds.
+          {ui(
+            "These only include laws checked for a stated fine, so the list gets shorter.",
+            unhinged,
+          )}
         </FieldHint>
       </Field>
     </>

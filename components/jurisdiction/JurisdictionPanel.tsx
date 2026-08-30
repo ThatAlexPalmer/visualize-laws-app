@@ -373,7 +373,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                   <SectionLabel>{ui("Fines", unhinged)}</SectionLabel>
                   <Stack $gap={2}>
                     <FineRow>
-                      <span>Typical fine</span>
+                      <span>{ui("Typical fine", unhinged)}</span>
                       <FineNum>
                         {agg.penalties.medianFine === null
                           ? "—"
@@ -381,19 +381,13 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                       </FineNum>
                     </FineRow>
                     <FineRow>
-                      <span>Name a fine</span>
+                      <span>{ui("State a fine", unhinged)}</span>
                       <FineNum>
                         {(() => {
                           const share = amountShare(agg.penalties);
                           return share === null ? "—" : formatShare(share);
                         })()}
                       </FineNum>
-                    </FineRow>
-                    <FineRow>
-                      <span>Sections read</span>
-                      <AvgNum>
-                        {agg.penalties.penaltySections.toLocaleString()}
-                      </AvgNum>
                     </FineRow>
                   </Stack>
                 </>

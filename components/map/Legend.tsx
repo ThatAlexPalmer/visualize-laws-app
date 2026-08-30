@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 
-import { resolveAxisCopy } from "@/lib/copy";
+import { resolveAxisCopy, resolveFinesCopy } from "@/lib/copy";
 import { useExplorer } from "@/lib/store";
 import {
   formatFine,
@@ -234,11 +234,11 @@ function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
         </StatValue>
       </Stat>
       <Stat>
-        <StatLabel>Name a fine</StatLabel>
+        <StatLabel>State a fine</StatLabel>
         <StatValue>{share}</StatValue>
       </Stat>
       {salience && (
-        <Stat title="Average problem salience, among sections a model read">
+        <Stat title="Average problem salience when a dollar fine is stated vs when it is not">
           <StatLabel>Problem salience</StatLabel>
           <StatValue>
             {salience.withFine}
@@ -330,6 +330,7 @@ export function ConnectedMapLegend({
     : (data?.national?.penalties ?? null);
 
   const axisCopy = resolveAxisCopy(axis, state.unhinged);
+  const finesCopy = resolveFinesCopy(state.unhinged);
   const showRamp = !sparseCounties;
   const showStats = layer === "penalties" && penalties !== null;
 
@@ -341,12 +342,8 @@ export function ConnectedMapLegend({
         <MapLegend
           axis={axis}
           layer={layer}
-          axisLabel={layer === "penalties" ? "Fines" : axisCopy.label}
-          blurb={
-            layer === "penalties"
-              ? "Share of the sections a model read that name a dollar fine."
-              : axisCopy.blurb
-          }
+          axisLabel={layer === "penalties" ? finesCopy.label : axisCopy.label}
+          blurb={layer === "penalties" ? finesCopy.blurb : axisCopy.blurb}
           domain={domain}
         />
       )}

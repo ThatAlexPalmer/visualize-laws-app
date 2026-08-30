@@ -2,9 +2,9 @@
 
 ## 1.2.0
 
-- Open a law and see the penalty it states — the amount or range, whether each day counts again, and whether jail is on the table.
+- Open a law and see the fine it states — the amount or range, whether each day counts again, and whether jail is on the table.
 - Filter to laws that state a fine, mention jail, or charge per day.
-- Colour the map by how much of a place's code carries a stated dollar penalty, with the typical fine shown as a figure beside the legend.
+- Colour the map by how often a place's code states a dollar fine, with the typical fine shown as a figure beside the legend.
 
 Adds the [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines) supplement as
 `law_fines` (632,005 model-read rows) plus `place_penalties` aggregates. Only rows the

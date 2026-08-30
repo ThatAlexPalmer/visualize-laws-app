@@ -238,17 +238,17 @@ export function penaltyAmountLabel(fines: LawFines): string | null {
 }
 
 /**
- * Why a read section carries no amount. Keeps "the model read this and found
- * no figure" distinct from "nobody looked", which is an absent annotation.
+ * Why a read section carries no amount. Keeps "checked, no figure" distinct
+ * from "nobody looked", which is an absent annotation.
  */
 export function penaltyAbsenceLabel(fines: LawFines): string {
   switch (fines.penaltyStated) {
     case "cross_reference":
-      return "Points to a penalty set elsewhere in the code.";
+      return "Points to a fine set elsewhere in the code.";
     case "implicit":
-      return "Prohibits conduct without stating a penalty.";
+      return "Prohibits conduct without stating a fine.";
     default:
-      return "States no penalty of its own.";
+      return "States no fine of its own.";
   }
 }
 
@@ -257,10 +257,10 @@ export function penaltyAbsenceLabel(fines: LawFines): string {
  * this place, in plain words.
  *
  * Deliberately short and sentence-case — it renders under the place name, not
- * inside it. Returns null when there is nothing to say.
+ * inside it. Returns null when there is nothing to say. Does not mention how
+ * many sections were read: that is provenance, not a hover fact.
  *
- * A place the model never read reads "not annotated", never "no fines": the
- * supplement only sent about a third of the corpus to its model.
+ * A place nobody checked reads "not annotated", never "no fines".
  */
 export function fineHoverLine(
   stats: PenaltyStats | null | undefined,
@@ -268,15 +268,12 @@ export function fineHoverLine(
   if (!stats || stats.penaltySections === 0) return "not annotated";
 
   const share = formatShare(stats.amountSections / stats.penaltySections);
-  const read = stats.penaltySections.toLocaleString("en-US");
   const typical =
     stats.medianFine === null
       ? null
       : `typical ${formatFine(stats.medianFine)}`;
 
-  return [`${share} name a fine`, typical, `${read} sections read`]
-    .filter(Boolean)
-    .join(" · ");
+  return [`${share} state a fine`, typical].filter(Boolean).join(" · ");
 }
 
 /**
