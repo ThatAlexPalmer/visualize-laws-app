@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
 
@@ -9,21 +8,14 @@ import { useExplorer } from "@/lib/store";
 import {
   formatFine,
   formatShare,
-  nativeCountyToFill,
   type Axis,
-  type CountyFill,
-  type JurisdictionAgg,
   type MapLayer,
   type PenaltyStats,
 } from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
-import {
-  computeLayerDomain,
-  rampColorForLayer,
-  type Domain,
-} from "./color";
-import { COUNTY_FILL_MIN, countyScaleReady } from "./sparseCounties";
+import { rampColorForLayer, type Domain } from "./color";
+import { useMapView } from "./MapViewProvider";
 
 interface Props {
   axis: Axis;
@@ -32,8 +24,6 @@ interface Props {
   blurb: string;
   domain: Domain | null;
 }
-
-const EMPTY_ROWS: JurisdictionAgg[] = [];
 
 /**
  * Full-width slot under the map so the card never paints over the canvas.
@@ -284,45 +274,13 @@ export function MapLegend({ axis, layer, axisLabel, blurb, domain }: Props) {
  * not: they describe the selected scope rather than the county mesh, so they
  * must survive that early return or they vanish in the eight thin states.
  */
-export function ConnectedMapLegend({
-  countiesBaked,
-}: {
-  countiesBaked: boolean;
-}) {
+export function ConnectedMapLegend() {
   const { state } = useExplorer();
   const { data, stateDetail } = useJurisdictions();
+  const { domain, sparseCounties } = useMapView();
   const axis = state.axis;
   const layer = state.layer;
   const selectedState = state.selectedState;
-  const rows = data?.rows ?? EMPTY_ROWS;
-  const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
-  const fillRows = useMemo<CountyFill[]>(() => {
-    const stored = stateDetail?.countyFills;
-    if (stored && stored.length > 0) return stored;
-    return countyRows.map(nativeCountyToFill);
-  }, [stateDetail?.countyFills, countyRows]);
-
-  const scoredCountyN = useMemo(
-    () => fillRows.filter((r) => r.sourcePlace).length,
-    [fillRows],
-  );
-  const sparseCounties =
-    Boolean(selectedState && stateDetail) && scoredCountyN < COUNTY_FILL_MIN;
-  const countyViewReady = countyScaleReady({
-    selectedState,
-    stateDetail,
-    countiesBaked,
-  });
-
-  const domain = useMemo(
-    () =>
-      computeLayerDomain(
-        layer,
-        axis,
-        countyViewReady && !sparseCounties ? fillRows : rows,
-      ),
-    [layer, axis, countyViewReady, sparseCounties, fillRows, rows],
-  );
 
   // Penalty figures for the current scope: the selected state, else the nation.
   const penalties: PenaltyStats | null = selectedState
