@@ -1,16 +1,44 @@
 import { prisma } from "../db";
 import { matchCountySlug, prettySlug, slugVariants } from "../slugs";
-import type {
-  AxisBounds,
-  CityAgg,
-  CountyFill,
-  JurisdictionAgg,
-  JurisdictionDetailResponse,
-  JurisdictionsResponse,
-  PenaltyStats,
-  PlaceLookupResponse,
+import {
+  AXES,
+  nativeCountyToFill,
+  type AxisBounds,
+  type CityAgg,
+  type CountyFill,
+  type JurisdictionAgg,
+  type JurisdictionDetailResponse,
+  type JurisdictionsResponse,
+  type PenaltyStats,
+  type PlaceLookupResponse,
 } from "../types";
-import { nativeCountyToFill } from "../types";
+
+/** Slug forms used to SQL-narrow county lookup before matchCountySlug. */
+export function countySlugSearchVariants(raw: string): string[] {
+  const [underscore, compact] = slugVariants(raw);
+  return [...new Set([underscore, compact])];
+}
+
+export function parseAxisBounds(json: unknown): AxisBounds | undefined {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return undefined;
+  const row = json as Record<string, unknown>;
+  const out = {} as AxisBounds;
+  for (const axis of AXES) {
+    const value = row[axis.key];
+    if (
+      !Array.isArray(value) ||
+      value.length !== 2 ||
+      typeof value[0] !== "number" ||
+      typeof value[1] !== "number" ||
+      !Number.isFinite(value[0]) ||
+      !Number.isFinite(value[1])
+    ) {
+      return undefined;
+    }
+    out[axis.key] = [value[0], value[1]];
+  }
+  return out;
+}
 
 const PENALTY_SELECT = {
   state: true,
@@ -182,7 +210,7 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
     national: nat
       ? {
           ...nat,
-          bounds: (nat.bounds as unknown as AxisBounds | undefined) ?? undefined,
+          bounds: parseAxisBounds(nat.bounds),
           penalties: national,
         }
       : null,
@@ -191,7 +219,7 @@ export async function getJurisdictions(): Promise<JurisdictionsResponse> {
 
 /**
  * Resolve a typed city or county to candidate (state, place) rows.
- * Used by GET /api/jurisdictions?city= / ?county= — not the US map payload.
+ * Used by GET /api/places?city= / ?county= — not the US map payload.
  */
 export async function resolvePlace(opts: {
   city?: string | null;
@@ -201,8 +229,15 @@ export async function resolvePlace(opts: {
   const city = opts.city?.trim();
 
   if (county) {
+    const variants = countySlugSearchVariants(county);
     const rows = await prisma.jurisdiction.findMany({
-      where: { level: "county" },
+      where: {
+        level: "county",
+        OR: variants.flatMap((variant) => [
+          { county: { equals: variant, mode: "insensitive" as const } },
+          { county: { contains: variant, mode: "insensitive" as const } },
+        ]),
+      },
       select: AGG_SELECT,
     });
     const places = rows
@@ -274,17 +309,18 @@ export async function getJurisdictionDetail(
 ): Promise<JurisdictionDetailResponse> {
   const code = stateRaw.toLowerCase();
   try {
-    const counties = await prisma.jurisdiction.findMany({
-      where: { level: "county", state: code },
-      select: AGG_SELECT,
-      orderBy: { name: "asc" },
-    });
+    const [counties, placePenalties] = await Promise.all([
+      prisma.jurisdiction.findMany({
+        where: { level: "county", state: code },
+        select: AGG_SELECT,
+        orderBy: { name: "asc" },
+      }),
+      penaltiesByPlace(code),
+    ]);
 
     const countySlug = countyRaw?.trim()
       ? matchCountySlug(counties, countyRaw)
       : null;
-
-    const placePenalties = await penaltiesByPlace(code);
 
     const [jurisdiction, topLaws, topCities, countyFills, statePenaltyStats] =
       await Promise.all([
