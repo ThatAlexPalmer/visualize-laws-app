@@ -37,9 +37,8 @@ test("cityExactSql uses IN on slug variants, not ILIKE contains", () => {
 
 test("place predicates are table-qualified", () => {
   // The rows query LEFT JOINs law_fines, which has its own city/state/county
-  // columns. An unqualified predicate is ambiguous, Postgres errors, and
-  // queryLaws swallows it into an empty result — every place filter silently
-  // returning zero matches.
+  // columns. An unqualified predicate is ambiguous and Postgres errors, so
+  // every place filter would fail the route.
   const bind = (): string => "$1";
   assert.ok(cityExactSql("denver", bind).startsWith("laws.city"));
 });

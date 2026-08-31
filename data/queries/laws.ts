@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { hasPenaltyFilter, shouldUseSavedScopeTotal } from "../filters";
 import { prisma } from "../db";
 import { slugVariants } from "../slugs";
 import {
@@ -7,6 +8,7 @@ import {
   FINE_SORT_KEY,
   isPenaltyNature,
   isSortKey,
+  type LawFilters,
   type LawFines,
   type LawRecord,
   type LawSummary,
@@ -28,9 +30,8 @@ function escapeLike(raw: string): string {
 
 // Every predicate is qualified with `laws.`. The rows query LEFT JOINs
 // law_fines, which carries its own state / city / county columns, so an
-// unqualified reference is ambiguous — Postgres errors and queryLaws swallows
-// it into an empty result, silently returning zero matches for any place
-// filter.
+// unqualified reference is ambiguous and Postgres errors — which now fail
+// the route rather than returning an empty 200.
 const T = "laws";
 
 /** ILIKE both slug variants so "Pagosa Springs" matches `pagosa_springs`. */
@@ -56,49 +57,6 @@ export function cityExactSql(
   return `${T}.city IN (${bind(a)}, ${bind(b)})`;
 }
 
-function parseFloatOrNull(raw: string | null): number | null {
-  if (raw === null || raw.trim() === "") return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Unfiltered US or a single state — the rail already shows `jurisdictions.law_count`.
- * Extra filters (q, city, county, function, topic, substantive, sliders) keep
- * the planner estimate. Sort / page do not count as extra filters.
- */
-export function shouldUseSavedScopeTotal(searchParams: URLSearchParams): boolean {
-  // Sorting by fine restricts to laws that state one, so the saved scope count
-  // would be wildly high.
-  if (searchParams.get("sort") === FINE_SORT_KEY) return false;
-  if (searchParams.get("q")?.trim()) return false;
-  if (searchParams.get("city")?.trim()) return false;
-  if (searchParams.get("county")?.trim()) return false;
-  if (searchParams.get("function")?.trim()) return false;
-  if (searchParams.get("topic")?.trim()) return false;
-  const isSubstantive = searchParams.get("isSubstantive");
-  if (isSubstantive === "true" || isSubstantive === "false") return false;
-  for (const axis of AXES) {
-    if (parseFloatOrNull(searchParams.get(`${axis.key}Min`)) !== null) return false;
-    if (parseFloatOrNull(searchParams.get(`${axis.key}Max`)) !== null) return false;
-  }
-  // Any penalty filter narrows to the model-read subset, so the saved
-  // jurisdiction total would badly overstate the result count.
-  if (hasPenaltyFilter(searchParams)) return false;
-  return true;
-}
-
-/** True when any LOCUS-Fines filter is active. */
-export function hasPenaltyFilter(searchParams: URLSearchParams): boolean {
-  if (searchParams.get("hasFine") === "true") return true;
-  if (searchParams.get("perDay") === "true") return true;
-  if (searchParams.get("jail") === "true") return true;
-  if (parseFloatOrNull(searchParams.get("fineMin")) !== null) return true;
-  if (parseFloatOrNull(searchParams.get("fineMax")) !== null) return true;
-  const nature = searchParams.get("penaltyNature")?.trim();
-  return Boolean(nature && isPenaltyNature(nature));
-}
-
 /**
  * Build the `EXISTS (... law_fines ...)` predicate for the active penalty
  * filters, or null when none are set.
@@ -108,29 +66,31 @@ export function hasPenaltyFilter(searchParams: URLSearchParams): boolean {
  * is additionally whitelisted against the source vocabulary.
  */
 function penaltyExistsSql(
-  searchParams: URLSearchParams,
+  filters: LawFilters,
   bind: (value: unknown) => string,
 ): string | null {
+  if (!hasPenaltyFilter(filters)) return null;
   const conds: string[] = [];
 
-  if (searchParams.get("hasFine") === "true") {
+  if (filters.hasFine === true) {
     conds.push("lf.effective_max IS NOT NULL");
   }
-  if (searchParams.get("perDay") === "true") {
+  if (filters.perDay === true) {
     conds.push("lf.per_day_violation");
   }
-  if (searchParams.get("jail") === "true") {
+  if (filters.jail === true) {
     conds.push("lf.jail_mentioned");
   }
 
-  const min = parseFloatOrNull(searchParams.get("fineMin"));
-  if (min !== null) conds.push(`lf.effective_max >= ${bind(min)}`);
-  const max = parseFloatOrNull(searchParams.get("fineMax"));
-  if (max !== null) conds.push(`lf.effective_min <= ${bind(max)}`);
+  if (filters.fineMin !== undefined && Number.isFinite(filters.fineMin)) {
+    conds.push(`lf.effective_max >= ${bind(filters.fineMin)}`);
+  }
+  if (filters.fineMax !== undefined && Number.isFinite(filters.fineMax)) {
+    conds.push(`lf.effective_min <= ${bind(filters.fineMax)}`);
+  }
 
-  const nature = searchParams.get("penaltyNature")?.trim();
-  if (nature && isPenaltyNature(nature)) {
-    conds.push(`lf.penalty_nature = ${bind(nature)}`);
+  if (filters.penaltyNature && isPenaltyNature(filters.penaltyNature)) {
+    conds.push(`lf.penalty_nature = ${bind(filters.penaltyNature)}`);
   }
 
   if (conds.length === 0) return null;
@@ -290,7 +250,40 @@ export interface LawDetail {
   fines: LawFines | null;
 }
 
-type DetailRow = LawRecord & Partial<LawFines>;
+/** Joined law + optional fines columns from the detail LEFT JOIN. */
+interface LawDetailRow {
+  id: number;
+  header: string | null;
+  isSubstantive: boolean;
+  function: string | null;
+  topic: string | null;
+  sourceJurisdictionType: string | null;
+  state: string;
+  city: string | null;
+  county: string | null;
+  opacity: number;
+  enforcementDiscretion: number;
+  paternalism: number;
+  problemSalience: number;
+  content: string;
+  fineRelevant: boolean | null;
+  penaltyScope: string | null;
+  penaltyStated: string | null;
+  fineStructure: string | null;
+  fixedAmount: number | null;
+  minAmount: number | null;
+  maxAmount: number | null;
+  firstViolationAmount: number | null;
+  secondViolationAmount: number | null;
+  subsequentViolationAmount: number | null;
+  effectiveMin: number | null;
+  effectiveMax: number | null;
+  perDayViolation: boolean | null;
+  jailMentioned: boolean | null;
+  penaltyNature: string | null;
+  extractionFlag: string | null;
+  grounded: boolean | null;
+}
 
 /**
  * One law plus its LOCUS-Fines annotation, if the supplement's model read it.
@@ -298,7 +291,7 @@ type DetailRow = LawRecord & Partial<LawFines>;
  * an error and must not be shown as "no penalty".
  */
 export async function getLawById(id: number): Promise<LawDetail | null> {
-  const rows = await prisma.$queryRaw<DetailRow[]>`
+  const rows = await prisma.$queryRaw<LawDetailRow[]>`
     SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
            ${Prisma.raw(FINES_SELECT_COLUMNS)}
     FROM laws l
@@ -309,64 +302,55 @@ export async function getLawById(id: number): Promise<LawDetail | null> {
   const row = rows[0];
   if (!row) return null;
 
-  const {
-    fineRelevant,
-    penaltyScope,
-    penaltyStated,
-    fineStructure,
-    fixedAmount,
-    minAmount,
-    maxAmount,
-    firstViolationAmount,
-    secondViolationAmount,
-    subsequentViolationAmount,
-    effectiveMin,
-    effectiveMax,
-    perDayViolation,
-    jailMentioned,
-    penaltyNature,
-    extractionFlag,
-    grounded,
-    ...law
-  } = row;
+  const law: LawRecord = {
+    id: row.id,
+    header: row.header,
+    isSubstantive: row.isSubstantive,
+    function: row.function,
+    topic: row.topic,
+    sourceJurisdictionType: row.sourceJurisdictionType,
+    state: row.state,
+    city: row.city,
+    county: row.county,
+    opacity: row.opacity,
+    enforcementDiscretion: row.enforcementDiscretion,
+    paternalism: row.paternalism,
+    problemSalience: row.problemSalience,
+    content: row.content,
+  };
 
   // `fine_relevant` is NOT NULL in law_fines, so a null here means the LEFT
   // JOIN found no annotation rather than an annotation that says false.
   const fines: LawFines | null =
-    fineRelevant === null || fineRelevant === undefined
+    row.fineRelevant === null || row.fineRelevant === undefined
       ? null
       : {
-          fineRelevant,
-          penaltyScope: penaltyScope ?? null,
-          penaltyStated: penaltyStated ?? null,
-          fineStructure: fineStructure ?? null,
-          fixedAmount: fixedAmount ?? null,
-          minAmount: minAmount ?? null,
-          maxAmount: maxAmount ?? null,
-          firstViolationAmount: firstViolationAmount ?? null,
-          secondViolationAmount: secondViolationAmount ?? null,
-          subsequentViolationAmount: subsequentViolationAmount ?? null,
-          effectiveMin: effectiveMin ?? null,
-          effectiveMax: effectiveMax ?? null,
-          perDayViolation: perDayViolation ?? false,
-          jailMentioned: jailMentioned ?? false,
-          penaltyNature: penaltyNature ?? null,
-          extractionFlag: extractionFlag ?? null,
-          grounded: grounded ?? null,
+          fineRelevant: row.fineRelevant,
+          penaltyScope: row.penaltyScope ?? null,
+          penaltyStated: row.penaltyStated ?? null,
+          fineStructure: row.fineStructure ?? null,
+          fixedAmount: row.fixedAmount ?? null,
+          minAmount: row.minAmount ?? null,
+          maxAmount: row.maxAmount ?? null,
+          firstViolationAmount: row.firstViolationAmount ?? null,
+          secondViolationAmount: row.secondViolationAmount ?? null,
+          subsequentViolationAmount: row.subsequentViolationAmount ?? null,
+          effectiveMin: row.effectiveMin ?? null,
+          effectiveMax: row.effectiveMax ?? null,
+          perDayViolation: row.perDayViolation ?? false,
+          jailMentioned: row.jailMentioned ?? false,
+          penaltyNature: row.penaltyNature ?? null,
+          extractionFlag: row.extractionFlag ?? null,
+          grounded: row.grounded ?? null,
         };
 
-  return { law: law as LawRecord, fines };
+  return { law, fines };
 }
 
-/** Run a filtered/sorted/paginated query for laws from URL search params. */
-export async function queryLaws(
-  searchParams: URLSearchParams,
-): Promise<LawsResponse> {
-  const page = Math.max(1, Math.floor(Number(searchParams.get("page")) || 1));
-  const pageSize = Math.min(
-    100,
-    Math.max(1, Math.floor(Number(searchParams.get("pageSize")) || 25)),
-  );
+/** Run a filtered/sorted/paginated query for laws from the LawFilters contract. */
+export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
+  const page = Math.max(1, Math.floor(filters.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Math.floor(filters.pageSize || 25)));
   const offset = (page - 1) * pageSize;
 
   // Build the WHERE clause as parameterized fragments.
@@ -381,7 +365,7 @@ export async function queryLaws(
   // drive both the WHERE match and the relevance ORDER BY (ts_rank_cd) below.
   // When q is set, also match city/county on the two lowercase slug variants
   // (spaces→underscores and spaces removed) so "Pagosa Springs" hits pagosa_springs.
-  const q = searchParams.get("q")?.trim();
+  const q = filters.q?.trim();
   let qParam: string | null = null;
   let slugAParam: string | null = null;
   let slugBParam: string | null = null;
@@ -397,36 +381,40 @@ export async function queryLaws(
     );
   }
 
-  const state = searchParams.get("state")?.trim();
+  const state = filters.state?.trim();
   if (state) where.push(`${T}.state = ${bind(state.toLowerCase())}`);
 
-  const city = searchParams.get("city")?.trim();
+  const city = filters.city?.trim();
   if (city) where.push(cityExactSql(city, bind));
 
-  const county = searchParams.get("county")?.trim();
+  const county = filters.county?.trim();
   if (county) where.push(placeIlikeSql("county", county, bind));
 
-  const fn = searchParams.get("function")?.trim();
+  const fn = filters.function?.trim();
   if (fn) where.push(`${T}."function" = ${bind(fn)}`);
 
-  const topic = searchParams.get("topic")?.trim();
+  const topic = filters.topic?.trim();
   if (topic) where.push(`${T}.topic = ${bind(topic)}`);
 
-  const isSubstantive = searchParams.get("isSubstantive");
-  if (isSubstantive === "true" || isSubstantive === "false") {
-    where.push(`${T}.is_substantive = ${bind(isSubstantive === "true")}`);
+  if (filters.isSubstantive === true || filters.isSubstantive === false) {
+    where.push(`${T}.is_substantive = ${bind(filters.isSubstantive)}`);
   }
 
-  // Per-axis numeric range filters (e.g. opacityMin / opacityMax).
+  // Per-axis numeric range filters. Only finite bounds become SQL predicates
+  // so a one-sided URL param does not invent the other side.
   for (const axis of AXES) {
-    const min = parseFloatOrNull(searchParams.get(`${axis.key}Min`));
-    const max = parseFloatOrNull(searchParams.get(`${axis.key}Max`));
-    if (min !== null) where.push(`${T}.${axis.column} >= ${bind(min)}`);
-    if (max !== null) where.push(`${T}.${axis.column} <= ${bind(max)}`);
+    const r = filters[axis.key];
+    if (!r) continue;
+    if (Number.isFinite(r.min)) {
+      where.push(`${T}.${axis.column} >= ${bind(r.min)}`);
+    }
+    if (Number.isFinite(r.max)) {
+      where.push(`${T}.${axis.column} <= ${bind(r.max)}`);
+    }
   }
 
   // LOCUS-Fines filters, as one semi-join against law_fines.
-  const penaltySql = penaltyExistsSql(searchParams, bind);
+  const penaltySql = penaltyExistsSql(filters, bind);
   if (penaltySql) where.push(penaltySql);
 
   // The rows query always joins law_fines so the stated fine can ride along.
@@ -437,11 +425,10 @@ export async function queryLaws(
   // Sort: whitelist the key and direction. Always append a stable secondary
   // key on id so pagination is deterministic. When q is present, relevance
   // wins per the search contract; otherwise keep the existing sort/id ordering.
-  const rawSort = searchParams.get("sort");
   const sortKey: SortKey | null =
-    rawSort && isSortKey(rawSort) ? rawSort : null;
+    filters.sort && isSortKey(filters.sort.key) ? filters.sort.key : null;
   const sortByFine = sortKey === FINE_SORT_KEY;
-  const dir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
+  const dir = filters.sort?.dir === "asc" ? "ASC" : "DESC";
 
   // Sorting by fine only ranks laws that state one — there is nothing to order
   // the rest by. Requiring the amount also lets the planner walk
@@ -484,45 +471,39 @@ export async function queryLaws(
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
 
-  try {
-    const useSaved = shouldUseSavedScopeTotal(searchParams);
-    let usedSaved = false;
-    const totalPromise = useSaved
-      ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {
-          if (saved !== null) {
-            usedSaved = true;
-            return saved;
-          }
-          return where.length === 0
-            ? estimateTotalFromCatalog().then(
-                (t) => t ?? estimateFilteredRows("", []),
-              )
-            : estimateFilteredRows(whereSql, params);
-        })
-      : // The fine sort narrows to laws that state one, so the estimate has to
-        // see the join and that predicate — otherwise it counts the whole corpus.
-        estimateFilteredRows(
-          rowsWhereSql,
-          params,
-          sortByFine ? ROWS_FROM : "laws",
-        );
+  const useSaved = shouldUseSavedScopeTotal(filters);
+  let usedSaved = false;
+  const totalPromise = useSaved
+    ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {
+        if (saved !== null) {
+          usedSaved = true;
+          return saved;
+        }
+        return where.length === 0
+          ? estimateTotalFromCatalog().then(
+              (t) => t ?? estimateFilteredRows("", []),
+            )
+          : estimateFilteredRows(whereSql, params);
+      })
+    : // The fine sort narrows to laws that state one, so the estimate has to
+      // see the join and that predicate — otherwise it counts the whole corpus.
+      estimateFilteredRows(
+        rowsWhereSql,
+        params,
+        sortByFine ? ROWS_FROM : "laws",
+      );
 
-    const [rows, counted] = await Promise.all([
-      prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),
-      totalPromise,
-    ]);
+  const [rows, counted] = await Promise.all([
+    prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),
+    totalPromise,
+  ]);
 
-    if (usedSaved && counted !== null) {
-      return { rows, total: counted, page, pageSize };
-    }
-
-    // Never report fewer than the rows the caller can already see on this page.
-    const floor = offset + rows.length;
-    const total = Math.max(Math.round(counted ?? 0), floor);
-    return { rows, total, page, pageSize };
-  } catch (err) {
-    console.error("queryLaws failed:", err);
-    // Tolerate an empty / unavailable database.
-    return { rows: [], total: 0, page, pageSize };
+  if (usedSaved && counted !== null) {
+    return { rows, total: counted, page, pageSize };
   }
+
+  // Never report fewer than the rows the caller can already see on this page.
+  const floor = offset + rows.length;
+  const total = Math.max(Math.round(counted ?? 0), floor);
+  return { rows, total, page, pageSize };
 }
