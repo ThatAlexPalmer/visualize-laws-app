@@ -1,7 +1,10 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
+import type { PlaceFocus } from "@/components/jurisdiction/placeLookup";
 import type { Axis, LawFilters, LawSummary, MapLayer } from "./types";
+
+export type { PlaceFocus };
 
 /**
  * Global UI state shared across the map, sidebar, results, and modal.
@@ -54,20 +57,140 @@ export type ExplorerAction =
   | { type: "setPage"; page: number }
   | { type: "resetFilters" }
   | { type: "selectState"; state: string | null }
-  | {
-      type: "selectPlace";
-      state: string;
-      city?: string;
-      county?: string;
-      atlasCountyName?: string;
-    }
+  | { type: "selectFocus"; focus: PlaceFocus | null }
+  | { type: "setPlaceText"; field: "city" | "county"; value: string | undefined }
   | { type: "openLaw"; law: LawSummary }
   | { type: "closeLaw" }
   | { type: "toggleUnhinged" }
   | { type: "toggleFilters" }
   | { type: "closeFilters" };
 
-function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
+function sameFocus(state: ExplorerState, focus: PlaceFocus | null): boolean {
+  if (focus === null) {
+    return (
+      state.selectedState === null &&
+      state.atlasCountyName === null &&
+      state.filters.state === undefined &&
+      state.filters.city === undefined &&
+      state.filters.county === undefined
+    );
+  }
+  if (focus.kind === "state") {
+    return (
+      state.selectedState === focus.state &&
+      state.filters.state === focus.state &&
+      state.filters.city === undefined &&
+      state.filters.county === undefined &&
+      state.atlasCountyName === null
+    );
+  }
+  if (focus.kind === "city") {
+    return (
+      state.selectedState === focus.state &&
+      state.filters.state === focus.state &&
+      state.filters.city === focus.city &&
+      state.filters.county === undefined &&
+      state.atlasCountyName === null
+    );
+  }
+  if (focus.kind === "county") {
+    return (
+      state.selectedState === focus.state &&
+      state.filters.state === focus.state &&
+      state.filters.county === focus.county &&
+      state.filters.city === undefined &&
+      state.atlasCountyName === null
+    );
+  }
+  return (
+    state.selectedState === focus.state &&
+    state.filters.state === focus.state &&
+    state.filters.city === undefined &&
+    state.filters.county === undefined &&
+    state.atlasCountyName === focus.name
+  );
+}
+
+/** Place selection is one function so city / county / atlas stay mutually exclusive. */
+function applyFocus(
+  state: ExplorerState,
+  focus: PlaceFocus | null,
+): ExplorerState {
+  if (sameFocus(state, focus)) return state;
+  if (focus === null) {
+    return {
+      ...state,
+      selectedState: null,
+      atlasCountyName: null,
+      filters: {
+        ...state.filters,
+        state: undefined,
+        city: undefined,
+        county: undefined,
+        page: 1,
+      },
+    };
+  }
+  if (focus.kind === "state") {
+    return {
+      ...state,
+      selectedState: focus.state,
+      atlasCountyName: null,
+      filters: {
+        ...state.filters,
+        state: focus.state,
+        city: undefined,
+        county: undefined,
+        page: 1,
+      },
+    };
+  }
+  if (focus.kind === "city") {
+    return {
+      ...state,
+      selectedState: focus.state,
+      atlasCountyName: null,
+      filters: {
+        ...state.filters,
+        state: focus.state,
+        city: focus.city,
+        county: undefined,
+        page: 1,
+      },
+    };
+  }
+  if (focus.kind === "county") {
+    return {
+      ...state,
+      selectedState: focus.state,
+      atlasCountyName: null,
+      filters: {
+        ...state.filters,
+        state: focus.state,
+        city: undefined,
+        county: focus.county,
+        page: 1,
+      },
+    };
+  }
+  return {
+    ...state,
+    selectedState: focus.state,
+    atlasCountyName: focus.name,
+    filters: {
+      ...state.filters,
+      state: focus.state,
+      city: undefined,
+      county: undefined,
+      page: 1,
+    },
+  };
+}
+
+export function explorerReducer(
+  state: ExplorerState,
+  action: ExplorerAction,
+): ExplorerState {
   switch (action.type) {
     case "setAxis":
       // Picking an axis means "show me the scores", so it leaves the
@@ -76,28 +199,17 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
     case "setLayer":
       return { ...state, layer: action.layer };
     case "patchFilters": {
-      // Any filter change (other than page itself) resets to page 1.
-      // City and county are mutually exclusive: setting one clears the other.
+      // Place identity is selectFocus / setPlaceText only.
       const incoming = action.filters;
       const filters = {
         ...state.filters,
         ...incoming,
         page: incoming.page ?? 1,
+        city: state.filters.city,
+        county: state.filters.county,
+        state: state.filters.state,
       };
-      if (incoming.city && incoming.county === undefined) {
-        filters.county = undefined;
-      }
-      if (incoming.county && incoming.city === undefined) {
-        filters.city = undefined;
-      }
-      return {
-        ...state,
-        atlasCountyName:
-          incoming.city !== undefined || incoming.county !== undefined
-            ? null
-            : state.atlasCountyName,
-        filters,
-      };
+      return { ...state, filters };
     }
     case "setPage":
       return { ...state, filters: { ...state.filters, page: action.page } };
@@ -110,37 +222,25 @@ function reducer(state: ExplorerState, action: ExplorerAction): ExplorerState {
         filterResetVersion: state.filterResetVersion + 1,
       };
     case "selectState":
-      return {
-        ...state,
-        selectedState: action.state,
-        atlasCountyName: null,
-        filters: {
-          ...state.filters,
-          state: action.state ?? undefined,
-          county: undefined,
-          city: undefined,
-          page: 1,
-        },
-      };
-    case "selectPlace": {
-      const city = action.city;
-      const county = action.county;
-      const atlasCountyName = county ? null : (action.atlasCountyName ?? null);
-      if (
-        state.selectedState === action.state &&
-        state.filters.city === city &&
-        state.filters.county === county &&
-        state.atlasCountyName === atlasCountyName
-      ) {
+      return applyFocus(
+        state,
+        action.state ? { kind: "state", state: action.state } : null,
+      );
+    case "selectFocus":
+      return applyFocus(state, action.focus);
+    case "setPlaceText": {
+      // Unresolved typed input: filter text only, no map zoom.
+      const value = action.value;
+      const city = action.field === "city" ? value : undefined;
+      const county = action.field === "county" ? value : undefined;
+      if (state.filters.city === city && state.filters.county === county) {
         return state;
       }
       return {
         ...state,
-        selectedState: action.state,
-        atlasCountyName,
+        atlasCountyName: null,
         filters: {
           ...state.filters,
-          state: action.state,
           city,
           county,
           page: 1,
@@ -170,7 +270,7 @@ interface ExplorerContextValue {
 const ExplorerContext = createContext<ExplorerContextValue | null>(null);
 
 export function ExplorerProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(explorerReducer, initialState);
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <ExplorerContext.Provider value={value}>{children}</ExplorerContext.Provider>;
 }
