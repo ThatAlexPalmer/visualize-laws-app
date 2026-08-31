@@ -15,6 +15,16 @@ function githubRelease(tag: string): string {
 /** Newest first. Three bullets, each what the user can do — not internals. */
 export const RELEASES: readonly AppRelease[] = [
   {
+    version: "1.3.1",
+    released: "2026-08-31",
+    href: githubRelease("v1.3.1"),
+    notes: [
+      "Search, the map, and the city/county fields pick the same place.",
+      "If results fail to load, see an error — not a fake empty list.",
+      "The map and its legend share one model, so zoom and color stay in sync.",
+    ],
+  },
+  {
     version: "1.2.0",
     released: "2026-08-30",
     href: githubRelease("v1.2.0"),
