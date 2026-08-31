@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
+import { filtersToSearchParams } from "@/data/filters";
 import {
   AXES,
   FINE_SORT_KEY,
@@ -22,39 +23,6 @@ import { Button } from "@/components/ui/buttons";
 import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
 import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Kicker, Mono } from "@/components/ui/text";
-
-function buildQuery(f: LawFilters): string {
-  const p = new URLSearchParams();
-  p.set("page", String(f.page));
-  p.set("pageSize", String(f.pageSize));
-  if (f.q) p.set("q", f.q);
-  if (f.state) p.set("state", f.state);
-  if (f.city) p.set("city", f.city);
-  if (f.county) p.set("county", f.county);
-  if (f.function) p.set("function", f.function);
-  if (f.topic) p.set("topic", f.topic);
-  if (f.isSubstantive !== undefined) p.set("isSubstantive", String(f.isSubstantive));
-  for (const a of AXES) {
-    const r = f[a.key];
-    if (r) {
-      p.set(`${a.key}Min`, String(r.min));
-      p.set(`${a.key}Max`, String(r.max));
-    }
-  }
-  // Penalty filters. Only "on" is meaningful: each narrows to laws the
-  // LOCUS-Fines model read, so an explicit `false` would be meaningless.
-  if (f.hasFine) p.set("hasFine", "true");
-  if (f.perDay) p.set("perDay", "true");
-  if (f.jail) p.set("jail", "true");
-  if (f.fineMin !== undefined) p.set("fineMin", String(f.fineMin));
-  if (f.fineMax !== undefined) p.set("fineMax", String(f.fineMax));
-  if (f.penaltyNature) p.set("penaltyNature", f.penaltyNature);
-  if (f.sort) {
-    p.set("sort", f.sort.key);
-    p.set("dir", f.sort.dir);
-  }
-  return p.toString();
-}
 
 /** desc → asc → off, per column. */
 function nextSort(
@@ -277,7 +245,7 @@ function fmt(n: number): string {
 export function ResultsPanel() {
   const { state, dispatch } = useExplorer();
   const { filters, unhinged } = state;
-  const query = useMemo(() => buildQuery(filters), [filters]);
+  const query = useMemo(() => filtersToSearchParams(filters).toString(), [filters]);
 
   // `data` holds the last successful response and is intentionally NOT cleared
   // between queries, so the previous page stays visible while a new one loads.
