@@ -7,14 +7,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useExplorer } from "@/lib/store";
-import { AXES, type Axis } from "@/lib/types";
-import { theme } from "@/lib/theme";
-import { resolveAxisCopy, resolveFinesCopy, ui } from "@/lib/copy";
+import type { Axis } from "@/lib/types";
+import { ui } from "@/lib/copy";
 import { Mono, MonoLink } from "@/components/ui/text";
-import { PillHighlight } from "@/components/ui/forms";
 import { REPOSITORY_URL } from "@/lib/attribution";
-
-const AXIS_ACCENT: Record<Axis, string> = theme.colors.axis;
+import {
+  LayerPicker,
+  NavSheet,
+  SheetAction,
+  SheetActions,
+} from "@/components/nav/LayerPicker";
 
 const Bar = styled.header`
   position: relative;
@@ -61,26 +63,6 @@ const BrandMark = styled.img`
 const BrandText = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    display: none;
-  }
-`;
-
-const Axes = styled.nav`
-  display: flex;
-  gap: ${({ theme }) => theme.space(1)};
-  padding: 3px;
-  border: 1px solid ${({ theme }) => theme.colors.g12};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  overflow-x: auto;
-  max-width: 100%;
-  width: max-content;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     display: none;
@@ -184,167 +166,6 @@ const MenuGlyph = styled.span`
   }
 `;
 
-const Scrim = styled.button<{ $open: boolean }>`
-  display: none;
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    display: block;
-    position: fixed;
-    inset: 59px 0 0;
-    z-index: -1;
-    border: 0;
-    background: rgba(0, 0, 0, 0.72);
-    opacity: ${({ $open }) => ($open ? 1 : 0)};
-    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
-    transition: opacity 160ms ease;
-
-    @media (prefers-reduced-motion: reduce) {
-      transition: none;
-    }
-  }
-`;
-
-const MobileSheet = styled.div<{ $open: boolean }>`
-  display: none;
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    display: block;
-    position: fixed;
-    inset: 59px 0 auto;
-    z-index: 0;
-    max-height: calc(100dvh - 59px);
-    overflow-y: auto;
-    padding: ${({ theme }) => theme.space(4)} ${({ theme }) => theme.space(3)}
-      ${({ theme }) => theme.space(5)};
-    border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
-    background: ${({ theme }) => theme.colors.bg};
-    opacity: ${({ $open }) => ($open ? 1 : 0)};
-    visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
-    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
-    transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-10px")}, 0);
-    will-change: ${({ $open }) => ($open ? "transform, opacity" : "auto")};
-    transition:
-      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 140ms ease,
-      visibility 0s linear ${({ $open }) => ($open ? "0s" : "180ms")};
-
-    @media (prefers-reduced-motion: reduce) {
-      transform: none;
-      transition: none;
-    }
-  }
-`;
-
-const SheetInner = styled.div`
-  width: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-`;
-
-const SheetLabel = styled(Mono)`
-  display: block;
-  width: 100%;
-  margin-bottom: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g76};
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  line-height: 1.4;
-  text-align: center;
-  text-transform: uppercase;
-`;
-
-const SheetAxes = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 52px;
-  gap: ${({ theme }) => theme.space(1.5)};
-`;
-
-const SheetAxis = styled.button<{ $active: boolean; $accent: string }>`
-  width: 100%;
-  height: 52px;
-  padding: ${({ theme }) => theme.space(3)};
-  border: 1px solid ${({ $active, $accent, theme }) => ($active ? $accent : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.md};
-  background: ${({ $active, $accent }) => ($active ? $accent : "transparent")};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  text-align: center;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-`;
-
-const SheetActions = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 52px;
-  gap: ${({ theme }) => theme.space(2)};
-  margin-top: ${({ theme }) => theme.space(4)};
-  padding-top: ${({ theme }) => theme.space(4)};
-  border-top: 1px solid ${({ theme }) => theme.colors.g12};
-`;
-
-const SheetAction = styled.button<{ $active?: boolean }>`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 52px;
-  padding: 0 ${({ theme }) => theme.space(3)};
-  border: 1px solid ${({ $active, theme }) => ($active ? "#E53E3E" : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.md};
-  background: ${({ $active }) => ($active ? "#E53E3E" : "transparent")};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.fg)};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.06em;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-`;
-
-/**
- * Full-width tile in the 2-column mobile sheet. Spanning both columns avoids
- * an orphan cell after the 2x2 of axes.
- */
-const SheetLayer = styled.button<{ $active: boolean }>`
-  grid-column: span 2;
-  width: 100%;
-  height: 52px;
-  padding: ${({ theme }) => theme.space(3)};
-  border: 1px solid
-    ${({ $active, theme }) => ($active ? theme.colors.penalty : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.md};
-  background: ${({ $active, theme }) =>
-    $active ? theme.colors.penalty : "transparent"};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  text-align: center;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-`;
-
-const AxisButton = styled.button<{ $active: boolean }>`
-  position: relative;
-  background: transparent;
-  border: 0;
-  z-index: 1;
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g76)};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
-  min-height: 32px;
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color ${({ theme }) => theme.motion.fast}s ease;
-
-  &:hover {
-    color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.fg)};
-  }
-`;
-
 export function TopNav() {
   const { state, dispatch } = useExplorer();
   const { unhinged } = state;
@@ -354,7 +175,6 @@ export function TopNav() {
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelOpen = menuOpen || state.filtersOpen;
   const aboutLabel = ui("About", unhinged);
-  const finesCopy = resolveFinesCopy(unhinged);
 
   useEffect(() => {
     return () => {
@@ -396,12 +216,18 @@ export function TopNav() {
     }
   };
 
-  const penaltiesActive = state.layer === "penalties";
-
   const navigateFromMenu = (href: string) => {
     setMenuOpen(false);
     if (navigationTimer.current) clearTimeout(navigationTimer.current);
     navigationTimer.current = setTimeout(() => router.push(href), 160);
+  };
+
+  const picker = {
+    axis: state.axis,
+    layer: state.layer,
+    unhinged,
+    selectAxis,
+    selectPenalties,
   };
 
   return (
@@ -410,43 +236,7 @@ export function TopNav() {
         <BrandMark src="/favicon.svg" alt="" aria-hidden="true" />
         <BrandText>{unhinged ? "VISUALIZE LAWS \uD83D\uDD25" : "VISUALIZE LAWS"}</BrandText>
       </Brand>
-      <Axes>
-        {AXES.map((a) => {
-          const active = !penaltiesActive && state.axis === a.key;
-          const copy = resolveAxisCopy(a.key, unhinged);
-          return (
-            <AxisButton
-              key={a.key}
-              $active={active}
-              onClick={() => selectAxis(a.key)}
-              title={copy.blurb}
-            >
-              {active && (
-                <PillHighlight
-                  layoutId="axis-active"
-                  $bg={AXIS_ACCENT[a.key]}
-                  transition={{ type: "spring", stiffness: 480, damping: 38 }}
-                />
-              )}
-              {copy.label}
-            </AxisButton>
-          );
-        })}
-        <AxisButton
-          $active={penaltiesActive}
-          onClick={selectPenalties}
-          title={finesCopy.blurb}
-        >
-          {penaltiesActive && (
-            <PillHighlight
-              layoutId="axis-active"
-              $bg={theme.colors.penalty}
-              transition={{ type: "spring", stiffness: 480, damping: 38 }}
-            />
-          )}
-          {finesCopy.label}
-        </AxisButton>
-      </Axes>
+      <LayerPicker layout="pills" {...picker} />
       <RightNav>
         <FiltersButton
           type="button"
@@ -484,93 +274,66 @@ export function TopNav() {
       >
         <MenuGlyph aria-hidden="true" />
       </MenuButton>
-      <Scrim
-        $open={menuOpen}
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => setMenuOpen(false)}
-      />
-      <MobileSheet id="mobile-navigation" $open={menuOpen} aria-hidden={!menuOpen} inert={!menuOpen ? true : undefined}>
-        <SheetInner>
-          <SheetLabel>Choose what the map shows</SheetLabel>
-          <SheetAxes>
-            {AXES.map((axis) => {
-              const copy = resolveAxisCopy(axis.key, unhinged);
-              return (
-                <SheetAxis
-                  key={axis.key}
-                  $active={!penaltiesActive && state.axis === axis.key}
-                  $accent={AXIS_ACCENT[axis.key]}
-                  onClick={() => selectAxis(axis.key)}
-                >
-                  {copy.label}
-                </SheetAxis>
-              );
-            })}
-            <SheetLayer $active={penaltiesActive} onClick={selectPenalties}>
-              {finesCopy.label}
-            </SheetLayer>
-          </SheetAxes>
-          <SheetActions>
-            {pathname === "/" ? (
-              <SheetAction
-                onClick={() => {
-                  setMenuOpen(false);
-                  dispatch({ type: "toggleFilters" });
-                }}
-              >
-                FILTERS
-              </SheetAction>
-            ) : (
-              <SheetAction
-                as={Link}
-                href="/"
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigateFromMenu("/");
-                }}
-              >
-                MAP
-              </SheetAction>
-            )}
-            <SheetAction $active={unhinged} onClick={() => dispatch({ type: "toggleUnhinged" })}>
-              FUNNY · {unhinged ? "ON" : "OFF"}
-            </SheetAction>
+      <NavSheet open={menuOpen} onClose={() => setMenuOpen(false)} {...picker}>
+        <SheetActions>
+          {pathname === "/" ? (
             <SheetAction
-              as={Link}
-              href="/about"
-              aria-current={pathname === "/about" ? "page" : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                navigateFromMenu("/about");
+              onClick={() => {
+                setMenuOpen(false);
+                dispatch({ type: "toggleFilters" });
               }}
             >
-              {aboutLabel}
+              FILTERS
             </SheetAction>
+          ) : (
             <SheetAction
               as={Link}
-              href="/log"
-              aria-current={pathname === "/log" ? "page" : undefined}
+              href="/"
               onClick={(event) => {
                 event.preventDefault();
-                navigateFromMenu("/log");
+                navigateFromMenu("/");
               }}
             >
-              {ui("log", unhinged)}
+              MAP
             </SheetAction>
-            <SheetAction
-              as="a"
-              href={REPOSITORY_URL}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="GitHub repository (opens in a new tab)"
-              onClick={() => setMenuOpen(false)}
-            >
-              GITHUB
-            </SheetAction>
-          </SheetActions>
-        </SheetInner>
-      </MobileSheet>
+          )}
+          <SheetAction $active={unhinged} onClick={() => dispatch({ type: "toggleUnhinged" })}>
+            FUNNY · {unhinged ? "ON" : "OFF"}
+          </SheetAction>
+          <SheetAction
+            as={Link}
+            href="/about"
+            aria-current={pathname === "/about" ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateFromMenu("/about");
+            }}
+          >
+            {aboutLabel}
+          </SheetAction>
+          <SheetAction
+            as={Link}
+            href="/log"
+            aria-current={pathname === "/log" ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateFromMenu("/log");
+            }}
+          >
+            {ui("log", unhinged)}
+          </SheetAction>
+          <SheetAction
+            as="a"
+            href={REPOSITORY_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="GitHub repository (opens in a new tab)"
+            onClick={() => setMenuOpen(false)}
+          >
+            GITHUB
+          </SheetAction>
+        </SheetActions>
+      </NavSheet>
     </Bar>
   );
 }
