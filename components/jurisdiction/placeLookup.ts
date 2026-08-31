@@ -116,7 +116,7 @@ export async function lookupPlaces(
   signal?: AbortSignal,
 ): Promise<PlaceMatch[]> {
   const qs = new URLSearchParams({ [kind]: q });
-  const response = await fetch(`/api/jurisdictions?${qs}`, {
+  const response = await fetch(`/api/places?${qs}`, {
     cache: "no-store",
     signal,
   });

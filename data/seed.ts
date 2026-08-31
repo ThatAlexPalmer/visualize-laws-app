@@ -45,6 +45,7 @@ import { from as copyFrom } from "pg-copy-streams";
 
 import { buildCityCountyTables } from "./build-city-county";
 import { buildFinesTable } from "./build-fines";
+import { toBool, toStr } from "./fines";
 import { STATE_NAMES } from "./types";
 
 // --- Configuration ---------------------------------------------------------
@@ -162,29 +163,11 @@ interface RawRow {
   problem_salience?: unknown;
 }
 
-function toStr(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (Buffer.isBuffer(value)) return value.toString("utf8");
-  if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
-  return String(value);
-}
-
 function toNum(value: unknown): number {
   if (typeof value === "number") return value;
   if (typeof value === "bigint") return Number(value);
   if (value === null || value === undefined) return NaN;
   return Number(value);
-}
-
-function toBool(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const v = value.toLowerCase();
-    return v === "true" || v === "t" || v === "1";
-  }
-  return Boolean(value);
 }
 
 /** Escape a value for the Postgres COPY *text* format (tab-delimited, \\N = null). */
