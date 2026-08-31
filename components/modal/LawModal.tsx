@@ -8,7 +8,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import {
   AXES,
-  DEFAULT_SCORE_RANGE,
   penaltyAbsenceLabel,
   penaltyAmountLabel,
   penaltyCaveat,
@@ -20,7 +19,8 @@ import {
 } from "@/lib/types";
 import { resolveAxisCopy } from "@/lib/copy";
 import { Button, IconButton } from "@/components/ui/buttons";
-import { Card as CardBase, Cluster, Stack } from "@/components/ui/containers";
+import { Card as CardBase, Cluster } from "@/components/ui/containers";
+import { ScoreMeter } from "@/components/ui/ScoreMeter";
 import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Heading, Mono } from "@/components/ui/text";
 
@@ -88,35 +88,6 @@ const ScoreGrid = styled.div`
   @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
     grid-template-columns: 1fr;
   }
-`;
-
-const ScoreTop = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g76};
-`;
-
-const ScoreNum = styled.span`
-  color: ${({ theme }) => theme.colors.fg};
-`;
-
-const Meter = styled.div`
-  position: relative;
-  height: 4px;
-  border-radius: ${({ theme }) => theme.radius.pill};
-  background: ${({ theme }) => theme.colors.g12};
-  overflow: hidden;
-`;
-
-const MeterFill = styled(motion.div)`
-  position: absolute;
-  inset: 0 auto 0 0;
-  height: 100%;
-  background: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.pill};
 `;
 
 const Body = styled.div`
@@ -233,12 +204,6 @@ const BodyStatus = styled(Body)`
   font-size: ${({ theme }) => theme.fontSize.sm};
 `;
 
-function clampPct(v: number): number {
-  const { min, max } = DEFAULT_SCORE_RANGE;
-  const p = ((v - min) / (max - min)) * 100;
-  return Math.max(0, Math.min(100, p));
-}
-
 export function LawModal() {
   const { state, dispatch } = useExplorer();
   const { unhinged } = state;
@@ -345,24 +310,13 @@ export function LawModal() {
             </Chips>
 
             <ScoreGrid>
-              {AXES.map((a) => {
-                const value = (detail ?? law)[a.key];
-                return (
-                  <Stack key={a.key} $gap={1.5}>
-                    <ScoreTop>
-                      <span>{resolveAxisCopy(a.key, unhinged).label}</span>
-                      <ScoreNum>{value.toFixed(2)}</ScoreNum>
-                    </ScoreTop>
-                    <Meter>
-                      <MeterFill
-                        initial={{ width: 0 }}
-                        animate={{ width: `${clampPct(value)}%` }}
-                        transition={{ duration: 0.4, ease: "easeOut" }}
-                      />
-                    </Meter>
-                  </Stack>
-                );
-              })}
+              {AXES.map((a) => (
+                <ScoreMeter
+                  key={a.key}
+                  label={resolveAxisCopy(a.key, unhinged).label}
+                  value={(detail ?? law)[a.key]}
+                />
+              ))}
             </ScoreGrid>
 
             {fines && <PenaltyBlock fines={fines} />}

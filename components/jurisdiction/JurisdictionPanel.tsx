@@ -3,13 +3,11 @@
 // Jurisdiction dashboard: aggregate stats + top laws from the shared
 // JurisdictionsProvider cache (GET /api/jurisdictions/[state], optional ?county=).
 // Tolerates an empty DB and shows an empty state when nothing is selected.
-import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
 import {
   AXES,
-  DEFAULT_SCORE_RANGE,
   amountShare,
   formatFine,
   formatShare,
@@ -18,7 +16,9 @@ import {
   stateName,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
+import { useCompactLayout } from "@/lib/useCompactLayout";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
+import { axisValue } from "@/components/map/color";
 import { Button } from "@/components/ui/buttons";
 import {
   Card,
@@ -28,6 +28,8 @@ import {
   SectionLabel,
   Stack,
 } from "@/components/ui/containers";
+import { PlaceChip } from "@/components/ui/PlaceChip";
+import { ScoreMeter } from "@/components/ui/ScoreMeter";
 import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Heading } from "@/components/ui/text";
 
@@ -98,35 +100,6 @@ const StatLabel = styled.div`
   color: ${({ theme }) => theme.colors.g68};
 `;
 
-const AvgTop = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  color: ${({ theme }) => theme.colors.g76};
-`;
-
-const AvgNum = styled.span`
-  color: ${({ theme }) => theme.colors.fg};
-`;
-
-const Meter = styled.div`
-  position: relative;
-  height: 4px;
-  border-radius: ${({ theme }) => theme.radius.pill};
-  background: ${({ theme }) => theme.colors.g12};
-  overflow: hidden;
-`;
-
-const MeterFill = styled(motion.div)`
-  position: absolute;
-  inset: 0 auto 0 0;
-  height: 100%;
-  background: ${({ theme }) => theme.colors.fg};
-  border-radius: ${({ theme }) => theme.radius.pill};
-`;
-
 const TopLaws = styled.div`
   display: flex;
   flex-direction: column;
@@ -172,25 +145,6 @@ const CityList = styled.div`
   gap: ${({ theme }) => theme.space(1.5)};
 `;
 
-const CityChip = styled.button<{ $active: boolean }>`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  border: 1px solid
-    ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g20)};
-  background: ${({ $active, theme }) =>
-    $active ? theme.colors.g12 : "transparent"};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  padding: ${({ theme }) => theme.space(1)} ${({ theme }) => theme.space(2)};
-  color: ${({ $active, theme }) =>
-    $active ? theme.colors.fg : theme.colors.g90};
-  cursor: pointer;
-
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-    border-color: ${({ theme }) => theme.colors.g60};
-  }
-`;
-
 const Empty = styled.div`
   flex: 1;
   display: flex;
@@ -224,30 +178,6 @@ const FineRow = styled.div`
 const FineNum = styled.span`
   color: ${({ theme }) => theme.colors.penalty};
 `;
-
-const AVG_BY_AXIS = {
-  opacity: "avgOpacity",
-  enforcementDiscretion: "avgEnforcementDiscretion",
-  paternalism: "avgPaternalism",
-  problemSalience: "avgProblemSalience",
-} as const;
-
-function clampPct(v: number): number {
-  const { min, max } = DEFAULT_SCORE_RANGE;
-  return Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
-}
-
-function useCompactLayout() {
-  const [isCompact, setIsCompact] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 1100px)");
-    const sync = () => setIsCompact(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-  return isCompact;
-}
 
 function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const { state, dispatch } = useExplorer();
@@ -348,24 +278,13 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
 
               <SectionLabel>{ui("Average scores", unhinged)}</SectionLabel>
               <Stack $gap={3}>
-                {AXES.map((a) => {
-                  const value = agg[AVG_BY_AXIS[a.key]];
-                  return (
-                    <Stack key={a.key} $gap={1.5}>
-                      <AvgTop>
-                        <span>{resolveAxisCopy(a.key, unhinged).label}</span>
-                        <AvgNum>{value.toFixed(2)}</AvgNum>
-                      </AvgTop>
-                      <Meter>
-                        <MeterFill
-                          initial={{ width: 0 }}
-                          animate={{ width: `${clampPct(value)}%` }}
-                          transition={{ duration: 0.4, ease: "easeOut" }}
-                        />
-                      </Meter>
-                    </Stack>
-                  );
-                })}
+                {AXES.map((a) => (
+                  <ScoreMeter
+                    key={a.key}
+                    label={resolveAxisCopy(a.key, unhinged).label}
+                    value={axisValue(agg, a.key)}
+                  />
+                ))}
               </Stack>
 
               {agg.penalties && agg.penalties.penaltySections > 0 && (
@@ -400,7 +319,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                     {topCities.map((c) => {
                       const active = selectedCity === c.city;
                       return (
-                        <CityChip
+                        <PlaceChip
                           key={c.city}
                           type="button"
                           $active={active}
@@ -414,7 +333,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                           }
                         >
                           {prettySlug(c.city)}
-                        </CityChip>
+                        </PlaceChip>
                       );
                     })}
                   </CityList>

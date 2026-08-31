@@ -12,6 +12,7 @@ import {
   FUNCTIONS,
   STATE_NAMES,
   TOPICS,
+  isPenaltyNature,
   prettySlug,
   type Axis,
   type PenaltyNature,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
+import { useCompactLayout } from "@/lib/useCompactLayout";
 import {
   MIN_PLACE_ZOOM_CHARS,
   lookupPlaces,
@@ -207,18 +209,6 @@ const item = {
   hidden: { opacity: 0, y: 6 },
   show: { opacity: 1, y: 0 },
 };
-
-function useCompactLayout() {
-  const [isCompact, setIsCompact] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 1100px)");
-    const sync = () => setIsCompact(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-  return isCompact;
-}
 
 function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
   return Object.fromEntries(
@@ -610,8 +600,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
             dispatch({
               type: "patchFilters",
               filters: {
-                penaltyNature:
-                  (e.target.value as PenaltyNature) || undefined,
+                penaltyNature: isPenaltyNature(e.target.value)
+                  ? e.target.value
+                  : undefined,
               },
             })
           }
