@@ -942,18 +942,26 @@ export function MapPanel({
         if (u?.kind === "county") {
           if (u.fillSource === "city" && u.sourcePlace) {
             dispatch({
-              type: "patchFilters",
-              filters: { city: u.sourcePlace },
+              type: "selectFocus",
+              focus: {
+                kind: "city",
+                state: focused,
+                city: u.sourcePlace,
+              },
             });
           } else if (u.countySlug) {
             dispatch({
-              type: "patchFilters",
-              filters: { county: u.countySlug },
+              type: "selectFocus",
+              focus: {
+                kind: "county",
+                state: focused,
+                county: u.countySlug,
+              },
             });
           }
           return;
         }
-        dispatch({ type: "selectState", state: null });
+        dispatch({ type: "selectFocus", focus: null });
         return;
       }
       if (!u?.usps) return;
@@ -1082,15 +1090,24 @@ export function MapPanel({
                     key={key}
                     type="button"
                     $active={active}
-                    onClick={() =>
+                    onClick={() => {
+                      if (!selectedState) return;
                       dispatch({
-                        type: "patchFilters",
-                        filters:
+                        type: "selectFocus",
+                        focus:
                           row.source === "city"
-                            ? { city: row.sourcePlace }
-                            : { county: row.county ?? row.sourcePlace },
-                      })
-                    }
+                            ? {
+                                kind: "city",
+                                state: selectedState,
+                                city: row.sourcePlace,
+                              }
+                            : {
+                                kind: "county",
+                                state: selectedState,
+                                county: row.county ?? row.sourcePlace,
+                              },
+                      });
+                    }}
                   >
                     {label}
                   </SparseChip>

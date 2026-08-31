@@ -323,14 +323,19 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                           key={c.city}
                           type="button"
                           $active={active}
-                          onClick={() =>
+                          onClick={() => {
+                            if (!selectedState) return;
                             dispatch({
-                              type: "patchFilters",
-                              filters: active
-                                ? { city: undefined }
-                                : { city: c.city },
-                            })
-                          }
+                              type: "selectFocus",
+                              focus: active
+                                ? { kind: "state", state: selectedState }
+                                : {
+                                    kind: "city",
+                                    state: selectedState,
+                                    city: c.city,
+                                  },
+                            });
+                          }}
                         >
                           {prettySlug(c.city)}
                         </PlaceChip>

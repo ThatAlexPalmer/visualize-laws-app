@@ -250,81 +250,71 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   }, [bounds]);
 
   const cityDeb = useDebouncedCallback((v: string) => {
-    void applyCity(v);
+    void applyPlace("city", v);
   }, 300);
   const countyDeb = useDebouncedCallback((v: string) => {
-    void applyCounty(v);
+    void applyPlace("county", v);
   }, 300);
 
-  const applyCity = async (v: string): Promise<void> => {
+  const applyPlace = async (
+    field: "city" | "county",
+    v: string,
+  ): Promise<void> => {
     const trimmed = v.trim();
     if (!trimmed) {
-      dispatch({ type: "patchFilters", filters: { city: undefined } });
+      if (state.selectedState) {
+        dispatch({
+          type: "selectFocus",
+          focus: { kind: "state", state: state.selectedState },
+        });
+      } else {
+        dispatch({ type: "setPlaceText", field, value: undefined });
+      }
       return;
     }
     if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
-      dispatch({ type: "patchFilters", filters: { city: trimmed } });
+      dispatch({ type: "setPlaceText", field, value: trimmed });
       return;
     }
     placeLookupAbort.current?.abort();
     const ac = new AbortController();
     placeLookupAbort.current = ac;
+    if (field === "county") void loadCountyFeatures();
     try {
-      const places = await lookupPlaces("city", trimmed, ac.signal);
+      const places = await lookupPlaces(field, trimmed, ac.signal);
       if (ac.signal.aborted) return;
-      if (places.length === 1 && places[0].city && places[0].state) {
-        dispatch({
-          type: "selectPlace",
-          state: places[0].state,
-          city: places[0].city,
-        });
-        return;
+      if (field === "city") {
+        const hit = places[0];
+        if (places.length === 1 && hit?.city && hit.state) {
+          dispatch({
+            type: "selectFocus",
+            focus: { kind: "city", state: hit.state, city: hit.city },
+          });
+          return;
+        }
+      } else {
+        const hit = places[0];
+        if (places.length === 1 && hit?.county && hit.state) {
+          dispatch({
+            type: "selectFocus",
+            focus: { kind: "county", state: hit.state, county: hit.county },
+          });
+          return;
+        }
+        const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
+        if (ac.signal.aborted) return;
+        if (atlas.length === 1) {
+          dispatch({
+            type: "selectFocus",
+            focus: { kind: "atlas", state: atlas[0].state, name: atlas[0].name },
+          });
+          return;
+        }
       }
     } catch {
       if (ac.signal.aborted) return;
     }
-    dispatch({ type: "patchFilters", filters: { city: trimmed } });
-  };
-
-  const applyCounty = async (v: string): Promise<void> => {
-    const trimmed = v.trim();
-    if (!trimmed) {
-      dispatch({ type: "patchFilters", filters: { county: undefined } });
-      return;
-    }
-    if (trimmed.length < MIN_PLACE_ZOOM_CHARS) {
-      dispatch({ type: "patchFilters", filters: { county: trimmed } });
-      return;
-    }
-    placeLookupAbort.current?.abort();
-    const ac = new AbortController();
-    placeLookupAbort.current = ac;
-    void loadCountyFeatures();
-    try {
-      const places = await lookupPlaces("county", trimmed, ac.signal);
-      if (ac.signal.aborted) return;
-      if (places.length === 1 && places[0].county && places[0].state) {
-        dispatch({
-          type: "selectPlace",
-          state: places[0].state,
-          county: places[0].county,
-        });
-        return;
-      }
-      const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
-      if (ac.signal.aborted) return;
-      if (atlas.length === 1) {
-        dispatch({
-          type: "selectPlace",
-          state: atlas[0].state,
-          atlasCountyName: atlas[0].name,
-        });
-        return;
-      }
-    } catch {
-      if (ac.signal.aborted) return;
-    }
-    dispatch({ type: "patchFilters", filters: { county: trimmed } });
+    dispatch({ type: "setPlaceText", field, value: trimmed });
   };
   const rangeDeb = useDebouncedCallback((axis: Axis, r: ScoreRange) => {
     const d = domainFor(axis);
