@@ -17,7 +17,7 @@
     "build:city-county:prod": "dotenv -e .env.prod -- tsx data/build-city-county.ts",
     "build:fines": "dotenv -e .env.local -- tsx data/build-fines.ts",
     "build:fines:prod": "dotenv -e .env.prod -- tsx data/build-fines.ts",
-    "test": "tsx --test data/cityCounty.test.ts data/fines.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts data/filters.test.ts data/queries/laws.test.ts data/queries/jurisdictions.test.ts lib/store.test.ts",
+    "test": "tsx --test data/cityCounty.test.ts data/fines.test.ts components/map/counties.test.ts components/jurisdiction/placeLookup.test.ts data/filters.test.ts data/queries/laws.test.ts data/queries/jurisdictions.test.ts lib/store.test.ts lib/useCachedFetch.test.ts",
     "prisma:generate": "prisma generate --schema data/prisma/schema.prisma",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev --schema data/prisma/schema.prisma",
     "prisma:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema data/prisma/schema.prisma",
