@@ -21,12 +21,13 @@ It is a standard single Next.js app at the repo root with a dedicated **data lay
 
 The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getLawById`,
 `getJurisdictions`, `getJurisdictionDetail`, `resolvePlace`), which use the Prisma client
-from `data/db.ts`. `/api/laws` returns row *summaries* and `/api/laws/[id]` returns the
-full law on demand. `GET /api/jurisdictions` without params is the US map payload
-(state + national only) and may be CDN-cached briefly (`s-maxage=60`) when complete;
-`national: null` / empty rows are not cached. `?city=` / `?county=` lookup and
-`/api/jurisdictions/[state]` stay `no-store`. Do not use hour-long / `force-static`
-cache on these routes.
+from `data/db.ts`. Routes do not import `@prisma/client`. Prisma is 6.x on PG18; Prisma 8
+is a later epic. `/api/laws` returns row *summaries* (`queryLaws(LawFilters)` via
+`data/filters.ts`) and `/api/laws/[id]` returns the full law on demand. A query failure is
+503, not an empty 200. `GET /api/jurisdictions` is the US map payload (state + national
+only) and may be CDN-cached briefly (`s-maxage=60`) when complete; `national: null` /
+empty rows are not cached. Place lookup is `GET /api/places`. `/api/jurisdictions/[state]`
+stays `no-store`. Do not use hour-long / `force-static` cache on these routes.
 
 ## One-command DevEx
 
@@ -47,19 +48,24 @@ against `localhost:5432`.
 
 - **Presentation (`app/`, `components/`, `lib/`)**: App Router pages + a single-page shell
   (`app/page.tsx`). UI state (selected axis, filters, selected state, open law/about) lives in a
-  small React context store (`lib/store.tsx`). All styling is styled-components against the
-  tokens in `lib/theme.ts`; SSR is wired via `lib/registry.tsx`.
+  small React context store (`lib/store.tsx`). Place identity is `selectFocus(PlaceFocus | null)`;
+  `patchFilters` does not write city/county/state. Map derived state lives in
+  `components/map/MapViewProvider.tsx`, not the explorer store. All styling is styled-components
+  against the tokens in `lib/theme.ts`; SSR is wired via `lib/registry.tsx`.
 - **Data access (`data/queries/`)**: `data/queries/laws.ts` builds a parameterized SQL query
   (full-text via `search_vector @@ websearch_to_tsquery`, per-axis range filters, whitelisted
-  sort) and runs it with `prisma.$queryRawUnsafe`. `data/queries/jurisdictions.ts` reads the
-  pre-computed aggregates.
+  sort) and runs it with `prisma.$queryRawUnsafe`. Filters serialize in `data/filters.ts`.
+  `data/queries/jurisdictions.ts` reads the pre-computed aggregates. Place lookup is
+  `GET /api/places`.
 - **Data (`data/`)**: Postgres via Prisma. `data/db.ts` is the Prisma client singleton;
   `data/types.ts` holds the shared domain types (re-exported by `lib/types.ts` so app code
   imports them from `@/lib/types`).
 
 ### Map rendering
 
-The map is a **pure HTML5 Canvas** choropleth (`components/map/`). Geometry is baked once
+The map is a **pure HTML5 Canvas** choropleth (`components/map/`). `MapViewProvider`
+owns fillRows, domain, sparse, and county bake so the canvas and legend share one model.
+Geometry is baked once
 into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a camera
 `{k, tx, ty}` (`camera.ts`) and `setTransform`s; it does **not** `fitExtent` or
 `new Path2D` on zoom, resize, or incoming county scores.
@@ -120,7 +126,7 @@ data/
   queries/                          # laws.ts, jurisdictions.ts (incl. resolvePlace)
   slugs.ts, cityCounty.ts           # place keys + Census city→county join
   db.ts, types.ts, seed.ts, db-count.ts, build-city-county.ts
-components/map/                     # canvas map: geo.ts, camera.ts, sparseCounties.ts, MapPanel.tsx
+components/map/                     # canvas map: MapViewProvider, MapPanel, MapChrome, geo.ts, camera.ts
 next.config.ts, tsconfig.json, eslint.config.mjs
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
@@ -230,6 +236,8 @@ Do not expand public `README.md` with remote DB / internal agent ops.
 - **Env files**: `.env.local` (local dev, auto-loaded by Next) and `.env.prod` (remote admin: migrate/seed), both gitignored; `.env.example` is the tracked template. The DB/seed scripts choose the file via `dotenv-cli` (`pnpm prisma:deploy`/`pnpm seed` use `.env.local`; `pnpm prisma:deploy:prod`/`pnpm seed:prod` use `.env.prod`).
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
   and `data/queries/*` import the client/types via relative paths.
+- **Place selection** is `dispatch({ type: "selectFocus", focus })`. `patchFilters` must
+  not write `city` / `county` / `state`.
 - **Parameterized SQL only** in `data/queries/laws.ts` — user input is always bound; only
   whitelisted column names / sort directions are interpolated. Place search boosts slug
   hits with `IS TRUE` (nullable city/county `OR` is NULL and sorts first under DESC).

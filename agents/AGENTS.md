@@ -28,14 +28,19 @@ avoid staleness; expand only when durable.
 
 - `app/layout.tsx`, `app/page.tsx`, `app/api/*` — UI shell and HTTP endpoints.
 - `components/` — map, sidebar, results, jurisdiction, modal UI.
-- `components/map/` — canvas choropleth: `MapPanel.tsx`, `geo.ts`, `camera.ts`,
-  `sparseCounties.ts`, `counties.ts`, `fips.ts`.
-- `lib/store.tsx`, `lib/theme.ts`, `lib/registry.tsx` — app state, theme tokens, SSR wiring.
+- `components/map/` — canvas choropleth: `MapViewProvider.tsx` (fillRows/domain/sparse/bake),
+  `MapPanel.tsx` (camera + Path2D draw), `MapChrome.tsx`, `geo.ts`, `camera.ts`,
+  `sparseCounties.ts`, `counties.ts`, `fips.ts`. Do not put camera state in `lib/store.tsx`.
+- `lib/store.tsx`, `lib/theme.ts`, `lib/registry.tsx` — app state (`selectFocus` / `PlaceFocus`),
+  theme tokens, SSR wiring. Compact layout: `lib/useCompactLayout.ts`.
 - `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations
   (incl. generated `search_vector` + city/county trigram indexes).
 - `data/db.ts` — Prisma client singleton.
-- `data/queries/laws.ts` and `data/queries/jurisdictions.ts` — data-access logic
-  (`resolvePlace` lives in jurisdictions).
+- `data/queries/laws.ts` and `data/queries/jurisdictions.ts` — data-access logic.
+  `queryLaws(LawFilters)` / `getLawById` in laws; serialize/parse in `data/filters.ts`.
+  `resolvePlace` lives in jurisdictions and is served by `GET /api/places`.
+  Prisma access stays in `data/db.ts` + `data/queries/*`. Prisma is **6.x** (PG18).
+  Do not upgrade to Prisma 8 in this tree; do not import `@prisma/client` from routes.
 - `data/slugs.ts` — place slug variants / atlas join keys. Do not rewrite stored slugs.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
 - `data/cityCounty.ts` + `data/build-city-county.ts` — Census 2020 place join and
@@ -113,13 +118,13 @@ inside the container.
   Place search boosts city/county slug hits with `IS TRUE` (nullable `OR` is NULL and
   sorts first under `DESC`).
 - `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand.
-- `GET /api/jurisdictions` (US rows, no query) may use a short CDN cache (`s-maxage=60`,
-  SWR 300) when `national` and `rows` are present. Do not cache `national: null` / empty
-  rows. `?city=` / `?county=` lookup and `/api/jurisdictions/[state]` stay `no-store` /
+  Query failures are **503**, not an empty 200 (that used to render as “no matches”).
+- `GET /api/jurisdictions` is the US map payload only (state + national). Short CDN cache
+  (`s-maxage=60`, SWR 300) when `national` and `rows` are present. Do not cache
+  `national: null` / empty rows. `/api/jurisdictions/[state]` stays `no-store` /
   `force-dynamic`. Do not reintroduce `force-static` or hour-long cache on these routes.
-- `GET /api/jurisdictions` without params is the US map payload (state + national only).
-  `?city=` / `?county=` is `resolvePlace` (`{ places }`) and must not grow that payload
-  or spawn a new REST tree.
+- Place lookup is `GET /api/places?city=` / `?county=` (`resolvePlace`, `no-store`).
+  Client `lookupPlaces` must not hit `/api/jurisdictions?...`.
 - Loading ≠ sparse. US wait: `Loading the map.` State wait (atlas or county rows):
   `Loading counties in {State}.` Sparse copy only after the request has settled.
 - City and county slugs are mutually exclusive on a law row (LOCUS-v1). County
