@@ -4,7 +4,7 @@ import { test } from "node:test";
 import {
   countySlugSearchVariants,
   parseAxisBounds,
-} from "./jurisdictions";
+} from "@/data/queries/jurisdictions";
 
 test("countySlugSearchVariants SQL-narrows with slug forms, not the full table", () => {
   assert.deepEqual(countySlugSearchVariants("El Paso"), [

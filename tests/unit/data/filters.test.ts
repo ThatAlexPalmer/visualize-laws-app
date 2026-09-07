@@ -6,8 +6,8 @@ import {
   hasPenaltyFilter,
   searchParamsToFilters,
   shouldUseSavedScopeTotal,
-} from "./filters";
-import { isSortKey, type LawFilters } from "./types";
+} from "@/data/filters";
+import { isSortKey, type LawFilters } from "@/data/types";
 
 function fromQs(qs = ""): LawFilters {
   return searchParamsToFilters(new URLSearchParams(qs));

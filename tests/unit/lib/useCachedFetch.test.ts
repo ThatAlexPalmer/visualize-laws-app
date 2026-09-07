@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { heldForKey, statusForKey } from "./useCachedFetch";
+import { heldForKey, statusForKey } from "@/lib/useCachedFetch";
 
 test("heldForKey drops a previous key on miss so TX cannot render as CA", () => {
   const texas = { name: "Texas" };

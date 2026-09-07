@@ -4,8 +4,8 @@ import { test } from "node:test";
 import {
   searchParamsToFilters,
   shouldUseSavedScopeTotal,
-} from "../filters";
-import { isSortKey } from "../types";
+} from "@/data/filters";
+import { isSortKey } from "@/data/types";
 
 test("isSortKey accepts the four axes plus fine, and nothing else", () => {
   for (const key of [

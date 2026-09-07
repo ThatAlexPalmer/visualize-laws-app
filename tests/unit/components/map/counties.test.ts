@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { CountyFill } from "@/lib/types";
 
-import { joinCountyFills, joinCountySlugs } from "./counties";
+import { joinCountyFills, joinCountySlugs } from "@/components/map/counties";
 
 const FEATURES = [
   { fips: "48085", name: "Collin" },
