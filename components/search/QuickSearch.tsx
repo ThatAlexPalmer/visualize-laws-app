@@ -134,6 +134,7 @@ export function QuickSearch() {
     value: string,
     uniqueOnly: boolean,
   ): Promise<void> => {
+    lookupAbort.current?.abort();
     const trimmed = value.trim();
     if (!trimmed) {
       dispatch({ type: "patchFilters", filters: { q: undefined } });
@@ -162,6 +163,7 @@ export function QuickSearch() {
       dispatch({ type: "patchFilters", filters: { q: trimmed } });
       if (focus) applyFocus(focus);
     } catch {
+      if (ac.signal.aborted) return;
       dispatch({ type: "patchFilters", filters: { q: trimmed } });
     }
   };
@@ -172,10 +174,13 @@ export function QuickSearch() {
 
   useEffect(() => {
     debounced.cancel();
+    lookupAbort.current?.abort();
     setQuery(state.filters.q ?? "");
     // filterResetVersion intentionally cancels a pending query even if q was
     // already undefined when Reset was pressed.
   }, [state.filters.q, state.filterResetVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => lookupAbort.current?.abort(), []);
 
   const clear = () => {
     debounced.cancel();
@@ -203,6 +208,7 @@ export function QuickSearch() {
           placeholder="Law text or phrase…"
           value={query}
           onChange={(event) => {
+            lookupAbort.current?.abort();
             setQuery(event.target.value);
             debounced.run(event.target.value);
           }}

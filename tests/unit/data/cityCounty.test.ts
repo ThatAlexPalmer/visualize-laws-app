@@ -7,7 +7,7 @@ import {
   parseCountyFile,
   parsePlaceFile,
   stripPlaceLegalSuffix,
-} from "./cityCounty";
+} from "@/data/cityCounty";
 
 const PLACE_TXT = [
   "STATE|STATEFP|PLACEFP|PLACENS|PLACENAME|TYPE|CLASSFP|FUNCSTAT|COUNTIES",

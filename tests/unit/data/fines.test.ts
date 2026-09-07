@@ -14,13 +14,13 @@ import {
   toNullableBool,
   toNullableNum,
   type RawFineRow,
-} from "./fines";
+} from "@/data/fines";
 import {
   amountShare,
   fineHoverLine,
   formatFine,
   type PenaltyStats,
-} from "./types";
+} from "@/data/types";
 
 /**
  * Real rows from the head of the supplement, paired with the `content_sha1`

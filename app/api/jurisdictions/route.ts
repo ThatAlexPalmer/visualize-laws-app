@@ -9,7 +9,6 @@ import {
 // Complete US aggregates change only on seed — short CDN cache.
 // Incomplete `national: null` / empty rows stay request-fresh.
 // Place lookup is GET /api/places.
-export const revalidate = 60;
 
 const NATIONAL_CACHE = "public, s-maxage=60, stale-while-revalidate=300";
 const NO_STORE = "no-store";
@@ -18,10 +17,11 @@ const NO_STORE = "no-store";
 export async function GET(): Promise<
   NextResponse<JurisdictionsResponse | ApiErrorResponse>
 > {
+  // Request-time only; freshness is controlled by the explicit CDN headers.
+  await connection();
   try {
     const payload = await getJurisdictions();
     if (!isCompleteNational(payload)) {
-      await connection();
       return NextResponse.json(payload, {
         headers: { "Cache-Control": NO_STORE },
       });
@@ -31,7 +31,6 @@ export async function GET(): Promise<
     });
   } catch (error) {
     console.error("GET /api/jurisdictions failed:", error);
-    await connection();
     return NextResponse.json(
       { error: "Jurisdiction aggregates are temporarily unavailable." },
       { status: 503, headers: { "Cache-Control": NO_STORE } },

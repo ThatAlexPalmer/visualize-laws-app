@@ -1,5 +1,5 @@
 # visualizelaws.com — development image (hot-reloading Next.js + Prisma).
-# Source is bind-mounted at runtime; node_modules + .next live in named volumes
+# Source is bind-mounted at runtime; node_modules + .next/.next-dev use named volumes
 # (see docker-compose.yml) so the Linux build is not shadowed by the host.
 FROM node:24-bookworm-slim
 

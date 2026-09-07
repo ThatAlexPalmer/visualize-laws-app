@@ -40,10 +40,20 @@ export function statusForKey(
 export function useCachedFetch<T>(
   key: string | null,
   fetcher: (key: string, signal: AbortSignal) => Promise<T>,
-): { value: T | undefined; status: "idle" | "loading" | "ready" | "error" } {
+  useCache = true,
+): { value: T | undefined; status: FetchStatus; retry: () => void } {
   const cache = useRef(new Map<string, T>());
+  const active = useRef<AbortController | null>(null);
+  const [version, setVersion] = useState(0);
   const [held, setHeld] = useState<Held<T> | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const retry = useCallback(() => {
+    active.current?.abort();
+    if (key) cache.current.delete(key);
+    setHeld(null);
+    setErrorKey(null);
+    setVersion((v) => v + 1);
+  }, [key]);
 
   const run = useCallback(
     (nextKey: string | null) => {
@@ -59,11 +69,13 @@ export function useCachedFetch<T>(
         return;
       }
       setHeld(null);
+      setErrorKey(null);
       const controller = new AbortController();
-      fetcher(nextKey, controller.signal)
+      active.current = controller;
+      Promise.resolve().then(() => fetcher(nextKey, controller.signal))
         .then((result) => {
           if (controller.signal.aborted) return;
-          cache.current.set(nextKey, result);
+          if (useCache) cache.current.set(nextKey, result);
           setHeld({ key: nextKey, value: result });
           setErrorKey(null);
         })
@@ -74,14 +86,15 @@ export function useCachedFetch<T>(
         });
       return () => controller.abort();
     },
-    [fetcher],
+    [fetcher, useCache],
   );
 
-  useEffect(() => run(key), [key, run]);
+  useEffect(() => run(key), [key, run, version]);
 
   const paired = heldForKey(held, key, cache.current);
   return {
     value: paired?.value,
     status: statusForKey(key, paired, errorKey),
+    retry,
   };
 }

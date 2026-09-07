@@ -6,8 +6,8 @@ import {
   hasPenaltyFilter,
   searchParamsToFilters,
   shouldUseSavedScopeTotal,
-} from "./filters";
-import { isSortKey, type LawFilters } from "./types";
+} from "@/data/filters";
+import { isSortKey, type LawFilters } from "@/data/types";
 
 function fromQs(qs = ""): LawFilters {
   return searchParamsToFilters(new URLSearchParams(qs));
@@ -210,4 +210,23 @@ test("isSortKey still gates sort on the wire", () => {
   const parsed = fromQs("sort=fine; DROP&dir=desc");
   assert.equal(parsed.sort, undefined);
   assert.equal(isSortKey("fine"), true);
+});
+
+test("prototype properties are not sort columns", () => {
+  for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.equal(isSortKey(key), false);
+    assert.equal(fromQs(`sort=${key}`).sort, undefined);
+  }
+});
+
+test("pagination rejects non-finite, fractional and unsafe offsets", () => {
+  for (const page of ["Infinity", "-Infinity", "NaN", "1.5", "9007199254740991"]) {
+    const f = fromQs(`page=${page}&pageSize=100`);
+    assert.equal(f.page, 1);
+    assert.ok(Number.isSafeInteger((f.page - 1) * f.pageSize));
+  }
+  for (const size of ["Infinity", "-2", "2.5"]) {
+    assert.equal(fromQs(`pageSize=${size}`).pageSize, 25);
+  }
+  assert.equal(fromQs("pageSize=101").pageSize, 100);
 });

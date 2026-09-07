@@ -17,24 +17,21 @@
  * Design notes:
  *   - `laws.search_vector` is a GENERATED column; it is never written here.
  *   - Each COPY batch commits on its own so a remote stall only loses the
- *     in-flight batch. Intra-shard progress is stored in
- *     `.locus-cache/seed-progress.json` and rows already committed are skipped
- *     on retry. A finished shard also gets a `seed_checkpoints` row (skip whole
- *     shard). A `--limit` cutoff leaves the shard un-checkpointed (partial) —
- *     intentional for dev samples; use `--fresh` to reset.
+ *     in-flight batch. Database progress and source fingerprints commit with
+ *     the rows. Reconnects reread progress, including lost COMMIT acknowledgements.
+ *     Completed shards also get `seed_checkpoints`; samples resume without reset.
  *   - This is a tsx script run from the repo root: shared code is imported via
  *     the sibling `./types` module (no `@/` alias outside the Next build).
  */
 import {
   createWriteStream,
   existsSync,
-  mkdirSync,
   readFileSync,
-  writeFileSync,
   unlinkSync,
 } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -47,6 +44,10 @@ import { buildCityCountyTables } from "./build-city-county";
 import { buildFinesTable } from "./build-fines";
 import { toBool, toStr } from "./fines";
 import { STATE_NAMES } from "./types";
+import {
+  connectWriter, fingerprintFile, getProgress, saveProgress,
+  verifyCorpusProgress, resetCorpus, ImportStateError,
+} from "./importProgress";
 
 // --- Configuration ---------------------------------------------------------
 
@@ -225,31 +226,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Local intra-shard progress: shard id -> rows already committed. */
-type ProgressMap = Record<string, number>;
-
-function readProgress(): ProgressMap {
-  try {
-    if (!existsSync(PROGRESS_PATH)) return {};
-    const raw = JSON.parse(readFileSync(PROGRESS_PATH, "utf8")) as unknown;
-    if (!raw || typeof raw !== "object") return {};
-    const out: ProgressMap = {};
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const n = typeof v === "number" ? v : Number(v);
-      if (Number.isFinite(n) && n > 0) out[k] = Math.floor(n);
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function writeProgress(map: ProgressMap): void {
-  if (!existsSync(CACHE_DIR)) {
-    mkdirSync(CACHE_DIR, { recursive: true });
-  }
-  writeFileSync(PROGRESS_PATH, JSON.stringify(map, null, 2) + "\n", "utf8");
-}
 
 function clearProgress(): void {
   try {
@@ -259,19 +235,6 @@ function clearProgress(): void {
   }
 }
 
-function setShardProgress(shard: string, rows: number): void {
-  const map = readProgress();
-  if (rows <= 0) {
-    delete map[shard];
-  } else {
-    map[shard] = rows;
-  }
-  writeProgress(map);
-}
-
-function getShardProgress(shard: string): number {
-  return readProgress()[shard] ?? 0;
-}
 
 async function getCompletedShards(client: Client): Promise<Set<string>> {
   const { rows } = await client.query<{ shard: string }>(
@@ -370,19 +333,18 @@ interface ShardResult {
 }
 
 /**
- * Load a single shard with per-batch commits. Local progress tracks how many
- * rows are already in the DB so a stalled/retried attempt skips them. When the
- * shard finishes we write `seed_checkpoints` and clear local progress. A
- * `--limit` cutoff stops early without a full-shard checkpoint.
+ * Load a shard with atomic data/progress commits. `alreadyLoaded` includes the
+ * committed prefix, so only newly committed rows count against the remaining limit.
  */
-async function loadShard(
+export async function loadShard(
   client: Client,
   file: string,
   n: number,
-  opts: { limit?: number; alreadyLoaded: number },
+  opts: { limit?: number; alreadyLoaded: number; fingerprint: string },
 ): Promise<ShardResult> {
   const id = shardId(n);
-  const skipRows = getShardProgress(id);
+  const source = `locus-v1/${id}`;
+  const skipRows = await getProgress(client, source, opts.fingerprint);
   const reader = await ParquetReader.openFile(file);
   const cursor = reader.getCursor();
 
@@ -408,6 +370,7 @@ async function loadShard(
     await client.query("BEGIN");
     try {
       await copyBatch(client, batch);
+      await saveProgress(client, source, opts.fingerprint, committed + size);
       await client.query("COMMIT");
     } catch (err) {
       try {
@@ -419,12 +382,11 @@ async function loadShard(
     }
     newlyCommitted += size;
     committed += size;
-    setShardProgress(id, committed);
     const dt = (Date.now() - batchStart) / 1000;
     const rate = dt > 0 ? Math.round(size / dt) : 0;
     console.log(
       `  [shard ${n + 1}/${SHARD_COUNT}] +${fmt(size)} ` +
-        `(shard ${fmt(committed)}, total ${fmt(opts.alreadyLoaded + committed)}) — ` +
+        `(shard ${fmt(committed)}, total ${fmt(opts.alreadyLoaded + newlyCommitted)}) — ` +
         `${fmt(rate)} rows/s`,
     );
     batch = [];
@@ -439,7 +401,7 @@ async function loadShard(
       if (seen <= skipRows) continue;
 
       if (opts.limit !== undefined) {
-        const loadedSoFar = opts.alreadyLoaded + committed + batch.length;
+        const loadedSoFar = opts.alreadyLoaded + newlyCommitted + batch.length;
         if (loadedSoFar >= opts.limit) {
           complete = false;
           break;
@@ -452,6 +414,9 @@ async function loadShard(
       }
     }
     await flushBatch();
+    if (seen < skipRows) {
+      throw new ImportStateError("Corpus source is shorter than its committed prefix.");
+    }
 
     if (complete) {
       await client.query("BEGIN");
@@ -463,6 +428,7 @@ async function loadShard(
            DO UPDATE SET rows_loaded = EXCLUDED.rows_loaded, completed_at = now()`,
           [id, committed],
         );
+        await saveProgress(client, source, opts.fingerprint, committed, true);
         await client.query("COMMIT");
       } catch (err) {
         try {
@@ -472,7 +438,6 @@ async function loadShard(
         }
         throw err;
       }
-      setShardProgress(id, 0);
     }
   } finally {
     await reader.close();
@@ -616,29 +581,7 @@ async function main(): Promise<void> {
     throw new Error("DIRECT_URL / DATABASE_URL is not set (check your .env)");
   }
 
-  const connect = async (): Promise<Client> => {
-    const c = new Client({
-      connectionString,
-      // TCP keepalive so a silently-dropped managed-DB connection surfaces as an
-      // error instead of blocking a COPY forever. Do NOT set client query_timeout
-      // globally — TRUNCATE/aggregates over 2.2M rows legitimately take longer;
-      // COPY batches use an explicit watchdog in copyBatch instead.
-      keepAlive: true,
-      keepAliveInitialDelayMillis: 10_000,
-      connectionTimeoutMillis: 30_000,
-      statement_timeout: LOAD_STATEMENT_TIMEOUT_MS,
-    });
-    // Destroying the socket on COPY stall emits Client 'error'. Without a
-    // listener Node treats it as uncaught and kills the process before retry.
-    c.on("error", (err) => {
-      console.warn(`  pg client error (will reconnect if in retry path): ${err.message}`);
-    });
-    await c.connect();
-    await c.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
-    // Avoid idle-in-transaction stalls on managed Postgres during long loads.
-    await c.query("SET idle_in_transaction_session_timeout = 120000");
-    return c;
-  };
+  const connect = () => connectWriter(connectionString);
   let client = await connect();
 
   const startedAt = Date.now();
@@ -646,7 +589,7 @@ async function main(): Promise<void> {
     if (opts.fresh) {
       console.log(
         "--fresh: truncating laws, law_fines, place_penalties, jurisdictions, " +
-          "seed_checkpoints, city_county, county_fills",
+          "seed_checkpoints, import_progress, city_county, county_fills; clearing fines staging",
       );
       // Truncate can be slow on a large partial table — disable statement timeout.
       await client.query(`SET statement_timeout = ${AGG_STATEMENT_TIMEOUT_MS}`);
@@ -654,10 +597,7 @@ async function main(): Promise<void> {
       // rejects the TRUNCATE otherwise. Its rows are keyed by law id, which is
       // not stable across a fresh load, so they have to be rebuilt anyway.
       // place_penalties is derived from law_fines, so it goes with it.
-      await client.query(
-        "TRUNCATE TABLE laws, law_fines, place_penalties, jurisdictions, " +
-          "seed_checkpoints, city_county, county_fills RESTART IDENTITY",
-      );
+      await resetCorpus(client);
       await client.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
       clearProgress();
     }
@@ -670,6 +610,7 @@ async function main(): Promise<void> {
     }
 
     const completed = await getCompletedShards(client);
+    if (opts.shards.length > 0) await verifyCorpusProgress(client);
     // Prefer DB law count so resume runs have a sensible "alreadyLoaded" baseline.
     const priorCount = await client.query<{ n: number }>(
       "SELECT count(*)::int AS n FROM laws",
@@ -692,15 +633,22 @@ async function main(): Promise<void> {
         continue;
       }
       const file = await ensureShard(n);
+      const fingerprint = await fingerprintFile(file);
       let result: ShardResult | undefined;
       for (let attempt = 1; attempt <= MAX_SHARD_ATTEMPTS; attempt++) {
         try {
+          await verifyCorpusProgress(client);
+          total = (await client.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM laws",
+          )).rows[0].n;
           result = await loadShard(client, file, n, {
             limit: opts.limit,
             alreadyLoaded: total,
+            fingerprint,
           });
           break;
         } catch (err) {
+          if (err instanceof ImportStateError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(
             `  shard ${n + 1}/${SHARD_COUNT} attempt ${attempt}/${MAX_SHARD_ATTEMPTS} failed: ${msg}`,
@@ -716,7 +664,7 @@ async function main(): Promise<void> {
           client = await connect();
         }
       }
-if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
+      if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
       // newlyCommitted this call only — prior progress / other shards already in `total`.
       total += result.rows;
       console.log(
@@ -751,11 +699,14 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
       console.warn(
         `  city/county build skipped (${msg}). Run \`pnpm build:city-county\` after migrate.`,
       );
+      // A COPY watchdog/network failure may have ended the shared session.
+      await client.end().catch(() => {});
+      client = await connect();
     }
 
     console.log("Building law_fines (LOCUS-Fines supplement)…");
     try {
-      const fineStats = await buildFinesTable(client, { connectionString });
+      const fineStats = await buildFinesTable(client);
       console.log(
         `  law_fines: ${fmt(fineStats.matched)} attached from ` +
           `${fmt(fineStats.staged)} model rows · ` +
@@ -767,6 +718,8 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
       console.warn(
         `  fines build skipped (${msg}). Run \`pnpm build:fines\` after migrate.`,
       );
+      await client.end().catch(() => {});
+      client = await connect();
     }
 
     const lawsCount = await client.query<{ n: number }>(
@@ -784,9 +737,8 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
     }
     if (stoppedAtLimit) {
       console.log(
-        "\nNote: stopped at --limit (sample). Partial shards are not " +
-          "checkpointed; run `pnpm seed --fresh` before a full ingest to avoid " +
-          "duplicate rows.",
+        "\nNote: stopped at --limit (sample). Resume with a larger limit or " +
+          "`pnpm seed`; database progress preserves the committed prefix.",
       );
     }
   } finally {
@@ -794,7 +746,9 @@ if (!result) throw new Error(`shard ${n + 1}/${SHARD_COUNT} failed`);
   }
 }
 
-main().catch((err) => {
-  console.error("\nSeed failed:", err);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main().catch((err) => {
+    console.error("\nSeed failed:", err);
+    process.exitCode = 1;
+  });
+}

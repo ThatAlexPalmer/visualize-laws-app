@@ -179,7 +179,7 @@ const LAW_SELECT = {
 
 /**
  * All level='state' aggregates (for the choropleth + legend) plus the single
- * level='national' row, whose `bounds` JSON drives the color/slider domains.
+ * level='national' row, whose `bounds` JSON drives slider domains.
  * County rows stay off this payload so the US map does not grow to ~3k rows.
  */
 export async function getJurisdictions(): Promise<JurisdictionsResponse> {
@@ -367,13 +367,7 @@ export async function getJurisdictionDetail(
     };
   } catch (err) {
     console.error(`getJurisdictionDetail(${code}) failed:`, err);
-    return {
-      jurisdiction: null,
-      topLaws: [],
-      counties: [],
-      countyFills: [],
-      topCities: [],
-    };
+    throw err;
   }
 }
 

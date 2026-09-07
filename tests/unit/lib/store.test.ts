@@ -6,7 +6,7 @@ import {
   explorerReducer,
   type ExplorerAction,
   type ExplorerState,
-} from "./store";
+} from "@/lib/store";
 
 function base(): ExplorerState {
   return {

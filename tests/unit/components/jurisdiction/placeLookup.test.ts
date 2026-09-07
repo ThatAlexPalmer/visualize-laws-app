@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cityExactSql } from "../../data/queries/laws";
-import { matchStateQuery } from "./placeLookup";
+import { cityExactSql } from "@/data/queries/laws";
+import { matchStateQuery } from "@/components/jurisdiction/placeLookup";
 
 test("matchStateQuery: exact name or USPS code, not a prefix", () => {
   assert.equal(matchStateQuery("colorado"), "co");

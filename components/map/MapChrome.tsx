@@ -76,7 +76,7 @@ const RetryHint = styled(motion.button)`
   position: absolute;
   top: ${({ theme }) => theme.space(4)};
   right: ${({ theme }) => theme.space(4)};
-  z-index: 4;
+  z-index: 6;
   padding: 0;
   border: 0;
   background: transparent;
@@ -92,7 +92,9 @@ const RetryHint = styled(motion.button)`
   }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    display: none;
+    top: auto;
+    bottom: ${({ theme }) => theme.space(12)};
+    max-width: calc(100% - 32px);
   }
 `;
 
@@ -166,7 +168,7 @@ export function MapChrome({ children }: { children: ReactNode }) {
 
 export function MapHud({ hovered }: { hovered: Hovered | null }) {
   const { state, dispatch } = useExplorer();
-  const { status, retry } = useJurisdictions();
+  const { status, retry, stateDetailStatus, retryState } = useJurisdictions();
   const {
     rows,
     scoredCounties,
@@ -175,6 +177,8 @@ export function MapHud({ hovered }: { hovered: Hovered | null }) {
     fillByKey,
     aggByUsps,
     selectedCounty,
+    atlasError,
+    retryAtlas,
   } = useMapView();
 
   const layer = state.layer;
@@ -256,15 +260,15 @@ export function MapHud({ hovered }: { hovered: Hovered | null }) {
           no map data
         </Hint>
       )}
-      {status === "error" && (
+      {(status === "error" || atlasError || (selectedState && stateDetailStatus === "error")) && (
         <RetryHint
           type="button"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: theme.motion.slow }}
-          onClick={retry}
+          onClick={status === "error" ? retry : atlasError ? retryAtlas : retryState}
         >
-          map unavailable · retry
+          {status === "error" ? "map unavailable" : atlasError ? "county outlines unavailable" : "county data unavailable"} · retry
         </RetryHint>
       )}
       <TitleStack>

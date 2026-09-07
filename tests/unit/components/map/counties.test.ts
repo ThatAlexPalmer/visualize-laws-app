@@ -3,7 +3,16 @@ import { test } from "node:test";
 
 import type { CountyFill } from "@/lib/types";
 
-import { joinCountyFills, joinCountySlugs } from "./counties";
+import { joinCountyFills, joinCountySlugs, loadCountyFeatures } from "@/components/map/counties";
+
+test("atlas loader clears a rejected request and shares the successful retry", async () => {
+  await assert.rejects(loadCountyFeatures(async () => {
+    throw new Error("atlas offline");
+  }), /atlas offline/);
+  const retry = loadCountyFeatures();
+  assert.equal(loadCountyFeatures(), retry);
+  assert.ok((await retry).length > 3000);
+});
 
 const FEATURES = [
   { fips: "48085", name: "Collin" },

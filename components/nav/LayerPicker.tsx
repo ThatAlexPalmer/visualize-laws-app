@@ -225,6 +225,7 @@ export function LayerPicker({
             <AxisButton
               key={a.key}
               $active={active}
+              aria-pressed={active}
               onClick={() => selectAxis(a.key)}
               title={copy.blurb}
             >
@@ -241,6 +242,7 @@ export function LayerPicker({
         })}
         <AxisButton
           $active={penaltiesActive}
+          aria-pressed={penaltiesActive}
           onClick={selectPenalties}
           title={finesCopy.blurb}
         >
@@ -265,6 +267,7 @@ export function LayerPicker({
           <SheetAxis
             key={a.key}
             $active={!penaltiesActive && axis === a.key}
+            aria-pressed={!penaltiesActive && axis === a.key}
             $accent={AXIS_ACCENT[a.key]}
             onClick={() => selectAxis(a.key)}
           >
@@ -272,7 +275,7 @@ export function LayerPicker({
           </SheetAxis>
         );
       })}
-      <SheetLayer $active={penaltiesActive} onClick={selectPenalties}>
+      <SheetLayer $active={penaltiesActive} aria-pressed={penaltiesActive} onClick={selectPenalties}>
         {finesCopy.label}
       </SheetLayer>
     </SheetAxes>

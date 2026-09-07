@@ -13,12 +13,16 @@ function parseFloatOrNull(raw: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function parsePage(raw: string | null, fallback: number): number {
-  return Math.max(1, Math.floor(Number(raw) || fallback));
-}
-
-function parsePageSize(raw: string | null, fallback: number): number {
-  return Math.min(100, Math.max(1, Math.floor(Number(raw) || fallback)));
+/** Normalize both HTTP and internal callers; every SQL offset stays a safe integer. */
+export function normalizePagination(rawPage: unknown, rawSize: unknown) {
+  const positive = (raw: unknown, fallback: number) => {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) && n > 0 ? n : fallback;
+  };
+  const pageSize = Math.min(100, positive(rawSize, 25));
+  const candidate = positive(rawPage, 1);
+  const page = Number.isSafeInteger((candidate - 1) * pageSize) ? candidate : 1;
+  return { page, pageSize, offset: (page - 1) * pageSize };
 }
 
 /** Serialize filters for GET /api/laws. Sort / dir only when `sort` is set. */
@@ -62,9 +66,10 @@ export function filtersToSearchParams(f: LawFilters): URLSearchParams {
  * (`queryLaws` used 25 when the query omitted pageSize; the store sends 8).
  */
 export function searchParamsToFilters(sp: URLSearchParams): LawFilters {
+  const { page, pageSize } = normalizePagination(sp.get("page"), sp.get("pageSize"));
   const filters: LawFilters = {
-    page: parsePage(sp.get("page"), 1),
-    pageSize: parsePageSize(sp.get("pageSize"), 25),
+    page,
+    pageSize,
   };
 
   const q = sp.get("q")?.trim();

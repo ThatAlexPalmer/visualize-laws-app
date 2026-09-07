@@ -26,6 +26,10 @@ const EMPTY_ROWS: JurisdictionAgg[] = [];
 export interface MapViewValue {
   countiesBaked: boolean;
   setCountiesBaked: (baked: boolean) => void;
+  atlasError: boolean;
+  setAtlasError: (error: boolean) => void;
+  atlasAttempt: number;
+  retryAtlas: () => void;
   fillRows: CountyFill[];
   fillByKey: Map<string, CountyFill>;
   scoredCounties: CountyFill[];
@@ -47,6 +51,8 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
   const { state } = useExplorer();
   const { data, status, stateDetail, stateDetailStatus } = useJurisdictions();
   const [countiesBaked, setCountiesBaked] = useState(false);
+  const [atlasError, setAtlasError] = useState(false);
+  const [atlasAttempt, setAtlasAttempt] = useState(0);
 
   const axis = state.axis;
   const layer = state.layer;
@@ -95,6 +101,7 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
   const mapAggregatesInFlight = status === "loading" && rows.length === 0;
   const countiesInFlight =
     Boolean(selectedState) &&
+    !atlasError &&
     stateDetailStatus !== "error" &&
     (!countiesBaked || !stateDetail || stateDetailStatus === "loading");
 
@@ -119,6 +126,13 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
     () => ({
       countiesBaked,
       setCountiesBaked,
+      atlasError,
+      setAtlasError,
+      atlasAttempt,
+      retryAtlas: () => {
+        setAtlasError(false);
+        setAtlasAttempt((attempt) => attempt + 1);
+      },
       fillRows,
       fillByKey,
       scoredCounties,
@@ -135,6 +149,8 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
     }),
     [
       countiesBaked,
+      atlasError,
+      atlasAttempt,
       fillRows,
       fillByKey,
       scoredCounties,

@@ -27,9 +27,11 @@ interface JurisdictionsContextValue {
   /** Cached GET /api/jurisdictions/[state] for the selected state. */
   stateDetail: JurisdictionDetailResponse | null;
   stateDetailStatus: JurisdictionsStatus;
+  retryState: () => void;
   /** County-scoped detail when a county filter is set; else null. */
   countyDetail: JurisdictionDetailResponse | null;
   countyDetailStatus: JurisdictionsStatus;
+  retryCounty: () => void;
 }
 
 const JurisdictionsContext = createContext<JurisdictionsContextValue | null>(null);
@@ -218,8 +220,12 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       stateDetailStatus,
       countyDetail,
       countyDetailStatus,
+      retryState: stateFetch.retry,
+      retryCounty: countyFetch.retry,
     }),
     [
+      stateFetch.retry,
+      countyFetch.retry,
       data,
       status,
       retry,

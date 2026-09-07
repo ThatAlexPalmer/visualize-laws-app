@@ -15,6 +15,16 @@ function githubRelease(tag: string): string {
 /** Newest first. Three bullets, each what the user can do — not internals. */
 export const RELEASES: readonly AppRelease[] = [
   {
+    version: "1.3.2",
+    released: "2026-09-07",
+    href: githubRelease("v1.3.2"),
+    notes: [
+      "Browse every matching law, with estimated result counts clearly labelled.",
+      "Explore the map and open law details using the keyboard.",
+      "Keep your filter edits when switching between mobile and desktop layouts.",
+    ],
+  },
+  {
     version: "1.3.1",
     released: "2026-08-31",
     href: githubRelease("v1.3.1"),

@@ -67,14 +67,20 @@ Helpful options:
 pnpm seed --fresh       # reset and reseed
 pnpm seed --limit 1000  # small local sample
 pnpm seed --shards 0,1  # selected data shards
-pnpm seed --shards ''   # recompute jurisdiction aggregates only (no COPY)
+pnpm seed --shards ''   # rebuild aggregates, city fills and fines (no corpus COPY)
 ```
 
-The default 25k sample is Alaska-only (start of shard 0). For city/county QA (Pagosa Springs, El Paso County) load Colorado from shard 1:
+The default 25k sample is Alaska-only (start of shard 0). On a disposable local database,
+replace it with Colorado (Pagosa Springs, El Paso County) using the following.
+`--fresh` deletes existing laws and derived data:
 
 ```bash
 pnpm seed --fresh --shards 1 --limit 25000
 ```
+
+New imports resume from database-owned progress; rerun without `--fresh` to continue.
+`--limit` caps the total stored laws, not additional rows. Older partial imports may
+require reconciliation; the seeder will stop rather than guess a resume position.
 
 After applying the city-index migration on a database that already has laws, recompute county aggregates:
 
@@ -103,7 +109,20 @@ pnpm dev
 pnpm build
 pnpm typecheck
 pnpm lint
+pnpm test
 pnpm db:studio
+```
+
+Additional regression checks:
+
+All tests live in `tests/`: `unit/` mirrors source paths, `integration/` contains
+database fixtures, and `browser/` contains Playwright specs. `pnpm test` discovers
+unit tests automatically; the other suites run separately.
+
+```bash
+pnpm test:integration                  # Docker required; disposable database only
+pnpm exec playwright install chromium # once
+pnpm build && pnpm test:browser        # mocked APIs, localhost:3100
 ```
 
 ## attribution
@@ -122,5 +141,7 @@ This project uses the LOCUS-v1 corpus.
 [Paper](https://arxiv.org/abs/2606.19334) · [Models and dataset](https://huggingface.co/LocalLaws)
 
 ## license
+
+Contribution guidance is in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Licensed under Business Source License 1.1 (BUSL-1.1); see [LICENSE](./LICENSE).

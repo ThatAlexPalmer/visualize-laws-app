@@ -226,8 +226,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const [city, setCity] = useState(filters.city ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
-    makeFullRanges(() => ({ ...DEFAULT_SCORE_RANGE })),
+    makeFullRanges((axis) => filters[axis] ?? { ...DEFAULT_SCORE_RANGE }),
   );
+  const pendingRanges = useRef<Partial<Record<Axis, ScoreRange | undefined>>>({});
 
   const domainFor = (axis: Axis): ScoreRange => {
     const b = bounds?.[axis];
@@ -242,7 +243,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     setRanges((prev) => {
       const next = { ...prev };
       for (const a of AXES) {
-        if (!filters[a.key]) next[a.key] = domainFor(a.key);
+        if (!filters[a.key] && !(a.key in pendingRanges.current)) {
+          next[a.key] = domainFor(a.key);
+        }
       }
       return next;
     });
@@ -252,6 +255,20 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const cityDeb = useDebouncedCallback((v: string) => {
     void applyPlace("city", v);
   }, 300);
+
+  useEffect(() => () => {
+    placeLookupAbort.current?.abort();
+    // A responsive remount must not discard edits still inside the debounce window.
+    rangeDeb.flush();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    placeLookupAbort.current?.abort();
+    cityDeb.cancel();
+    countyDeb.cancel();
+    rangeDeb.cancel();
+    pendingRanges.current = {};
+  }, [state.filterResetVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const countyDeb = useDebouncedCallback((v: string) => {
     void applyPlace("county", v);
   }, 300);
@@ -260,6 +277,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     field: "city" | "county",
     v: string,
   ): Promise<void> => {
+    placeLookupAbort.current?.abort();
     const trimmed = v.trim();
     if (!trimmed) {
       if (state.selectedState) {
@@ -279,7 +297,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     placeLookupAbort.current?.abort();
     const ac = new AbortController();
     placeLookupAbort.current = ac;
-    if (field === "county") void loadCountyFeatures();
+    if (field === "county") void loadCountyFeatures().catch(() => {});
     try {
       const places = await lookupPlaces(field, trimmed, ac.signal);
       if (ac.signal.aborted) return;
@@ -316,13 +334,12 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     }
     dispatch({ type: "setPlaceText", field, value: trimmed });
   };
-  const rangeDeb = useDebouncedCallback((axis: Axis, r: ScoreRange) => {
-    const d = domainFor(axis);
-    const cleared = r.min <= d.min && r.max >= d.max;
-    dispatch({
-      type: "patchFilters",
-      filters: { [axis]: cleared ? undefined : r } as Partial<typeof filters>,
-    });
+  const rangeDeb = useDebouncedCallback(() => {
+    const pending = pendingRanges.current;
+    pendingRanges.current = {};
+    if (Object.keys(pending).length > 0) {
+      dispatch({ type: "patchFilters", filters: pending });
+    }
   }, 300);
 
   // Keep local inputs in sync with the store (chips, map clicks, reset).
@@ -333,8 +350,15 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     setCounty(filters.county == null ? "" : prettySlug(filters.county));
   }, [filters.county]);
   useEffect(() => {
-    const anyAxis = AXES.some((a) => filters[a.key]);
-    if (!anyAxis) setRanges(makeFullRanges(domainFor));
+    setRanges((previous) => {
+      const next = { ...previous };
+      for (const a of AXES) {
+        if (!(a.key in pendingRanges.current)) {
+          next[a.key] = filters[a.key] ?? domainFor(a.key);
+        }
+      }
+      return next;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters.opacity,
@@ -344,6 +368,8 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   ]);
 
   const onReset = () => {
+    placeLookupAbort.current?.abort();
+    pendingRanges.current = {};
     cityDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
@@ -384,7 +410,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
                 value={ranges[a.key] ?? d}
                 onChange={(r) => {
                   setRanges((prev) => ({ ...prev, [a.key]: r }));
-                  rangeDeb.run(a.key, r);
+                  pendingRanges.current[a.key] =
+                    r.min <= d.min && r.max >= d.max ? undefined : r;
+                  rangeDeb.run();
                 }}
               />
             );
@@ -418,6 +446,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
           placeholder="e.g. Pagosa Springs"
           value={city}
           onChange={(e) => {
+            placeLookupAbort.current?.abort();
             setCity(e.target.value);
             cityDeb.run(e.target.value);
             if (county) {
@@ -436,6 +465,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
           placeholder="e.g. El Paso"
           value={county}
           onChange={(e) => {
+            placeLookupAbort.current?.abort();
             setCounty(e.target.value);
             countyDeb.run(e.target.value);
             if (city) {
@@ -498,6 +528,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
                 key={opt.label}
                 type="button"
                 $active={active}
+                aria-pressed={active}
                 onClick={() =>
                   dispatch({
                     type: "patchFilters",
@@ -528,6 +559,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
                 key={opt.label}
                 type="button"
                 $active={active}
+                aria-pressed={active}
                 onClick={() =>
                   dispatch({
                     type: "patchFilters",

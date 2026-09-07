@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAnimationControls } from "framer-motion";
+import { useAnimationControls, useReducedMotion } from "framer-motion";
 
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
@@ -37,6 +37,7 @@ import {
 } from "./draw";
 import { BaseCanvas, MapHud, MapStage, OverlayCanvas } from "./MapChrome";
 import { useMapView } from "./MapViewProvider";
+import { MapKeyboard } from "./MapKeyboard";
 
 // Ignore layout reflows smaller than this (CSS px) before re-fitting.
 const SIZE_REFIT_THRESHOLD_PX = 8;
@@ -47,6 +48,8 @@ export function MapPanel() {
   const {
     countiesBaked,
     setCountiesBaked,
+    setAtlasError,
+    atlasAttempt,
     fillRows,
     fillByKey,
     sparseCounties,
@@ -79,7 +82,6 @@ export function MapPanel() {
   } | null>(null);
   const tweenRafRef = useRef<number | null>(null);
   const focusStateRef = useRef<string | null>(null);
-  const wantedStateRef = useRef<string | null>(null);
   const drawBaseRef = useRef<() => void>(() => {});
   const drawOverlayRef = useRef<() => void>(() => {});
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -90,6 +92,7 @@ export function MapPanel() {
   const [size, setSize] = useState<Size | null>(null);
   const [hovered, setHovered] = useState<Hovered | null>(null);
   const controls = useAnimationControls();
+  const reducedMotion = useReducedMotion();
 
   const paintByFips = useMemo(() => {
     if (!selectedState || !countiesBaked) {
@@ -216,6 +219,15 @@ export function MapPanel() {
   );
 
   const startTween = useCallback((to: Camera) => {
+    if (reducedMotion) {
+      if (tweenRafRef.current != null) cancelAnimationFrame(tweenRafRef.current);
+      tweenRafRef.current = null;
+      tweenRef.current = null;
+      cameraRef.current = to;
+      drawBaseRef.current();
+      drawOverlayRef.current();
+      return;
+    }
     const from = { ...cameraRef.current };
     tweenRef.current = { from, to, start: performance.now(), dur: ZOOM_MS };
     if (tweenRafRef.current != null) return;
@@ -237,7 +249,7 @@ export function MapPanel() {
       }
     };
     tweenRafRef.current = requestAnimationFrame(tick);
-  }, []);
+  }, [reducedMotion]);
 
   useEffect(() => {
     bakeStatePaths();
@@ -278,66 +290,31 @@ export function MapPanel() {
       .then((features) => {
         if (cancelled) return;
         bakeCountyPaths(features);
+        setAtlasError(false);
       })
       .catch(() => {
-        /* stay on the US camera */
+        if (!cancelled) setAtlasError(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedState, countiesBaked, bakeCountyPaths]);
+  }, [selectedState, countiesBaked, bakeCountyPaths, atlasAttempt, setAtlasError]);
+  const cameraTarget = selectedState && countiesBaked &&
+    stateDetail && stateDetailStatus === "ready" ? selectedState : null;
 
   useEffect(() => {
-    wantedStateRef.current = selectedState;
     if (!size) return;
+    focusStateRef.current = cameraTarget;
     if (!camReadyRef.current) {
-      cameraRef.current = cameraForState(null, size);
+      cameraRef.current = cameraForState(cameraTarget, size);
       camReadyRef.current = true;
-      if (!selectedState) {
-        drawBaseRef.current();
-        return;
-      }
-    }
-    if (!selectedState) {
-      // Drop the county mesh immediately so zoom-out shows states, not leftover outlines.
-      focusStateRef.current = null;
-      startTween(cameraForState(null, size));
+      drawBaseRef.current();
+      drawOverlayRef.current();
       return;
     }
-    const detailSettled =
-      Boolean(stateDetail) || stateDetailStatus === "error";
-    const readyToFocus =
-      countiesBaked && detailSettled && stateDetailStatus !== "loading";
-    if (!readyToFocus) {
-      // Mesh before move: stay on the US (or ease back) until Path2Ds are baked
-      // and county rows have settled. Do not set focus — that would paint a
-      // black county mesh over a solid state fill.
-      const wasFocused = focusStateRef.current !== null;
-      focusStateRef.current = null;
-      if (wasFocused) startTween(cameraForState(null, size));
-      return;
-    }
-    focusStateRef.current = selectedState;
-    startTween(cameraForState(selectedState, size));
-  }, [
-    selectedState,
-    countiesBaked,
-    size,
-    startTween,
-    cameraForState,
-    stateDetail,
-    stateDetailStatus,
-  ]);
-
-  useEffect(() => {
-    if (!size) return;
-    if (tweenRef.current) {
-      tweenRef.current.to = cameraForState(wantedStateRef.current, size);
-      return;
-    }
-    cameraRef.current = cameraForState(wantedStateRef.current, size);
-    drawBase();
-  }, [size, cameraForState, drawBase]);
+    // Selection and resize share this readiness gate; repaints never retarget it.
+    startTween(cameraForState(cameraTarget, size));
+  }, [cameraTarget, size, startTween, cameraForState]);
 
   useEffect(() => {
     drawBase();
@@ -348,7 +325,7 @@ export function MapPanel() {
   }, [drawOverlay]);
 
   useEffect(() => {
-    if (firstAxisRun.current) {
+    if (firstAxisRun.current || reducedMotion) {
       firstAxisRun.current = false;
       return;
     }
@@ -357,7 +334,7 @@ export function MapPanel() {
       opacity: 1,
       transition: { duration: theme.motion.base, ease: theme.motion.ease },
     });
-  }, [axis, layer, controls]);
+  }, [axis, layer, controls, reducedMotion]);
 
   const pick = useCallback(
     (clientX: number, clientY: number): Hovered | null => {
@@ -469,9 +446,10 @@ export function MapPanel() {
 
   return (
     <MapStage ref={wrapRef}>
-      <BaseCanvas ref={baseRef} animate={controls} />
+      <BaseCanvas ref={baseRef} animate={controls} aria-hidden="true" />
       <OverlayCanvas
         ref={overlayRef}
+        aria-hidden="true"
         onMouseMove={handleMove}
         onMouseLeave={handleLeave}
         onClick={handleClick}
@@ -487,6 +465,11 @@ export function MapPanel() {
         }}
       />
       <MapHud hovered={hovered} />
+      <MapKeyboard
+        counties={countiesBaked ? countyPathsRef.current : []}
+        paints={paintByFips}
+        onInspect={setHovered}
+      />
     </MapStage>
   );
 }

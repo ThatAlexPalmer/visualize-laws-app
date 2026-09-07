@@ -18,7 +18,12 @@ avoid staleness; expand only when durable.
 - Single Next.js App Router app at the repository root.
 - Data layer lives in `data/` (Prisma schema/migrations, DB client, seed pipeline, query functions).
 - API routes in `app/api/*` are the backend and delegate to `data/queries/*`.
-- Styling uses styled-components with strict black/white theme tokens.
+- Styling uses styled-components: black/white foundation, axis accents, green fines,
+  red branding and HSL map ramps. National bounds drive sliders; visible fill-row
+  min/max drives each map domain.
+- `/about` and `/log` are separate pages; releases live in `lib/releases.ts`.
+  Funny mode uses `lib/copy.ts`. `JurisdictionsProvider` owns shared requests and
+  `lib/useCachedFetch.ts` keeps responses keyed to their resource.
 - City/county map is **shipped**: camera zoom over a baked Albers USA mesh.
   Native county aggregates (~376) plus one-county city stand-ins (`county_fills`).
   Sparse-county copy when n < 8 (native + stand-ins). Multi-county cities stay
@@ -40,14 +45,17 @@ avoid staleness; expand only when durable.
   `queryLaws(LawFilters)` / `getLawById` in laws; serialize/parse in `data/filters.ts`.
   `resolvePlace` lives in jurisdictions and is served by `GET /api/places`.
   Prisma access stays in `data/db.ts` + `data/queries/*`. Prisma is **6.x** (PG18).
-  Do not upgrade to Prisma 8 in this tree; do not import `@prisma/client` from routes.
+  Prisma 6→7 is tracked in #45; do not import `@prisma/client` from routes.
 - `data/slugs.ts` — place slug variants / atlas join keys. Do not rewrite stored slugs.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
+- `data/importProgress.ts` — shared writer lock, fingerprints and transactional progress;
+  `tests/integration/importProgress.integration.test.ts` — isolated PG18 recovery fixtures.
 - `data/cityCounty.ts` + `data/build-city-county.ts` — Census 2020 place join and
   `city_county` / `county_fills` rebuild (no parquet COPY).
 - `data/fines.ts` + `data/build-fines.ts` — LOCUS-Fines identity key / COPY encoding and
-  the `law_fines` rebuild. Uses `hyparquet`, not `@dsnp/parquetjs` (see the fines runbook).
-- `WARP.md` — Warp project rules (loaded automatically in this repo).
+  the `law_fines` / `place_penalties` rebuild. Uses `hyparquet`, not `@dsnp/parquetjs`.
+- `WARP.md` — project architecture, commands and gotchas.
+- `CONTRIBUTING.md` — contribution and Git workflow.
 
 ## Docker is the dev environment (read before changing anything)
 
@@ -58,6 +66,11 @@ What is live vs. baked:
 
 - **Bind-mounted, hot-reloads**: the repo at `/workspace`. App/`data/` TypeScript edits apply
   immediately.
+- **Separate output volumes**: `visualize_laws_next_dev` at `/workspace/.next-dev` and
+  `visualize_laws_next` at `/workspace/.next`. Host production builds cannot overwrite
+  container dev output. Private env files and generated artifacts are excluded from builds.
+- **Startup counts fail closed**: a failed or nonnumeric law count exits before seed or
+  server startup. Only a successful zero triggers first-run seeding.
 - **Baked into the image**: `Dockerfile` and `docker/entrypoint.sh` (they are `COPY`ed to
   `/usr/local/bin/entrypoint.sh`). Host edits do nothing until `pnpm up:build`
   (`docker compose up --build`). If you change the entrypoint, you **must** rebuild or your
@@ -87,21 +100,83 @@ deps, remove just that one volume
 (`docker volume rm visualize-laws-app_visualize_laws_node_modules`) or run `pnpm install`
 inside the container.
 
+## Local backup, restore verification and rebuild
+
+Use this sequence before migrating or refreshing a populated local database. No production
+access or corpus reset is implied. Keep the original database volume and parquet cache.
+
+1. Stop only the app; start only Postgres. Confirm the intended database, mounted original
+   volume, PG version, no competing seed/build writers, and free space on **both** the host
+   and Docker VM. A full restore needs another database-sized allocation plus index/WAL
+   headroom, not merely the compressed archive size.
+2. Use repo-root `dev/`, **not system `/dev`**. It is excluded in `.gitignore` and
+   `.dockerignore`; verify those exclusions before writing. Restrict the directory to 0700
+   and use `umask 0077` for dumps, manifests and logs. Never put connection secrets in them.
+3. Record law count/ID bounds, checkpoint records, derived counts and applied migrations.
+   Use the running PG18 container's `pg_dump -Fc` for the complete database, writing
+   `dev/locus-local-<UTC timestamp>.dump.partial` without overwriting an existing file.
+   Finalize as `.dump` only after successful exit and `pg_restore --list`; save a SHA256.
+4. **Restore-test before changing the original.** Use the same PG image in a uniquely named
+   temporary container with a new dedicated volume at `/var/lib/postgresql`, `--network none`,
+   no published ports and a read-only archive mount. Never attach the original volume.
+   Restore with `pg_restore --exit-on-error` into an empty database; compare all captured
+   baseline fields and migration state. Archive listing alone is not verification.
+   Retain the archive; remove only the explicitly identified temporary container/volume.
+5. Build the app image, then refresh the existing dependency volume **before normal startup**:
+   `docker compose run --rm --no-deps --entrypoint pnpm app install --frozen-lockfile`.
+   Confirm both database URL targets without printing credentials and review pending migrations.
+   Recreate only the app; verify Prisma generation/migration, populated-DB seed skip,
+   baked entrypoint and distinct `.next`/`.next-dev` mounts.
+6. If derived refresh is needed, run the sole writer
+   `docker compose exec -T app pnpm seed --shards ''`. This skips corpus COPY but rebuilds
+   jurisdictions, city joins/fills, fines and penalties. Treat optional-builder warnings
+   as failed verification even if the process exits zero. Stop for lost/legacy staging
+   or source mismatches; `--restage` requires an explicit decision.
+7. Compare laws/checkpoints before and after, validate derived aggregates against SQL,
+   and check staging/progress cleanup and released writer lock. Exercise live API/UI behavior
+   and hot reload separately from mocked tests. Never automatically restore over the original,
+   run `--fresh`, or delete Compose volumes to resolve a verification failure.
+
+Measured full-corpus local baseline: ~7.5 GB database, ~1.14 GB custom archive, ~5 minutes
+for an isolated restore and ~47 seconds for a cached derived refresh. These are capacity/
+timing examples, not guarantees; preserve enough Docker free space throughout the restore.
+
 ## Local development commands
 
 - `pnpm install` (prefer pnpm; **no corepack**)
 - `pnpm dev` / `pnpm build` / `pnpm lint` (`eslint .`) / `pnpm typecheck` / `pnpm test`
 - `pnpm up` / `pnpm up:build` / `pnpm up:full`
 - `pnpm db:up` / `pnpm db:down` / `pnpm db:studio`
+  (`db:up` starts Postgres only; `db:down` stops the entire stack, preserving volumes)
 - `pnpm prisma:deploy` / `pnpm prisma:migrate`
 - `pnpm seed` / `pnpm seed --limit 25000` / `pnpm seed --fresh`
 - `pnpm seed --fresh --shards 1 --limit 25000` — Colorado city/county QA sample
-- `pnpm seed --shards ''` — recompute national/state/county aggregates, then city fills
+- `pnpm seed --shards ''` — recompute aggregates, city fills and fines/place penalties
 - `pnpm build:city-county` — rebuild `city_county` + `county_fills` only (no COPY)
-- `pnpm build:fines` — rebuild `law_fines` only; `--restage` discards a partial staging
+- `pnpm build:fines` — rebuild `law_fines` + `place_penalties`; `--restage` discards a partial staging
   table instead of resuming it
-- Remote admin (gitignored env): `pnpm seed:prod` / `pnpm seed:prod --fresh` /
+- Remote admin (gitignored env; only when requested): `pnpm seed:prod` /
   `pnpm prisma:deploy:prod` / `pnpm db:studio:prod` / `pnpm build:fines:prod`
+
+### Validation
+All tests live under `tests/`: unit tests mirror source paths in `tests/unit/`,
+database fixtures live in `tests/integration/`, and Playwright specs in `tests/browser/`.
+Node suites discover `**/*.test.ts` within their directory; Playwright discovers
+`**/*.spec.ts` only in `tests/browser/`. Keep new tests out of production source directories.
+
+- `pnpm test`: pure/domain tests, mocked core-versus-optional queries, and the real
+  entrypoint shell logic with stub commands. No migrations or seeds run.
+- `pnpm test:integration`: requires Docker; creates a dedicated PG18 tmpfs container
+  on a random loopback port, applies migrations and tiny generated parquet fixtures,
+  then removes that container. Never uses `.env.local`, `.env.prod` or Compose volumes.
+  Covers rollback, ambiguous COMMIT, target/source changes, legacy handling, locks,
+  fines replay/staging loss and atomic fresh cleanup.
+- `pnpm exec playwright install chromium` once, then `pnpm build && pnpm test:browser`.
+  The suite owns localhost:3100 (no server reuse), intercepts API traffic and gives the
+  server an unreachable fixture DB URL. Covers focus/inert/Escape, request cancellation,
+  retry, slider remounts and reduced-motion camera readiness/no-remeshing.
+- CI currently runs lint/typecheck/unit tests; integration/browser checks are separate
+  local commands, not implicitly included in `pnpm test`.
 
 ## Env files (agents)
 
@@ -109,6 +184,9 @@ inside the container.
 - `.env.prod` — remote admin only (`pnpm seed:prod`, migrate/studio against prod).
   Never print, commit, or paste `DATABASE_URL` / `DIRECT_URL` values.
 - `.env.example` — tracked template only.
+- Both Studio scripts load their env file via dotenv. Compose interpolation reads
+  shell/`.env`, not `.env.local`: use `SEED_LIMIT=0 docker compose up` / `pnpm up:full`.
+- Development output is `.next-dev`; production build/start uses `.next`.
 
 ## Data and querying notes
 
@@ -118,11 +196,25 @@ inside the container.
   Place search boosts city/county slug hits with `IS TRUE` (nullable `OR` is NULL and
   sorts first under `DESC`).
 - `/api/laws` returns law summaries; `/api/laws/[id]` (`getLawById`) returns the full law on demand.
-  Query failures are **503**, not an empty 200 (that used to render as “no matches”).
+  List failures are **503**; law-detail failures are **500**, not empty successes.
+- List pagination fetches `pageSize + 1`, returns at most `pageSize` rows, and exposes
+  `hasNextPage`. Never derive continuation from a planner estimate or saved aggregate.
+  `totalKind` is `exact` / `estimated` / `unavailable`; unavailable means `total: null`.
+  Estimates display as `About`, without a total page count; unavailable totals show the
+  observed row range. A terminal nonempty page (including a full one) or empty first
+  page proves the total. Empty out-of-range pages cannot use their offset as an exact count.
+  Saved counts remain exact only when consistent with observed rows. No per-page full COUNT.
+  Regression checks should force estimate under/overcounts and failures rather than depend
+  on a particular planner estimate, then compare real page boundaries with SQL.
 - `GET /api/jurisdictions` is the US map payload only (state + national). Short CDN cache
   (`s-maxage=60`, SWR 300) when `national` and `rows` are present. Do not cache
   `national: null` / empty rows. `/api/jurisdictions/[state]` stays `no-store` /
   `force-dynamic`. Do not reintroduce `force-static` or hour-long cache on these routes.
+- US queries run after `connection()`, not during build. State core failures propagate
+  to 503; optional penalty/fill failures preserve scores/native fills.
+- Client retries abort and invalidate the current resource. Results do not display
+  previous-key rows during loading/errors. Place clear/reset/unmount cancels requests;
+  pending multi-axis edits survive debounce and responsive unmount.
 - Place lookup is `GET /api/places?city=` / `?county=` (`resolvePlace`, `no-store`).
   Client `lookupPlaces` must not hit `/api/jurisdictions?...`.
 - Loading ≠ sparse. US wait: `Loading the map.` State wait (atlas or county rows):
@@ -161,6 +253,12 @@ inside the container.
   `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
+- One readiness-gated camera target handles selection, resize and repaint; reduced
+  motion snaps rather than tweening. Failed atlas imports can be retried.
+- Desktop and mobile layer buttons expose the selected axis/Fines layer with `aria-pressed`.
+- `MapKeyboard` provides state selection and county score/fines inspection; only
+  joined codes can be selected. Native modal dialogs trap focus, make the background
+  inert, dismiss on Escape and restore the invoking control's focus.
 
 ## Penalties map layer (invariants)
 
@@ -179,7 +277,7 @@ inside the container.
   `components/map/Legend.tsx`, or the eight thin states lose their figures.
 - `place_penalties` is rebuilt only by `pnpm build:fines`. Running `pnpm build:city-county`
   afterwards is safe — that was the reason for a sibling table rather than columns on
-  `jurisdictions` / `county_fills`.
+  `city_county` / `county_fills`.
 
 ## Working conventions
 
@@ -224,10 +322,12 @@ Canonical seeder: `data/seed.ts`. Scripts:
 | `pnpm seed …` | `.env.local` (local Docker/host Postgres) |
 | `pnpm seed:prod …` | `.env.prod` (remote Prisma Postgres DIRECT) |
 
-Flags: `--fresh` (TRUNCATE laws + **law_fines** + jurisdictions + seed_checkpoints +
-city_county + county_fills + clear local progress), `--limit N` (sample; leaves shard
-un-checkpointed), `--shards 0,1`, `--shards ''` (no COPY — recompute
-national/state/**county** aggregates, then city fills).
+Flags: `--fresh` (atomically TRUNCATE laws + **law_fines** + **place_penalties** + jurisdictions +
+seed_checkpoints + import_progress + city_county + county_fills; drop legacy/current
+fines staging; then clear legacy local progress), `--limit N` (total database-row ceiling;
+partial shards keep atomic progress, not a completed checkpoint), `--shards 0,1`,
+`--shards ''` (no COPY — recompute
+national/state/**county** aggregates, then city fills and fines/place penalties).
 
 `law_fines` is in the `--fresh` truncate list because it holds an FK to `laws`; leaving
 it out makes Postgres reject the whole TRUNCATE.
@@ -245,14 +345,21 @@ migrate/shadow rules (`deploy` vs `dev`, never shadow a database with data).
 
 1. Streams 8 LOCUS-v1 parquet shards (Hugging Face); caches under `.locus-cache/` (~1.77 GB total).
 2. Bulk-loads via Postgres `COPY` in **5k-row batches**, **commit per batch**.
-3. Local mid-shard progress: `.locus-cache/seed-progress.json` (skip already-committed rows on retry).
-4. Whole-shard resume: `seed_checkpoints` (one row per finished shard `0000`…`0007`).
+3. Each batch updates `import_progress` in the same transaction as COPY: source
+   `locus-v1/0000`…`0007`, SHA256 file fingerprint and committed prefix length.
+   `.locus-cache/seed-progress.json` is no longer read/written; `--fresh` clears it.
+4. Whole-shard completion writes `seed_checkpoints` and marks progress complete in one
+   transaction. Resume verifies stored law count against completed + partial counts.
+   Completed legacy checkpoints are preserved without retroactively inventing fingerprints;
+   legacy partial imports with unaccounted rows refuse resume. Reconcile deliberately;
+   never suggest automatic `--fresh` on a populated database.
 5. Recomputes `jurisdictions` (1× `national` + 1× `state` per distinct non-empty
    state code + 1× `county` per `(state, county)` with a non-empty county slug).
 6. Rebuilds `city_county` + `county_fills` from `laws` + Census 2020 place/county
    files (`pnpm build:city-county` does this without parquet COPY).
-7. Rebuilds `law_fines` from the LOCUS-Fines supplement (`pnpm build:fines` standalone).
-   Non-fatal: a failure warns and the seed still finishes.
+7. Rebuilds `law_fines` and `place_penalties` from LOCUS-Fines (`pnpm build:fines`).
+   Both derived builders are non-fatal: failures warn; the seeder reconnects/reacquires
+   its lock before continuing. A reconnect failure still stops the job.
 8. `search_vector` is GENERATED — never written by the seeder.
 
 ### Resilience (remote-aware)
@@ -261,35 +368,41 @@ Managed Postgres (Prisma) can **silently stall** mid-COPY with no error. The see
 
 - Sets a short load-phase `statement_timeout` (~45s) and a client COPY watchdog (~90s) that
   destroys the socket on hang.
-- Retries the current shard up to 8 times with reconnect/backoff.
+- Retries the current shard up to 8 times with reconnect/backoff. Each retry reads
+  committed DB progress/counts, including when COMMIT succeeded but its reply was lost.
+  Source mismatch/unverifiable progress errors stop immediately.
 - **Must** attach a `pg` Client `error` listener so socket destroy does not crash Node before retry.
 - Disables/long-timeouts for TRUNCATE and `computeAggregates` (full-table scans over 2.2M rows).
 
-Always ensure a **single writer**:
+`connectWriter`/`acquireWriter` enforce a shared database-local session advisory lock
+across seed and both builders. All writes use the owning connection; closing it releases
+the lock. Old versions/manual SQL do not participate, so still inspect competing jobs.
+Apply the additive import-progress migration before invoking the new seed/fines importer.
+
+Always ensure a **single writer**. Inspect running seed/build jobs; never use a broad
+process-kill pattern. Terminate only an identified job you own when interruption is intended:
 
 ```bash
-pkill -9 -f 'data/seed.ts' 2>/dev/null || true
-pgrep -fl 'data/seed.ts' || echo 'no seed'
+pgrep -fl 'data/(seed|build-fines|build-city-county)\.ts'
 ```
 
 ### How to run (agent pattern)
 
-1. Confirm no orphan seeders (above).
+1. Confirm the intended database and no competing writers (above).
 2. Prefer background + log so the session stays usable:
 
 ```bash
 mkdir -p /tmp/viz-seed
-nohup pnpm seed:prod --fresh </dev/null >/tmp/viz-seed/seed-prod.log 2>&1 &
+nohup pnpm seed </dev/null >/tmp/viz-seed/seed-local.log 2>&1 &
 echo $! > /tmp/viz-seed/seed.pid
-# monitor: tail -f /tmp/viz-seed/seed-prod.log
-# resume after stall (do NOT --fresh unless intentional wipe):
-# nohup pnpm seed:prod </dev/null >/tmp/viz-seed/seed-prod.log 2>&1 &
+# monitor: tail -f /tmp/viz-seed/seed-local.log
+# Remote administration only when requested; never add --fresh to a resume.
 ```
 
 3. If editing `data/seed.ts`, run `pnpm typecheck`, branch off `main`, PR only the seeder/docs change.
 4. Do **not** re-run migrations on prod unless schema work is in scope (tables/indexes are durable).
 
-### Expected duration (realistic)
+### Measured duration baselines (not guarantees)
 
 Parquet must be cached or downloaded once (~1.77 GB). Times below assume a modern laptop and
 cached shards; first download adds wall clock.
@@ -328,19 +441,26 @@ Also runs at the end of `pnpm seed`, non-fatally.
 - **The join key is not unique.** The supplement's seven identity columns repeat across
   2,411 groups / 5,200 rows of LOCUS-v1, so staging is deduped with `DISTINCT ON` before
   the join; the join then re-expands one annotation across each identical law row.
-- **Resumable.** Staging (`law_fines_import`, unlogged) survives a crash and a rerun
-  resumes from its row count. `pnpm build:fines --restage` discards it instead. Staging
-  is dropped on success. The final attach is one transaction, so readers keep seeing the
-  previous `law_fines` until it commits.
+- **Replay-safe staging.** `law_fines_import_v2` assigns deterministic model-row ordinals.
+  Each COPY and fingerprinted `import_progress` prefix commit together; reconnect resumes
+  from that prefix. Count/max ordinal must agree with progress. Legitimate duplicate
+  source rows are preserved until the deliberate identity-key deduplication step.
+- **Explicit restage after loss/legacy data.** UNLOGGED staging survives client interruption,
+  not a database crash. Missing/changed staging, source mismatch or a legacy
+  `law_fines_import` table stops the builder; `pnpm build:fines --restage` explicitly clears
+  staging/progress. Successful builds drop both atomically. The standalone builder retries
+  transient errors up to eight times, reconnecting under the shared writer lock.
+  The final attach is transactional, but TRUNCATE takes ACCESS EXCLUSIVE and blocks
+  readers; previous rows are not continuously readable during the rebuild.
 - **Timings** (full corpus, parquet cached): local Docker **~40 s** end to end. Remote is
   dominated by the COPY of 632k narrow rows over the WAN plus one server-side hash join;
   budget **~10–30 min** and expect the same stall/reconnect behaviour as the corpus seed.
-- Run remote builds background + logged, single writer, exactly like `seed:prod`
-  (`pkill -9 -f 'data/build-fines.ts'` to check for orphans).
+- Run requested remote builds background + logged, single writer; inspect jobs using
+  `pgrep`, never a broad `pkill` command.
 
 ### Verification (after any full seed)
 
-Expect:
+Historical full-corpus baselines (sampled databases differ):
 
 - `laws` count **≈ 2,211,516** (exact corpus size)
 - `seed_checkpoints` **= 8**

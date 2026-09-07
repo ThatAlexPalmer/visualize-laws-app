@@ -48,10 +48,12 @@ services:
       - .:/workspace
       - visualize_laws_node_modules:/workspace/node_modules
       - visualize_laws_next:/workspace/.next
+      - visualize_laws_next_dev:/workspace/.next-dev
       - visualize_laws_cache:/workspace/.locus-cache
 
 volumes:
   visualize_laws_pgdata:
   visualize_laws_node_modules:
   visualize_laws_next:
+  visualize_laws_next_dev:
   visualize_laws_cache:

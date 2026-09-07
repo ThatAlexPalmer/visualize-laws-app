@@ -77,7 +77,7 @@ model Jurisdiction {
   avgEnforcementDiscretion Float   @map("avg_enforcement_discretion")
   avgPaternalism           Float   @map("avg_paternalism")
   avgProblemSalience       Float   @map("avg_problem_salience")
-  // Per-axis [min,max] bounds (used for slider domains + color scale).
+  // Per-axis [min,max] bounds for sliders (map domains use visible fill rows).
   // Populated on the single level='national' row.
   bounds                   Json?
 
@@ -146,8 +146,7 @@ model LawFine {
 
 /// Per-place LOCUS-Fines aggregates behind the Penalties map layer
 /// (`data/build-fines.ts`).
-///
-/// A sibling table rather than columns on `Jurisdiction` / `CountyFill`:
+/// A sibling table rather than columns on `CityCounty` / `CountyFill`:
 /// `data/build-city-county.ts` rebuilds those with DELETE + re-INSERT, so
 /// penalty columns there would be wiped by an unrelated `pnpm build:city-county`.
 /// `place` is COALESCE(city, county), which equals `CountyFill.sourcePlace`.
@@ -185,6 +184,16 @@ model SeedCheckpoint {
   completedAt DateTime @default(now()) @map("completed_at")
 
   @@map("seed_checkpoints")
+}
+
+/// Source-scoped progress committed in the same transaction as imported rows.
+model ImportProgress {
+  source      String  @id
+  fingerprint String
+  rowsLoaded  Int     @default(0) @map("rows_loaded")
+  complete    Boolean @default(false)
+
+  @@map("import_progress")
 }
 
 /// Census 2020 place join for LOCUS city slugs. Additive lookup — does not

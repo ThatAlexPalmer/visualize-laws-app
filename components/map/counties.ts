@@ -28,10 +28,12 @@ let inflight: Promise<CountyFeatureEntry[]> | null = null;
  * bundle; MapPanel prefetches after the US map is ready. First state click
  * is only a fallback if the idle prefetch has not finished.
  */
-export function loadCountyFeatures(): Promise<CountyFeatureEntry[]> {
+export function loadCountyFeatures(
+  load = () => import("us-atlas/counties-10m.json"),
+): Promise<CountyFeatureEntry[]> {
   if (cached) return Promise.resolve(cached);
   if (inflight) return inflight;
-  inflight = import("us-atlas/counties-10m.json").then((mod) => {
+  inflight = load().then((mod) => {
     const countiesTopo = (mod.default ?? mod) as unknown as Parameters<
       typeof feature
     >[0];
@@ -52,6 +54,9 @@ export function loadCountyFeatures(): Promise<CountyFeatureEntry[]> {
     });
     inflight = null;
     return cached;
+  }).catch((error) => {
+    inflight = null;
+    throw error;
   });
   return inflight;
 }
