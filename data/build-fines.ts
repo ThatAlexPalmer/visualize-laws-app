@@ -25,9 +25,9 @@
  *      fingerprint in Postgres (pgcrypto `digest`).
  *   3. Drop staging.
  *
- * Staging is left in place if the load dies partway, and a rerun resumes from
- * the row count already committed. Re-COPYing a batch whose COMMIT ack was
- * lost is harmless: step 2 dedupes.
+ * Source fingerprint + committed progress are stored atomically with stable
+ * model-row ordinals. Reruns reconcile the database checkpoint before replay.
+ * UNLOGGED staging loss is detected and requires explicit --restage.
  */
 import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { rename } from "node:fs/promises";
@@ -54,13 +54,18 @@ import {
   type RawFineRow,
 } from "./fines";
 import { PENALTY_MEDIAN_MIN } from "./types";
+import {
+  acquireWriter, connectWriter, fingerprintFile, getProgress, saveProgress,
+  ImportStateError,
+} from "./importProgress";
 
 // --- Configuration ---------------------------------------------------------
 
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PARQUET_CACHE = resolve(CACHE_DIR, "locus-fines.parquet");
 
-const STAGING_TABLE = "law_fines_import";
+const STAGING_TABLE = "law_fines_import_v2";
+const SOURCE = "locus-fines/model-rows-v1";
 /** Parquet rows decoded per slice — bounds peak memory (~1.2 GB at 50k). */
 const READ_CHUNK_ROWS = 50_000;
 /** Matches the corpus seeder: a stalled remote COPY only loses this much. */
@@ -74,7 +79,7 @@ const LOAD_QUERY_TIMEOUT_MS = 90_000;
 /** 0 = disabled. The join scans 2.2M rows and hashes every law body. */
 const JOIN_STATEMENT_TIMEOUT_MS = 0;
 
-const COPY_SQL = `COPY ${STAGING_TABLE} (${FINES_STAGING_COLUMNS.map(
+const COPY_SQL = `COPY ${STAGING_TABLE} (row_no, ${FINES_STAGING_COLUMNS.map(
   (c) => `"${c}"`,
 ).join(", ")}) FROM STDIN`;
 
@@ -91,7 +96,7 @@ const IDENTITY_COLUMNS = [
 
 const CREATE_STAGING_SQL = `
 CREATE UNLOGGED TABLE IF NOT EXISTS ${STAGING_TABLE} (
-  row_no                      BIGSERIAL PRIMARY KEY,
+  row_no                      INTEGER PRIMARY KEY CHECK (row_no > 0),
   state                       TEXT NOT NULL,
   source_jurisdiction_type    TEXT NOT NULL,
   city                        TEXT NOT NULL,
@@ -353,24 +358,6 @@ async function withTimeout<T>(
   }
 }
 
-async function connectLoader(connectionString: string): Promise<Client> {
-  const c = new Client({
-    connectionString,
-    keepAlive: true,
-    keepAliveInitialDelayMillis: 10_000,
-    connectionTimeoutMillis: 30_000,
-    statement_timeout: LOAD_STATEMENT_TIMEOUT_MS,
-  });
-  // Destroying the socket on a COPY stall emits Client 'error'; without a
-  // listener Node treats it as uncaught and kills the process before retry.
-  c.on("error", (err) => {
-    console.warn(`  pg client error (will reconnect if retrying): ${err.message}`);
-  });
-  await c.connect();
-  await c.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
-  await c.query("SET idle_in_transaction_session_timeout = 120000");
-  return c;
-}
 
 /** COPY one batch on the current connection, with a socket-level watchdog. */
 async function copyBatch(client: Client, lines: string[]): Promise<void> {
@@ -396,33 +383,55 @@ async function copyBatch(client: Client, lines: string[]): Promise<void> {
 // --- Build -----------------------------------------------------------------
 
 export interface BuildFinesOptions {
-  /** Overrides the env-derived URL for the dedicated COPY connection. */
+  /** Overrides the env-derived URL for the standalone lock-owning session. */
   connectionString?: string;
   /** Discard any staging rows left by an earlier run instead of resuming. */
   restage?: boolean;
+  /** Local source override for fixture tests; never supplied by the CLI. */
+  file?: string;
 }
 
 /**
- * Load the supplement into `law_fines`, using `client` for DDL and the final
- * attach. The COPY phase runs on its own connection so it can be torn down and
- * reconnected on a stall without disturbing the caller's client.
+ * All writes use the lock-owning session. The caller closes it on failure and
+ * retries the build on a new session, which reconciles committed progress.
  */
 export async function buildFinesTable(
   client: Client,
   opts: BuildFinesOptions = {},
 ): Promise<FinesBuildStats> {
-  const file = await ensureParquet();
+  await acquireWriter(client);
+  const file = opts.file ?? await ensureParquet();
+  const fingerprint = await fingerprintFile(file);
 
   await client.query(CREATE_STAGING_SQL);
   if (opts.restage) {
     console.log("  --restage: clearing staged rows");
-    await client.query(`TRUNCATE TABLE ${STAGING_TABLE} RESTART IDENTITY`);
+    await client.query("BEGIN");
+    try {
+      await client.query(`TRUNCATE TABLE ${STAGING_TABLE}`);
+      await client.query("DELETE FROM import_progress WHERE source = $1", [SOURCE]);
+      await client.query("DROP TABLE IF EXISTS law_fines_import");
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    }
+  } else {
+    const legacy = await client.query<{ present: boolean }>(
+      "SELECT to_regclass('law_fines_import') IS NOT NULL AS present",
+    );
+    if (legacy.rows[0].present) {
+      throw new ImportStateError("Legacy fines staging cannot be verified; use --restage.");
+    }
   }
 
-  const staged0 = await client.query<{ n: string }>(
-    `SELECT count(*)::bigint AS n FROM ${STAGING_TABLE}`,
+  const alreadyStaged = await getProgress(client, SOURCE, fingerprint);
+  const staged0 = await client.query<{ n: number; last: number }>(
+    `SELECT count(*)::int AS n, COALESCE(max(row_no), 0)::int AS last FROM ${STAGING_TABLE}`,
   );
-  const alreadyStaged = Number(staged0.rows[0]?.n ?? 0);
+  if (staged0.rows[0].n !== alreadyStaged || staged0.rows[0].last !== alreadyStaged) {
+    throw new ImportStateError("Fines staging was lost or changed; use --restage.");
+  }
   if (alreadyStaged > 0) {
     console.log(
       `  resuming — ${fmt(alreadyStaged)} model rows already staged`,
@@ -430,8 +439,7 @@ export async function buildFinesTable(
   }
 
   // --- 1. Stream parquet -> staging ---------------------------------------
-  const connectionString = opts.connectionString ?? connectionStringFromEnv();
-  let loader = await connectLoader(connectionString);
+  await client.query(`SET statement_timeout = ${LOAD_STATEMENT_TIMEOUT_MS}`);
   const buffer = await asyncBufferFromFile(file);
   const metadata = await parquetMetadataAsync(buffer);
   const parquetRows = Number(metadata.num_rows);
@@ -448,36 +456,14 @@ export async function buildFinesTable(
   const flush = async (): Promise<void> => {
     if (batch.length === 0) return;
     const size = batch.length;
-    for (let attempt = 1; ; attempt++) {
-      try {
-        await loader.query("BEGIN");
-        try {
-          await copyBatch(loader, batch);
-          await loader.query("COMMIT");
-        } catch (err) {
-          try {
-            await loader.query("ROLLBACK");
-          } catch {
-            /* connection likely gone */
-          }
-          throw err;
-        }
-        break;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `  COPY batch attempt ${attempt}/${MAX_BATCH_ATTEMPTS} failed: ${msg}`,
-        );
-        if (attempt >= MAX_BATCH_ATTEMPTS) throw err;
-        try {
-          await loader.end();
-        } catch {
-          /* ignore */
-        }
-        await sleep(RETRY_BACKOFF_MS * attempt);
-        console.log("  reconnecting to retry the batch…");
-        loader = await connectLoader(connectionString);
-      }
+    await client.query("BEGIN");
+    try {
+      await copyBatch(client, batch);
+      await saveProgress(client, SOURCE, fingerprint, staged + size);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
     }
     staged += size;
     batch = [];
@@ -486,33 +472,26 @@ export async function buildFinesTable(
     }
   };
 
-  try {
-    for (let start = 0; start < parquetRows; start += READ_CHUNK_ROWS) {
-      const rows = (await parquetReadObjects({
-        file: buffer,
-        metadata,
-        rowStart: start,
-        rowEnd: Math.min(start + READ_CHUNK_ROWS, parquetRows),
-      })) as RawFineRow[];
+  for (let start = 0; start < parquetRows; start += READ_CHUNK_ROWS) {
+    const rows = (await parquetReadObjects({
+      file: buffer,
+      metadata,
+      rowStart: start,
+      rowEnd: Math.min(start + READ_CHUNK_ROWS, parquetRows),
+    })) as RawFineRow[];
 
-      for (const row of rows) {
-        if (!isModelAnnotated(row)) continue;
-        modelRowsSeen++;
-        // Resume: rows already committed by an earlier run are a prefix of the
-        // model-row sequence, which is deterministic for a given parquet.
-        if (modelRowsSeen <= alreadyStaged) continue;
-        batch.push(encodeStagingRow(row));
-        if (batch.length >= COPY_BATCH_SIZE) await flush();
-      }
-    }
-    await flush();
-  } finally {
-    try {
-      await loader.end();
-    } catch {
-      /* ignore */
+    for (const row of rows) {
+      if (!isModelAnnotated(row)) continue;
+      modelRowsSeen++;
+      // Resume: rows already committed by an earlier run are a prefix of the
+      // model-row sequence, which is deterministic for a given parquet.
+      if (modelRowsSeen <= alreadyStaged) continue;
+      batch.push(`${modelRowsSeen}\t${encodeStagingRow(row)}`);
+      if (batch.length >= COPY_BATCH_SIZE) await flush();
     }
   }
+  await flush();
+  if (modelRowsSeen !== staged) throw new ImportStateError("Fines source prefix is incomplete.");
 
   // --- 2. Dedupe + attach --------------------------------------------------
   console.log("  attaching staged annotations to laws…");
@@ -532,8 +511,7 @@ export async function buildFinesTable(
   await client.query("BEGIN");
   try {
     // law_fines and place_penalties are both fully derived from the parquet +
-    // laws, so rebuilding them wholesale is safe. Inside the transaction,
-    // readers keep seeing the previous rows until COMMIT.
+    // laws. TRUNCATE is transactional but blocks readers until COMMIT.
     await client.query("TRUNCATE TABLE law_fines RESTART IDENTITY");
     const inserted = await client.query(ATTACH_SQL);
     matched = inserted.rowCount ?? 0;
@@ -561,7 +539,15 @@ export async function buildFinesTable(
   `);
 
   // --- 4. Drop staging -----------------------------------------------------
-  await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`);
+  await client.query("BEGIN");
+  try {
+    await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`);
+    await client.query("DELETE FROM import_progress WHERE source = $1", [SOURCE]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  }
 
   return {
     parquetRows,
@@ -580,14 +566,24 @@ export async function runFinesBuild(
 ): Promise<FinesBuildStats> {
   loadEnv();
   const connectionString = opts.connectionString ?? connectionStringFromEnv();
-  const client = new Client({ connectionString, connectionTimeoutMillis: 30_000 });
-  client.on("error", (err) => {
-    console.warn(`  pg client error: ${err.message}`);
-  });
-  await client.connect();
+  let client = await connectWriter(connectionString);
   const startedAt = Date.now();
   try {
-    const stats = await buildFinesTable(client, { ...opts, connectionString });
+    let stats: FinesBuildStats | undefined;
+    for (let attempt = 1; attempt <= MAX_BATCH_ATTEMPTS; attempt++) {
+      try {
+        stats = await buildFinesTable(client, {
+          ...opts, restage: attempt === 1 && opts.restage,
+        });
+        break;
+      } catch (error) {
+        if (error instanceof ImportStateError || attempt === MAX_BATCH_ATTEMPTS) throw error;
+        await client.end().catch(() => {});
+        await sleep(RETRY_BACKOFF_MS * attempt);
+        client = await connectWriter(connectionString);
+      }
+    }
+    if (!stats) throw new Error("Fines build did not complete.");
     const elapsed = Math.round((Date.now() - startedAt) / 1000);
     const rate = stats.distinctKeys
       ? ((stats.matched / stats.distinctKeys) * 100).toFixed(1)

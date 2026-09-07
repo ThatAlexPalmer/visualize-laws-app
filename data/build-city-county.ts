@@ -29,6 +29,7 @@ import {
   type CityCountyMatch,
 } from "./cityCounty";
 import { prettySlug } from "./slugs";
+import { acquireWriter, connectWriter } from "./importProgress";
 
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PLACE_CACHE = resolve(CACHE_DIR, "national_place2020.txt");
@@ -152,6 +153,8 @@ function summarize(matches: CityCountyMatch[]): {
 export async function buildCityCountyTables(
   client: Client,
 ): Promise<CityCountyBuildStats> {
+  await acquireWriter(client);
+  await client.query("SET statement_timeout = 0");
   const placePath = await ensureCached(CENSUS_PLACE_URL, PLACE_CACHE);
   const countyPath = await ensureCached(CENSUS_COUNTY_URL, COUNTY_CACHE);
   const places = parsePlaceFile(readLatin1(placePath));
@@ -344,8 +347,7 @@ export async function runCityCountyBuild(): Promise<CityCountyBuildStats> {
   if (!connectionString) {
     throw new Error("DIRECT_URL / DATABASE_URL is not set (check your .env.local)");
   }
-  const client = new Client({ connectionString });
-  await client.connect();
+  const client = await connectWriter(connectionString);
   try {
     const stats = await buildCityCountyTables(client);
     console.log(
