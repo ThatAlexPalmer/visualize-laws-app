@@ -1,7 +1,7 @@
 import { feature } from "topojson-client";
 import type { GeoPermissibleObjects } from "d3-geo";
 
-import { isCountyKindSlug, normalizePlaceKey } from "@/lib/types";
+import { isCountyKindSlug, nativeCountyToFill, normalizePlaceKey } from "@/lib/types";
 import type { CountyFill, JurisdictionAgg } from "@/lib/types";
 import { fipsToUsps } from "./fips";
 
@@ -89,11 +89,14 @@ export function countiesForState(
  * lower FIPS — LOCUS `_county` slugs mean the county.
  */
 export function joinCountySlugs(
-  features: CountyFeatureEntry[],
-  locusCounties: JurisdictionAgg[],
+  features: { fips: string; name: string }[],
+  rows: { county: string | null; name: string }[],
 ): Map<string, string> {
-  const byKey = new Map<string, CountyFeatureEntry>();
-  const remember = (key: string, f: CountyFeatureEntry): void => {
+  const byKey = new Map<string, { fips: string; name: string }>();
+  const remember = (
+    key: string,
+    f: { fips: string; name: string },
+  ): void => {
     if (!key) return;
     const existing = byKey.get(key);
     if (!existing || f.fips < existing.fips) byKey.set(key, f);
@@ -107,7 +110,7 @@ export function joinCountySlugs(
 
   // County-type slugs first so fairfax_county wins the Fairfax polygon over
   // fairfax_city when both normalize to the same key.
-  const ordered = [...locusCounties].sort((a, b) => {
+  const ordered = [...rows].sort((a, b) => {
     const aCounty = isCountyKindSlug(a.county) ? 0 : 1;
     const bCounty = isCountyKindSlug(b.county) ? 0 : 1;
     return aCounty - bCounty;
@@ -139,7 +142,7 @@ export interface CountyFillPaint {
  * fill leftover FIPS.
  */
 export function joinCountyFills(
-  features: CountyFeatureEntry[],
+  features: { fips: string; name: string }[],
   fills: CountyFill[],
 ): Map<string, CountyFillPaint> {
   const out = new Map<string, CountyFillPaint>();
@@ -157,20 +160,9 @@ export function joinCountyFills(
     });
   }
 
-  const unmatchedNatives: JurisdictionAgg[] = natives
-    .filter((row) => !row.fips || !out.has(row.fips))
-    .map((row) => ({
-      level: "county",
-      state: row.state,
-      county: row.county,
-      name: row.name,
-      lawCount: row.lawCount,
-      substantiveCount: row.substantiveCount,
-      avgOpacity: row.avgOpacity,
-      avgEnforcementDiscretion: row.avgEnforcementDiscretion,
-      avgPaternalism: row.avgPaternalism,
-      avgProblemSalience: row.avgProblemSalience,
-    }));
+  const unmatchedNatives = natives.filter(
+    (row) => !row.fips || !out.has(row.fips),
+  );
   const slugMap = joinCountySlugs(features, unmatchedNatives);
   for (const [fips, slug] of slugMap) {
     if (out.has(fips)) continue;
@@ -194,4 +186,16 @@ export function joinCountyFills(
     });
   }
   return out;
+}
+
+/** Stored county fills when present; otherwise native county rows as fills. */
+export function resolveFillRows(
+  detail: {
+    countyFills?: CountyFill[] | null;
+    counties?: JurisdictionAgg[] | null;
+  } | null | undefined,
+): CountyFill[] {
+  const stored = detail?.countyFills;
+  if (stored && stored.length > 0) return stored;
+  return (detail?.counties ?? []).map(nativeCountyToFill);
 }

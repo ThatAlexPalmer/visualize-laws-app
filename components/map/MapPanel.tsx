@@ -1,331 +1,75 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import styled from "styled-components";
-import { motion, useAnimationControls } from "framer-motion";
-import { geoPath } from "d3-geo";
+import { useAnimationControls } from "framer-motion";
 
 import { useExplorer } from "@/lib/store";
 import { theme } from "@/lib/theme";
-import {
-  cityStandInLabel,
-  fineHoverLine,
-  matchCountySlug,
-  nativeCountyToFill,
-  normalizePlaceKey,
-  prettySlug,
-  stateName,
-  type Axis,
-  type CountyFill,
-  type JurisdictionAgg,
-  type PenaltyStats,
-} from "@/lib/types";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
-import { stateFeatures, usProjection } from "./geo";
-import { fipsToUsps } from "./fips";
-import {
-  joinCountyFills,
-  loadCountyFeatures,
-  type CountyFeatureEntry,
-} from "./counties";
 import {
   US_BBOX,
   ZOOM_MS,
-  boundsToBBox,
   cameraForBBox,
   easeCamera,
   invertCamera,
   lerpCamera,
   type Camera,
-  type WorldBBox,
 } from "./camera";
 import {
-  computeLayerDomain,
-  layerValue,
-  normalize,
-  rampColorForLayer,
-  type Domain,
-} from "./color";
+  joinCountyFills,
+  loadCountyFeatures,
+  type CountyFeatureEntry,
+  type CountyFillPaint,
+} from "./counties";
 import {
-  COUNTY_FILL_MIN,
-  countyScaleReady,
-  formatSparseCountyCopy,
-} from "./sparseCounties";
+  buildCountyPaths,
+  buildStatePaths,
+  hoverStrokeFor,
+  paintMapBase,
+  paintMapOverlay,
+  pickAt,
+  sameHover,
+  type CountyPathEntry,
+  type Hovered,
+  type Size,
+  type StatePathEntry,
+} from "./draw";
+import { BaseCanvas, MapHud, MapStage, OverlayCanvas } from "./MapChrome";
+import { useMapView } from "./MapViewProvider";
 
-interface StatePathEntry {
-  usps: string | null;
-  path: Path2D;
-  bbox: WorldBBox;
-}
-
-interface CountyPathEntry {
-  fips: string;
-  stateFips: string;
-  usps: string | null;
-  name: string;
-  path: Path2D;
-  bbox: WorldBBox;
-}
-
-interface Hovered {
-  kind: "state" | "county";
-  usps: string | null;
-  countySlug?: string | null;
-  countyName?: string;
-  fillSource?: CountyFill["source"] | null;
-  sourcePlace?: string | null;
-}
-
-function sameHover(a: Hovered | null, b: Hovered | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.kind === b.kind &&
-    a.usps === b.usps &&
-    a.countySlug === b.countySlug &&
-    a.countyName === b.countyName &&
-    a.fillSource === b.fillSource &&
-    a.sourcePlace === b.sourcePlace
-  );
-}
-
-interface Size {
-  w: number;
-  h: number;
-  dpr: number;
-}
-
-// Ignore layout reflows smaller than this (CSS px) before re-fitting the
-// projection — defense-in-depth so a scrollbar/sub-pixel jitter can't shift the
-// map. Genuine resizes (>= threshold) and any devicePixelRatio change still fit.
+// Ignore layout reflows smaller than this (CSS px) before re-fitting.
 const SIZE_REFIT_THRESHOLD_PX = 8;
 
-const Wrap = styled.div`
-  position: relative;
-  width: 100%;
-  height: clamp(360px, 44vh, 520px);
-  min-height: 360px;
-  /* The map is a flex child of the scrolling <Main> column. Without this it
-     keeps the default flex-shrink: 1, so when selecting a state grows the
-     panels below (results + jurisdiction) the flexbox shrinks this box between
-     56vh and 420px to fit. That height change fires the ResizeObserver, re-fits
-     the projection, and clears the base canvas — the flicker/jump on click.
-     Locking flex-shrink pins the map height; the panels overflow into <Main>'s
-     scroll area instead, so a selection never resizes the canvas. */
-  flex-shrink: 0;
-  overflow: hidden;
-  background: ${({ theme }) => theme.colors.bg};
-  z-index: ${({ theme }) => theme.z.map};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    height: min(52dvh, 480px);
-    min-height: 380px;
-  }
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    min-height: 340px;
-  }
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) and (max-height: 500px) {
-    height: 300px;
-    min-height: 300px;
-  }
-`;
-
-const RetryHint = styled(motion.button)`
-  position: absolute;
-  top: ${({ theme }) => theme.space(4)};
-  right: ${({ theme }) => theme.space(4)};
-  z-index: 4;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g60};
-  cursor: pointer;
-
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-  }
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    display: none;
-  }
-`;
-
-const EMPTY_ROWS: JurisdictionAgg[] = [];
-
-// Base layer: opaque state fills + base separators. Repainted ONLY when the
-// size / axis / domain / aggregate data change — never on hover or selection.
-const BaseCanvas = styled(motion.canvas)`
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-`;
-
-// Overlay layer: transparent canvas stacked directly on top. Draws only the
-// hover highlight + active-selection stroke, so pointer activity repaints just
-// this (cheap) layer while the base fills are left untouched.
-const OverlayCanvas = styled.canvas`
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-`;
-
-/** Per-axis tinted hover stroke colors. */
-const AXIS_HOVER_STROKE: Record<Axis, string> = {
-  opacity: "rgba(229,62,62,0.72)",
-  enforcementDiscretion: "rgba(59,130,246,0.72)",
-  paternalism: "rgba(249,115,22,0.72)",
-  problemSalience: "rgba(139,92,246,0.72)",
-};
-
-/** Matches theme.colors.penalty at the same 0.72 alpha as the axis strokes. */
-const PENALTY_HOVER_STROKE = "rgba(16,185,129,0.72)";
-
-/** State name displayed on top-left of the map canvas. */
-const TitleStack = styled.div`
-  position: absolute;
-  top: ${({ theme }) => theme.space(4)};
-  left: ${({ theme }) => theme.space(4)};
-  z-index: 3;
-  max-width: min(420px, calc(100% - 48px));
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(1.5)};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    top: ${({ theme }) => theme.space(3)};
-    left: ${({ theme }) => theme.space(3)};
-  }
-`;
-
-const StateLabel = styled.div`
-  min-height: 1.15em;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 22px;
-  font-weight: ${({ theme }) => theme.fontWeights.semibold};
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.fg};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    font-size: ${({ theme }) => theme.fontSize.lg};
-  }
-`;
-
-const SparseLine = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.04em;
-  line-height: 1.4;
-  text-transform: none;
-  color: ${({ theme }) => theme.colors.g68};
-`;
-
-const SparseChips = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: ${({ theme }) => theme.space(1)};
-  pointer-events: auto;
-`;
-
-const SparseChip = styled.button<{ $active: boolean }>`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  border: 1px solid
-    ${({ $active, theme }) => ($active ? theme.colors.g60 : theme.colors.g20)};
-  background: ${({ $active, theme }) =>
-    $active ? theme.colors.g12 : "transparent"};
-  border-radius: ${({ theme }) => theme.radius.pill};
-  padding: ${({ theme }) => theme.space(0.75)} ${({ theme }) => theme.space(1.5)};
-  color: ${({ $active, theme }) =>
-    $active ? theme.colors.fg : theme.colors.g90};
-  cursor: pointer;
-
-  &:hover {
-    color: ${({ theme }) => theme.colors.fg};
-    border-color: ${({ theme }) => theme.colors.g60};
-  }
-`;
-
-const Hint = styled(motion.div)`
-  position: absolute;
-  top: ${({ theme }) => theme.space(4)};
-  right: ${({ theme }) => theme.space(4)};
-  z-index: 3;
-  pointer-events: none;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.xs};
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: ${({ theme }) => theme.colors.g60};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.xs}) {
-    display: none;
-  }
-`;
-
-/** Size a canvas backing store to its DPR-scaled pixel box (clears on change). */
-function syncCanvasSize(canvas: HTMLCanvasElement, size: Size): void {
-  const bw = Math.round(size.w * size.dpr);
-  const bh = Math.round(size.h * size.dpr);
-  if (canvas.width !== bw) canvas.width = bw;
-  if (canvas.height !== bh) canvas.height = bh;
-}
-
-function beginWorldFrame(
-  ctx: CanvasRenderingContext2D,
-  size: Size,
-  cam: Camera,
-): void {
-  const { dpr } = size;
-  ctx.setTransform(dpr * cam.k, 0, 0, dpr * cam.k, dpr * cam.tx, dpr * cam.ty);
-}
-
-export function MapPanel({
-  onCountiesBaked,
-}: {
-  onCountiesBaked?: (baked: boolean) => void;
-}) {
+export function MapPanel() {
   const { state, dispatch } = useExplorer();
-  const { data, status, retry, stateDetail, stateDetailStatus } =
-    useJurisdictions();
+  const { status, stateDetail, stateDetailStatus } = useJurisdictions();
+  const {
+    countiesBaked,
+    setCountiesBaked,
+    fillRows,
+    fillByKey,
+    sparseCounties,
+    domain,
+    selectedCounty,
+    aggByUsps,
+    rows,
+    countiesInFlight,
+    mapAggregatesInFlight,
+  } = useMapView();
+
   const axis = state.axis;
   const layer = state.layer;
-  const hoverStroke =
-    layer === "penalties" ? PENALTY_HOVER_STROKE : AXIS_HOVER_STROKE[axis];
+  const hoverStroke = hoverStrokeFor(layer, axis);
   const selectedState = state.selectedState;
   const atlasCountyName = state.atlasCountyName;
-  const selectedCountyRaw = state.filters.county ?? null;
   const selectedCity = state.filters.city ?? null;
-  const rows = data?.rows ?? EMPTY_ROWS;
-  const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
-  const fillRows = useMemo<CountyFill[]>(() => {
-    const stored = stateDetail?.countyFills;
-    if (stored && stored.length > 0) return stored;
-    return countyRows.map(nativeCountyToFill);
-  }, [stateDetail?.countyFills, countyRows]);
-  const selectedCounty = selectedCountyRaw
-    ? (matchCountySlug(countyRows, selectedCountyRaw) ?? selectedCountyRaw)
-    : null;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const statePathsRef = useRef<StatePathEntry[]>([]);
   const countyPathsRef = useRef<CountyPathEntry[]>([]);
-  const pathBakeCountRef = useRef(0);
   const cameraRef = useRef<Camera>({ k: 1, tx: 0, ty: 0 });
   const tweenRef = useRef<{
     from: Camera;
@@ -340,133 +84,41 @@ export function MapPanel({
   const drawOverlayRef = useRef<() => void>(() => {});
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
+  const camReadyRef = useRef(false);
+  const firstAxisRun = useRef(true);
 
   const [size, setSize] = useState<Size | null>(null);
   const [hovered, setHovered] = useState<Hovered | null>(null);
-  const [countiesBaked, setCountiesBaked] = useState(false);
-
-  useEffect(() => {
-    onCountiesBaked?.(countiesBaked);
-  }, [countiesBaked, onCountiesBaked]);
-
   const controls = useAnimationControls();
-  const firstAxisRun = useRef(true);
-  // All map, rail, and filter consumers share the provider's response.
-  const aggByUsps = useMemo(() => {
-    const m = new Map<string, JurisdictionAgg>();
-    for (const r of rows) if (r.state) m.set(r.state.toLowerCase(), r);
-    return m;
-  }, [rows]);
-
-  const fillByKey = useMemo(() => {
-    const m = new Map<string, CountyFill>();
-    for (const r of fillRows) m.set(`${r.source}:${r.sourcePlace}`, r);
-    return m;
-  }, [fillRows]);
 
   const paintByFips = useMemo(() => {
-    if (!selectedState || !countiesBaked) return new Map();
-    const inState = countyPathsRef.current.filter((c) => c.usps === selectedState);
-    const asFeatures: CountyFeatureEntry[] = inState.map((c) => ({
-      fips: c.fips,
-      stateFips: c.stateFips,
-      name: c.name,
-      geo: c.path as unknown as CountyFeatureEntry["geo"],
-    }));
-    return joinCountyFills(asFeatures, fillRows);
+    if (!selectedState || !countiesBaked) {
+      return new Map<string, CountyFillPaint>();
+    }
+    const inState = countyPathsRef.current.filter(
+      (c) => c.usps === selectedState,
+    );
+    return joinCountyFills(
+      inState.map((c) => ({ fips: c.fips, name: c.name })),
+      fillRows,
+    );
   }, [selectedState, countiesBaked, fillRows]);
-
-  const countyViewReady = countyScaleReady({
-    selectedState,
-    stateDetail,
-    countiesBaked,
-  });
-
-  const scoredCounties = useMemo(
-    () => fillRows.filter((r) => r.sourcePlace),
-    [fillRows],
-  );
-  const scoredCountyN = scoredCounties.length;
-  // US aggregates still in flight — do not present the faint mesh as finished.
-  const mapAggregatesInFlight = status === "loading" && rows.length === 0;
-  // Atlas and/or county rows still in flight. Sparse copy waits until settle.
-  const countiesInFlight =
-    Boolean(selectedState) &&
-    stateDetailStatus !== "error" &&
-    (!countiesBaked || !stateDetail || stateDetailStatus === "loading");
-  const sparseCounties =
-    !countiesInFlight &&
-    Boolean(selectedState && stateDetail && stateDetailStatus === "ready") &&
-    scoredCountyN < COUNTY_FILL_MIN;
-  const loadingLine =
-    countiesInFlight && selectedState
-      ? `Loading counties in ${stateName(selectedState)}.`
-      : mapAggregatesInFlight
-        ? "Loading the map."
-        : null;
-  const sparseCopy = useMemo(() => {
-    if (!sparseCounties || !selectedState) return null;
-    const names = scoredCounties
-      .map((r) =>
-        r.source === "city"
-          ? cityStandInLabel(r.name, r.sourcePlace)
-          : r.name,
-      )
-      .sort((a, b) => a.localeCompare(b));
-    return formatSparseCountyCopy(stateName(selectedState), names);
-  }, [sparseCounties, selectedState, scoredCounties]);
-
-  // State view: min/max of state averages. Zoomed county view: min/max of
-  // in-state county averages (no national bounds — same as the US map).
-  const domain: Domain | null = useMemo(
-    () =>
-      computeLayerDomain(
-        layer,
-        axis,
-        countyViewReady && !sparseCounties ? fillRows : rows,
-      ),
-      [layer, axis, countyViewReady, sparseCounties, fillRows, rows],
-  );
 
   const bakeStatePaths = useCallback((): void => {
     if (statePathsRef.current.length > 0) return;
-    const gen = geoPath(usProjection);
-    const baked: StatePathEntry[] = [];
-    for (const f of stateFeatures) {
-      const d = gen(f.geo);
-      if (!d) continue;
-      baked.push({
-        usps: f.usps,
-        path: new Path2D(d),
-        bbox: boundsToBBox(gen.bounds(f.geo)),
-      });
-    }
-    statePathsRef.current = baked;
-    pathBakeCountRef.current += 1;
+    statePathsRef.current = buildStatePaths();
   }, []);
 
-  const bakeCountyPaths = useCallback((features: CountyFeatureEntry[]): void => {
-    if (countyPathsRef.current.length > 0) return;
-    const gen = geoPath(usProjection);
-    const baked: CountyPathEntry[] = [];
-    for (const f of features) {
-      const d = gen(f.geo);
-      if (!d) continue;
-      baked.push({
-        fips: f.fips,
-        stateFips: f.stateFips,
-        usps: fipsToUsps[f.stateFips] ?? null,
-        name: f.name,
-        path: new Path2D(d),
-        bbox: boundsToBBox(gen.bounds(f.geo)),
-      });
-    }
-    countyPathsRef.current = baked;
-    pathBakeCountRef.current += 1;
-    setCountiesBaked(true);
-  }, []);
+  const bakeCountyPaths = useCallback(
+    (features: CountyFeatureEntry[]): void => {
+      if (countyPathsRef.current.length === 0) {
+        countyPathsRef.current = buildCountyPaths(features);
+      }
+      setCountiesBaked(true);
+    },
+    [setCountiesBaked],
+  );
 
-  // --- size + devicePixelRatio via ResizeObserver ---------------------------
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -477,8 +129,6 @@ export function MapPanel({
       const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
       setSize((prev) => {
         if (!prev) return { w, h, dpr };
-        // Re-fit on any DPR change (crispness); otherwise only when the box
-        // moved by >= the threshold, so tiny reflows never shift the map.
         const moved =
           Math.abs(w - prev.w) >= SIZE_REFIT_THRESHOLD_PX ||
           Math.abs(h - prev.h) >= SIZE_REFIT_THRESHOLD_PX;
@@ -491,76 +141,26 @@ export function MapPanel({
     return () => ro.disconnect();
   }, []);
 
-  // --- base layer: opaque fills + separators --------------------------------
-  // Deps deliberately EXCLUDE hovered / selectedState, so pointer activity can
-  // never trigger a base repaint — this is what eliminates the hover flicker.
   const drawBase = useCallback(() => {
     const canvas = baseRef.current;
     if (!canvas || !size) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    syncCanvasSize(canvas, size);
-    const cam = cameraRef.current;
-    const { w, h, dpr } = size;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = theme.colors.bg;
-    ctx.fillRect(0, 0, w, h);
-    beginWorldFrame(ctx, size, cam);
-
-    const lw = 1 / cam.k;
-    const focus = focusStateRef.current;
-
-    for (const e of statePathsRef.current) {
-      const agg = e.usps ? aggByUsps.get(e.usps) : undefined;
-      // Null value = not annotated under this layer; leave it unpainted rather
-      // than bottoming out the ramp, which would read as a real low score.
-      const value = agg ? layerValue(agg, layer, axis) : null;
-      ctx.fillStyle =
-        value !== null && domain
-          ? rampColorForLayer(normalize(value, domain), layer, axis)
-          : mapAggregatesInFlight
-            ? "rgba(255,255,255,0.04)"
-            : "rgba(255,255,255,0.015)";
-      ctx.fill(e.path);
-    }
-    ctx.lineJoin = "round";
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = "rgba(255,255,255,0.32)";
-    for (const e of statePathsRef.current) ctx.stroke(e.path);
-
-    // In-flight state view is a flat wash + loading line, not a county mesh.
-    if (focus && !countiesInFlight) {
-      const focusedState = statePathsRef.current.find((e) => e.usps === focus);
-      // Cover the focused state's choropleth so unscored counties stay unpainted
-      // (a 1.5% white wash over the state fill still reads as "colored").
-      if (focusedState) {
-        ctx.fillStyle = theme.colors.bg;
-        ctx.fill(focusedState.path);
-      }
-      const inState = countyPathsRef.current.filter((c) => c.usps === focus);
-      if (!sparseCounties) {
-        for (const e of inState) {
-          const paint = paintByFips.get(e.fips);
-          const agg = paint
-            ? fillByKey.get(`${paint.source}:${paint.sourcePlace}`)
-            : undefined;
-          if (!agg || !domain) continue;
-          const value = layerValue(agg, layer, axis);
-          if (value === null) continue;
-          ctx.fillStyle = rampColorForLayer(
-            normalize(value, domain),
-            layer,
-            axis,
-          );
-          ctx.fill(e.path);
-        }
-      }
-      ctx.lineWidth = lw;
-      ctx.strokeStyle = "rgba(255,255,255,0.32)";
-      for (const e of inState) ctx.stroke(e.path);
-    }
+    paintMapBase({
+      canvas,
+      size,
+      cam: cameraRef.current,
+      focus: focusStateRef.current,
+      statePaths: statePathsRef.current,
+      countyPaths: countyPathsRef.current,
+      aggByUsps,
+      fillByKey,
+      paintByFips,
+      domain,
+      axis,
+      layer,
+      sparseCounties,
+      mapAggregatesInFlight,
+      countiesInFlight,
+    });
   }, [
     size,
     aggByUsps,
@@ -574,101 +174,24 @@ export function MapPanel({
     countiesInFlight,
   ]);
 
-  // --- overlay layer: hover highlight + active selection --------------------
-  // Transparent; cleared and repainted on its own. Only the hovered + selected
-  // state outlines are stroked, so a hover change is a couple of strokes.
   const drawOverlay = useCallback(() => {
     const canvas = overlayRef.current;
     if (!canvas || !size) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    syncCanvasSize(canvas, size);
-    const cam = cameraRef.current;
-    const { w, h, dpr } = size;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    beginWorldFrame(ctx, size, cam);
-    ctx.lineJoin = "round";
-    const focus = focusStateRef.current;
-
-    const hoverIsSelection =
-      hovered?.kind === "county"
-        ? Boolean(
-            (hovered.fillSource === "city" &&
-              hovered.sourcePlace &&
-              hovered.sourcePlace === selectedCity) ||
-              (hovered.countySlug && hovered.countySlug === selectedCounty),
-          )
-        : Boolean(
-            hovered?.usps && hovered.usps === selectedState && !selectedCounty,
-          );
-    if (hovered && !hoverIsSelection) {
-      if (hovered.kind === "county" && focus) {
-        const hoverEntry = countyPathsRef.current.find((e) => {
-          if (e.usps !== focus) return false;
-          const paint = paintByFips.get(e.fips);
-          if (hovered.fillSource === "city" && hovered.sourcePlace) {
-            return (
-              paint?.source === "city" &&
-              paint.sourcePlace === hovered.sourcePlace
-            );
-          }
-          if (hovered.countySlug) {
-            return paint?.countySlug === hovered.countySlug;
-          }
-          return e.name === hovered.countyName;
-        });
-        if (hoverEntry) {
-          ctx.lineWidth = 1.5 / cam.k;
-          ctx.strokeStyle = hoverStroke;
-          ctx.stroke(hoverEntry.path);
-        }
-      } else if (hovered.kind === "state") {
-        const hoverEntry = statePathsRef.current.find(
-          (e) => e.usps === hovered.usps,
-        );
-        if (hoverEntry) {
-          ctx.lineWidth = 1.5 / cam.k;
-          ctx.strokeStyle = hoverStroke;
-          ctx.stroke(hoverEntry.path);
-        }
-      }
-    }
-
-    if ((selectedCounty || selectedCity || atlasCountyName) && focus) {
-      const se = countyPathsRef.current.find((e) => {
-        if (e.usps !== focus) return false;
-        const paint = paintByFips.get(e.fips);
-        if (selectedCounty && paint?.countySlug === selectedCounty) return true;
-        if (
-          selectedCity &&
-          paint?.source === "city" &&
-          paint.sourcePlace === selectedCity
-        ) {
-          return true;
-        }
-        if (
-          atlasCountyName &&
-          normalizePlaceKey(e.name) === normalizePlaceKey(atlasCountyName)
-        ) {
-          return true;
-        }
-        return false;
-      });
-      if (se) {
-        ctx.lineWidth = 2 / cam.k;
-        ctx.strokeStyle = theme.colors.fg;
-        ctx.stroke(se.path);
-      }
-    } else if (selectedState && !focus) {
-      const se = statePathsRef.current.find((e) => e.usps === selectedState);
-      if (se) {
-        ctx.lineWidth = 2 / cam.k;
-        ctx.strokeStyle = theme.colors.fg;
-        ctx.stroke(se.path);
-      }
-    }
+    paintMapOverlay({
+      canvas,
+      size,
+      cam: cameraRef.current,
+      focus: focusStateRef.current,
+      hovered,
+      selectedState,
+      selectedCounty,
+      selectedCity,
+      atlasCountyName,
+      hoverStroke,
+      statePaths: statePathsRef.current,
+      countyPaths: countyPathsRef.current,
+      paintByFips,
+    });
   }, [
     size,
     hovered,
@@ -764,8 +287,6 @@ export function MapPanel({
     };
   }, [selectedState, countiesBaked, bakeCountyPaths]);
 
-  const camReadyRef = useRef(false);
-
   useEffect(() => {
     wantedStateRef.current = selectedState;
     if (!size) return;
@@ -826,8 +347,6 @@ export function MapPanel({
     drawOverlay();
   }, [drawOverlay]);
 
-  // framer-motion crossfade when the painted metric changes — axis or layer
-  // (skip initial mount).
   useEffect(() => {
     if (firstAxisRun.current) {
       firstAxisRun.current = false;
@@ -840,7 +359,6 @@ export function MapPanel({
     });
   }, [axis, layer, controls]);
 
-  // Hit-test in world space: invert the camera, then isPointInPath on baked paths.
   const pick = useCallback(
     (clientX: number, clientY: number): Hovered | null => {
       if (tweenRef.current) return null;
@@ -856,40 +374,21 @@ export function MapPanel({
       );
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      const focus = focusStateRef.current;
-      let found: Hovered | null = null;
-      if (focus) {
-        for (const e of countyPathsRef.current) {
-          if (e.usps !== focus) continue;
-          if (ctx.isPointInPath(e.path, wx, wy)) {
-            const paint = paintByFips.get(e.fips);
-            found = {
-              kind: "county",
-              usps: e.usps,
-              countySlug: paint?.countySlug ?? null,
-              countyName: e.name,
-              fillSource: paint?.source ?? null,
-              sourcePlace: paint?.sourcePlace ?? null,
-            };
-            break;
-          }
-        }
-      } else {
-        for (const e of statePathsRef.current) {
-          if (ctx.isPointInPath(e.path, wx, wy)) {
-            found = { kind: "state", usps: e.usps };
-            break;
-          }
-        }
-      }
+      const found = pickAt(
+        ctx,
+        wx,
+        wy,
+        focusStateRef.current,
+        countyPathsRef.current,
+        statePathsRef.current,
+        paintByFips,
+      );
       ctx.restore();
       return found;
     },
     [paintByFips],
   );
 
-  // Coalesce mousemoves: store the latest pointer and hit-test at most once per
-  // animation frame, updating `hovered` only when the picked state changes.
   const flushHover = useCallback(() => {
     rafRef.current = null;
     const p = pointerRef.current;
@@ -917,7 +416,6 @@ export function MapPanel({
     setHovered((prev) => (prev === null ? prev : null));
   }, []);
 
-  // Cancel any pending hover frame on unmount.
   useEffect(() => {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
@@ -925,20 +423,16 @@ export function MapPanel({
     };
   }, []);
 
-  // Drop hover when the path set changes so a county name cannot stick on the US map.
   useEffect(() => {
     setHovered(null);
   }, [selectedState, countiesBaked]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      // Mid-tween hits are sloppy (overlapping Albers neighbors). Ignore.
       if (tweenRef.current) return;
       const u = pick(e.clientX, e.clientY);
       const focused = focusStateRef.current;
       if (focused) {
-        // Zoomed: a colored county sets the county filter. Uncolored counties
-        // are unclickable. Only a miss (ocean / outside the state) zooms out.
         if (u?.kind === "county") {
           if (u.fillSource === "city" && u.sourcePlace) {
             dispatch({
@@ -973,58 +467,8 @@ export function MapPanel({
     [pick, dispatch, selectedState],
   );
 
-  const hoveredCountyLabel = hovered?.kind === "county"
-    ? (hovered.countyName ?? prettySlug(hovered.countySlug) ?? stateName(hovered.usps))
-    : null;
-  const hoveredHasScore = Boolean(
-    hovered?.kind === "county" && hovered.sourcePlace,
-  );
-  // Penalty stats behind whatever is hovered, for the layer's hover copy.
-  const hoveredPenalties = useMemo<PenaltyStats | null | undefined>(() => {
-    if (layer !== "penalties" || !hovered) return undefined;
-    if (hovered.kind === "state") {
-      return hovered.usps
-        ? (aggByUsps.get(hovered.usps)?.penalties ?? null)
-        : null;
-    }
-    if (!hovered.sourcePlace || !hovered.fillSource) return null;
-    return (
-      fillByKey.get(`${hovered.fillSource}:${hovered.sourcePlace}`)
-        ?.penalties ?? null
-    );
-  }, [layer, hovered, aggByUsps, fillByKey]);
-
-  const mapLabel = hovered
-    ? hovered.kind === "county"
-      ? hovered.fillSource === "city" && hovered.sourcePlace
-        ? cityStandInLabel(
-            hovered.countyName ?? hoveredCountyLabel ?? "",
-            hovered.sourcePlace,
-          )
-        : hoveredHasScore
-          ? hoveredCountyLabel
-          : `${hoveredCountyLabel} · no data`
-      : stateName(hovered.usps)
-    : selectedCounty
-      ? prettySlug(selectedCounty)
-      : atlasCountyName
-        ? atlasCountyName
-        : selectedCity
-          ? prettySlug(selectedCity)
-          : selectedState
-            ? stateName(selectedState)
-            : null;
-
-  // The fines figures go on their own line, in the small sentence-case style.
-  // They must never enter `mapLabel`: that renders as the 22px uppercase place
-  // name, which turns a sentence into a three-line wall of shouting.
-  const fineLine =
-    hovered && hoveredPenalties !== undefined
-      ? fineHoverLine(hoveredPenalties)
-      : null;
-
   return (
-    <Wrap ref={wrapRef}>
+    <MapStage ref={wrapRef}>
       <BaseCanvas ref={baseRef} animate={controls} />
       <OverlayCanvas
         ref={overlayRef}
@@ -1042,80 +486,7 @@ export function MapPanel({
                 : "default",
         }}
       />
-      {status === "ready" && rows.length === 0 && (
-        <Hint
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: theme.motion.slow }}
-        >
-          no map data
-        </Hint>
-      )}
-      {status === "error" && (
-        <RetryHint
-          type="button"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: theme.motion.slow }}
-          onClick={retry}
-        >
-          map unavailable · retry
-        </RetryHint>
-      )}
-      <TitleStack>
-        <StateLabel>{mapLabel ?? ""}</StateLabel>
-        {fineLine && <SparseLine>{fineLine}</SparseLine>}
-        {loadingLine && <SparseLine>{loadingLine}</SparseLine>}
-        {!loadingLine && sparseCopy && (
-          <SparseLine>{sparseCopy.line}</SparseLine>
-        )}
-        {!loadingLine && sparseCopy && sparseCopy.chipNames.length > 0 && (
-          <SparseChips>
-            {scoredCounties
-              .slice()
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((row) => {
-                const key = `${row.source}:${row.sourcePlace}`;
-                if (!row.sourcePlace) return null;
-                const active =
-                  row.source === "city"
-                    ? selectedCity === row.sourcePlace
-                    : selectedCounty === row.county;
-                const label =
-                  row.source === "city"
-                    ? cityStandInLabel(row.name, row.sourcePlace)
-                    : row.name;
-                return (
-                  <SparseChip
-                    key={key}
-                    type="button"
-                    $active={active}
-                    onClick={() => {
-                      if (!selectedState) return;
-                      dispatch({
-                        type: "selectFocus",
-                        focus:
-                          row.source === "city"
-                            ? {
-                                kind: "city",
-                                state: selectedState,
-                                city: row.sourcePlace,
-                              }
-                            : {
-                                kind: "county",
-                                state: selectedState,
-                                county: row.county ?? row.sourcePlace,
-                              },
-                      });
-                    }}
-                  >
-                    {label}
-                  </SparseChip>
-                );
-              })}
-          </SparseChips>
-        )}
-      </TitleStack>
-    </Wrap>
+      <MapHud hovered={hovered} />
+    </MapStage>
   );
 }

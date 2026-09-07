@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import styled from "styled-components";
 import { DesktopFilters, Sidebar } from "@/components/sidebar/Sidebar";
 import { ConnectedMapLegend } from "@/components/map/Legend";
+import { MapChrome } from "@/components/map/MapChrome";
 import { MapPanel } from "@/components/map/MapPanel";
+import { MapViewProvider } from "@/components/map/MapViewProvider";
 import { ResultsPanel } from "@/components/results/ResultsPanel";
 import {
   AggregateRail,
@@ -81,13 +82,7 @@ const Lower = styled.div`
   }
 `;
 
-const MapChrome = styled.div`
-  position: relative;
-  flex-shrink: 0;
-`;
-
 export default function Page() {
-  const [countiesBaked, setCountiesBaked] = useState(false);
   return (
     <JurisdictionsProvider>
       <Shell>
@@ -95,11 +90,13 @@ export default function Page() {
           <AggregateRail />
           <Sidebar />
           <Main>
-            <MapChrome>
-              <QuickSearch />
-              <MapPanel onCountiesBaked={setCountiesBaked} />
-            </MapChrome>
-            <ConnectedMapLegend countiesBaked={countiesBaked} />
+            <MapViewProvider>
+              <MapChrome>
+                <QuickSearch />
+                <MapPanel />
+              </MapChrome>
+              <ConnectedMapLegend />
+            </MapViewProvider>
             <JurisdictionPanel />
             <Lower>
               <ResultsPanel />

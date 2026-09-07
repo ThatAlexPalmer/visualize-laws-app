@@ -3,14 +3,11 @@ import { test } from "node:test";
 
 import type { CountyFill } from "@/lib/types";
 
-import type { CountyFeatureEntry } from "./counties";
-import { joinCountyFills } from "./counties";
+import { joinCountyFills, joinCountySlugs } from "./counties";
 
-const geo = {} as CountyFeatureEntry["geo"];
-
-const FEATURES: CountyFeatureEntry[] = [
-  { fips: "48085", stateFips: "48", name: "Collin", geo },
-  { fips: "48201", stateFips: "48", name: "Harris", geo },
+const FEATURES = [
+  { fips: "48085", name: "Collin" },
+  { fips: "48201", name: "Harris" },
 ];
 
 function fill(
@@ -117,4 +114,15 @@ test("city row with fips null does not paint", () => {
     }),
   ]);
   assert.equal(painted.size, 0);
+});
+
+test("joinCountySlugs prefers a county-kind slug on a shared name", () => {
+  const fips = joinCountySlugs(
+    [{ fips: "51059", name: "Fairfax" }],
+    [
+      { county: "fairfax_city", name: "Fairfax City" },
+      { county: "fairfax_county", name: "Fairfax County" },
+    ],
+  );
+  assert.equal(fips.get("51059"), "fairfax_county");
 });
