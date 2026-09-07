@@ -20,7 +20,7 @@ export const RELEASES: readonly AppRelease[] = [
     href: githubRelease("v1.3.2"),
     notes: [
       "Browse every matching law, with estimated result counts clearly labelled.",
-      "Explore the map and open law details using the keyboard.",
+      "Open law details using the keyboard and return to your place with Escape.",
       "Keep your filter edits when switching between mobile and desktop layouts.",
     ],
   },

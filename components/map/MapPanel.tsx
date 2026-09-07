@@ -37,7 +37,6 @@ import {
 } from "./draw";
 import { BaseCanvas, MapHud, MapStage, OverlayCanvas } from "./MapChrome";
 import { useMapView } from "./MapViewProvider";
-import { MapKeyboard } from "./MapKeyboard";
 
 // Ignore layout reflows smaller than this (CSS px) before re-fitting.
 const SIZE_REFIT_THRESHOLD_PX = 8;
@@ -446,10 +445,9 @@ export function MapPanel() {
 
   return (
     <MapStage ref={wrapRef}>
-      <BaseCanvas ref={baseRef} animate={controls} aria-hidden="true" />
+      <BaseCanvas ref={baseRef} animate={controls} />
       <OverlayCanvas
         ref={overlayRef}
-        aria-hidden="true"
         onMouseMove={handleMove}
         onMouseLeave={handleLeave}
         onClick={handleClick}
@@ -465,11 +463,6 @@ export function MapPanel() {
         }}
       />
       <MapHud hovered={hovered} />
-      <MapKeyboard
-        counties={countiesBaked ? countyPathsRef.current : []}
-        paints={paintByFips}
-        onInspect={setHovered}
-      />
     </MapStage>
   );
 }

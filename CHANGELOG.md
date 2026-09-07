@@ -2,7 +2,7 @@
 ## 1.3.2
 
 - Browse every matching law with reliable pagination, clearly labelled estimated totals, and retryable loading errors.
-- Use keyboard map controls and accessible law dialogs; keep filter edits across mobile and desktop layouts.
+- Open law details using the keyboard and close them with Escape; keep filter edits across mobile and desktop layouts.
 - Resume interrupted imports safely with database-owned progress, isolated regression suites, and safer Docker startup.
 
 Adds the additive `20260907000000_import_progress` migration for ingestion progress.
