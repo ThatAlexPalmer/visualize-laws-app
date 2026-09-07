@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1
+
+Refactor and infra only (no schema, no seed). Merge does not migrate.
+
+- One place-selection write (`selectFocus`); search, map, and filters share it.
+- Law list failures return 503 instead of an empty page.
+- Map canvas and legend share one view-model; MapPanel is under 500 lines.
+- Place lookup is `GET /api/places`. Prisma stays 6.x on PG18.
+
+Do not `prisma:deploy:prod`. Do not `seed:prod`.
+
 ## 1.2.0
 
 - Open a law and see the fine it states — the amount or range, whether each day counts again, and whether jail is on the table.
