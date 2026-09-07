@@ -2,6 +2,7 @@
 
 import React from "react";
 import { ThemeProvider } from "styled-components";
+import { MotionConfig } from "framer-motion";
 import { theme } from "./theme";
 import { GlobalStyle } from "./global-style";
 import { ExplorerProvider } from "./store";
@@ -11,7 +12,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
-      <ExplorerProvider>{children}</ExplorerProvider>
+      <MotionConfig reducedMotion="user">
+        <ExplorerProvider>{children}</ExplorerProvider>
+      </MotionConfig>
     </ThemeProvider>
   );
 }

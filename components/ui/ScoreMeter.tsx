@@ -1,7 +1,7 @@
 "use client";
 
 import styled from "styled-components";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { DEFAULT_SCORE_RANGE } from "@/lib/types";
 import { Stack } from "@/components/ui/containers";
 
@@ -41,6 +41,7 @@ function clampPct(v: number): number {
 
 /** Label + numeric score + animated meter, scaled to `DEFAULT_SCORE_RANGE`. */
 export function ScoreMeter({ label, value }: { label: string; value: number }) {
+  const reducedMotion = useReducedMotion();
   return (
     <Stack $gap={1.5}>
       <ScoreTop>
@@ -49,9 +50,9 @@ export function ScoreMeter({ label, value }: { label: string; value: number }) {
       </ScoreTop>
       <Meter>
         <MeterFill
-          initial={{ width: 0 }}
+          initial={reducedMotion ? false : { width: 0 }}
           animate={{ width: `${clampPct(value)}%` }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+          transition={{ duration: reducedMotion ? 0 : 0.4, ease: "easeOut" }}
         />
       </Meter>
     </Stack>

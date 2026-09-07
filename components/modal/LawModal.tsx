@@ -2,7 +2,7 @@
 
 // Animated detail modal for a single law. Summary metadata comes from the list
 // response; the full body is fetched on demand after the modal opens.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
@@ -24,9 +24,17 @@ import { ScoreMeter } from "@/components/ui/ScoreMeter";
 import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Heading, Mono } from "@/components/ui/text";
 
-const Overlay = styled(motion.div)`
+const Overlay = styled(motion.dialog)`
   position: fixed;
   inset: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  color: inherit;
+  &:not([open]) { display: none; }
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(2px);
   display: flex;
@@ -213,6 +221,8 @@ export function LawModal() {
   const [detailError, setDetailError] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const close = () => dispatch({ type: "closeLaw" });
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const isOpen = Boolean(law);
 
   useEffect(() => {
     if (!law) {
@@ -250,19 +260,41 @@ export function LawModal() {
   }, [law, retryAttempt]);
 
   useEffect(() => {
-    if (!law) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dispatch({ type: "closeLaw" });
+    const dialog = dialogRef.current;
+    if (!isOpen || !dialog) return;
+    const previous = document.activeElement;
+    // Native modal dialogs trap focus and make the background inert.
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [law, dispatch]);
+  }, [isOpen]);
 
   return (
     <AnimatePresence>
       {law && (
         <Overlay
           key="law-overlay"
+          ref={dialogRef}
+          aria-label={(detail ?? law).header ?? "Law detail"}
+          aria-modal="true"
+          onCancel={(event) => { event.preventDefault(); close(); }}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+            )).filter((element) => element.getClientRects().length > 0);
+            const first = focusable[0];
+            const last = focusable.at(-1);
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -271,16 +303,13 @@ export function LawModal() {
         >
           <Card
             as={motion.div}
-            role="dialog"
-            aria-modal="true"
-            aria-label={(detail ?? law).header ?? "Law detail"}
             initial={{ opacity: 0, scale: 0.96, y: 14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
             transition={{ type: "spring", stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Close type="button" aria-label="Close" onClick={close}>
+            <Close type="button" aria-label="Close" autoFocus onClick={close}>
               ×
             </Close>
             <Title as="h3" $size="xl">
