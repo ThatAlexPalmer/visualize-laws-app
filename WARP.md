@@ -7,8 +7,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 visualizelaws.com is a fast, fork-friendly web app for searching and visualizing the complete
 [LOCUS-v1](https://huggingface.co/LocalLaws) corpus of ~2.2M U.S. local laws. It ships
 full-text search, server-side filtering/pagination, an interactive HTML5 Canvas choropleth
-map, and a per-jurisdiction dashboard — in a strict pitch-black (`#000`) + pure-white (`#fff`)
-interface with framer-motion throughout. Business Source License 1.1 (BUSL-1.1).
+map, and a per-jurisdiction dashboard. The interface has a black/white foundation, axis
+accents, green fines, red branding and HSL map ramps, with framer-motion transitions.
+Business Source License 1.1 (BUSL-1.1).
 
 Deployed in production on Vercel at https://visualizelaws.com (Prisma Postgres + Cloudflare DNS).
 
@@ -21,13 +22,16 @@ It is a standard single Next.js app at the repo root with a dedicated **data lay
 
 The thin `/api` route handlers delegate to `data/queries/*` (`queryLaws`, `getLawById`,
 `getJurisdictions`, `getJurisdictionDetail`, `resolvePlace`), which use the Prisma client
-from `data/db.ts`. Routes do not import `@prisma/client`. Prisma is 6.x on PG18; Prisma 8
-is a later epic. `/api/laws` returns row *summaries* (`queryLaws(LawFilters)` via
-`data/filters.ts`) and `/api/laws/[id]` returns the full law on demand. A query failure is
-503, not an empty 200. `GET /api/jurisdictions` is the US map payload (state + national
+from `data/db.ts`. Routes do not import `@prisma/client`. Prisma is 6.x on PG18;
+the 6→7 upgrade is tracked in #45. `/api/laws` returns row *summaries* via
+`data/filters.ts` and `/api/laws/[id]` returns the full law on demand.
+List failures are 503; law-detail failures are 500. Core failures must not masquerade
+as empty results. `GET /api/jurisdictions` is the US map payload (state + national
 only) and may be CDN-cached briefly (`s-maxage=60`) when complete; `national: null` /
-empty rows are not cached. Place lookup is `GET /api/places`. `/api/jurisdictions/[state]`
-stays `no-store`. Do not use hour-long / `force-static` cache on these routes.
+empty rows are not cached. `connection()` runs before the US query so builds never read
+the database. Place lookup is `GET /api/places`. `/api/jurisdictions/[state]` stays
+`no-store` and returns 503 on core failures. Optional penalties/fills degrade independently.
+Do not use hour-long / `force-static` cache on these routes.
 
 ## One-command DevEx
 
@@ -39,7 +43,7 @@ pnpm up:full             # SEED_LIMIT=0 — load the ENTIRE ~2.2M-row corpus
 Starts Postgres 18 (the `pgvector/pgvector:pg18` image — stock PG18 with pgvector available but
 dormant) + the app, applies migrations, seeds on first run, and serves the app at
 http://localhost:3000 with hot reload. The seed is skipped on later runs once the `laws` table is
-non-empty (see `docker/entrypoint.sh`). Inspect the DB with Postgres.app or `npx prisma studio`
+non-empty (see `docker/entrypoint.sh`). Inspect the DB with Postgres.app or `pnpm db:studio`
 against `localhost:5432`.
 
 ## Architecture
@@ -47,7 +51,8 @@ against `localhost:5432`.
 ### Layers
 
 - **Presentation (`app/`, `components/`, `lib/`)**: App Router pages + a single-page shell
-  (`app/page.tsx`). UI state (selected axis, filters, selected state, open law/about) lives in a
+  (`app/page.tsx`). UI state (axis/layer, filters, state/law selection, atlas county,
+  Funny mode, filter-panel visibility and reset version) lives in a
   small React context store (`lib/store.tsx`). Place identity is `selectFocus(PlaceFocus | null)`;
   `patchFilters` does not write city/county/state. Map derived state lives in
   `components/map/MapViewProvider.tsx`, not the explorer store. All styling is styled-components
@@ -60,6 +65,17 @@ against `localhost:5432`.
 - **Data (`data/`)**: Postgres via Prisma. `data/db.ts` is the Prisma client singleton;
   `data/types.ts` holds the shared domain types (re-exported by `lib/types.ts` so app code
   imports them from `@/lib/types`).
+
+`/about` and `/log` are separate pages; release content lives in `lib/releases.ts`.
+Funny mode changes copy via `lib/copy.ts`, not data. `lib/useCompactLayout.ts` controls
+responsive layout. `JurisdictionsProvider` owns shared national/state requests;
+`lib/useCachedFetch.ts` pairs responses/errors with resource keys and exposes explicit
+retry (abort + invalidate). Results opt out of caching and hide previous-key rows during
+refresh/failure. Place lookups cancel on clear/reset/unmount; slider edits merge before
+debouncing and flush on responsive unmount.
+
+`LawModal` is a native modal dialog with focus containment, Escape dismissal and focus
+restoration. `MotionConfig` and the imperative camera honor reduced-motion preferences.
 
 ### Map rendering
 
@@ -74,6 +90,8 @@ into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a
   `us-atlas/counties-10m.json` import (kept out of the initial JS bundle).
 - Color: native `level='county'` rows plus one-county city stand-ins (`county_fills`).
   Multi-county cities are not painted. Cities have no polygons of their own.
+- Map domains use current fill-row min/max. National per-axis bounds drive sliders,
+  not the current map color scale.
 - US view fills states. Inside a state, only that state's county outlines are stroked;
   scored/joined counties fill when **n ≥ 8** (native + stand-ins). If n &lt; 8, outlines
   + a line of copy (`sparseCounties.ts`); no county legend. Unscored hover is
@@ -83,6 +101,10 @@ into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a
 - FIPS → lowercase USPS is `components/map/fips.ts`. Place slugs join in `data/slugs.ts`.
   City stand-ins join by Census FIPS (`joinCountyFills`).
 - QuickSearch may zoom to a state and highlight a county; it does not remesh.
+- `MapKeyboard` exposes state selection, county inspection and explicit selection of
+  joined codes without pointer input. Unscored counties remain inspectable, not selectable.
+- Atlas failures clear the rejected loader promise and expose retry. County data/atlas
+  readiness gates the camera target for selection, repaint and resize alike.
 
 ## Development Commands
 
@@ -93,32 +115,38 @@ pnpm build              # next build
 pnpm start              # next start
 pnpm lint               # eslint .  (Next 16 removed `next lint`)
 pnpm typecheck          # tsc --noEmit
-pnpm test               # tsx --test (city/county, map, place lookup, laws)
+pnpm test               # tests/unit/**/*.test.ts (domain, query, store/cache, startup)
+pnpm test:integration   # tests/integration/**/*.test.ts; disposable PG18, requires Docker
+pnpm exec playwright install chromium  # once for browser tests
+pnpm test:browser       # after pnpm build; mocked APIs, isolated server on localhost:3100
 
 pnpm up                 # docker compose up (full stack; 25k sample first run)
 pnpm up:build           # docker compose up --build
 pnpm up:full            # full ~2.2M corpus on first boot (SEED_LIMIT=0)
-pnpm db:up / db:down    # start / stop local Postgres only
+pnpm db:up             # start Postgres only
+pnpm db:down           # stop entire Compose stack (preserves volumes)
 pnpm db:studio          # prisma studio --schema data/prisma/schema.prisma
 
 pnpm prisma:deploy      # apply migrations (data/prisma/schema.prisma)
 pnpm prisma:migrate     # create/apply a dev migration
 pnpm seed --limit 25000 # fast dev sample (Alaska-only; shard 0)
 pnpm seed --fresh --shards 1 --limit 25000  # Colorado QA (pagosa_springs, el_paso_county)
-pnpm seed --shards ''   # recompute aggregates + city_county / county_fills
+pnpm seed --shards ''   # rebuild aggregates, city joins/fills, fines/place penalties
 pnpm build:city-county  # Census join + stand-in fills only (no parquet COPY)
 pnpm build:fines        # LOCUS-Fines penalty layer only (~40s on a full corpus)
 pnpm seed               # full ~2.2M-row ingest (resumable, checkpointed)
-pnpm seed --fresh       # TRUNCATE laws + jurisdictions + checkpoints, then seed
+pnpm seed --fresh       # destructive: clear laws and derived tables, then seed
 pnpm seed:prod …        # same flags against .env.prod (remote admin only)
 ```
 
 Full agent seed runbook (timings, remote stalls, verify queries): `agents/AGENTS.md`.
+Local backup/isolated-restore and safe rebuild ordering are documented there too.
+Private dumps belong in repo-root `dev/` (Git/Docker-excluded), never system `/dev`.
 
 ## Project Structure
 
 ```text
-app/                                # Next.js App Router: layout, page, about/, api/*
+app/                                # Next.js App Router: layout, page, about/, log/, api/*
 components/                         # nav, sidebar, map, results, jurisdiction, modal
 lib/                                # store, theme, styled-components registry, types re-export
 data/
@@ -127,6 +155,9 @@ data/
   slugs.ts, cityCounty.ts           # place keys + Census city→county join
   db.ts, types.ts, seed.ts, db-count.ts, build-city-county.ts
 components/map/                     # canvas map: MapViewProvider, MapPanel, MapChrome, geo.ts, camera.ts
+tests/unit/                         # node:test suites, mirroring source paths
+tests/integration/                  # disposable PG18 ingestion/recovery fixtures
+tests/browser/                      # Playwright app interaction specs
 next.config.ts, tsconfig.json, eslint.config.mjs
 Dockerfile, docker-compose.yml, docker/entrypoint.sh
 ```
@@ -142,7 +173,7 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
   tracked as `Unsupported("tsvector")`).
 - **Jurisdiction** — pre-computed aggregates. `level` is `national` | `state` | `county`.
   The single `national` row carries corpus-wide averages + per-axis `[min,max]` `bounds`
-  (JSON) for sliders and the US color scale. County rows (~376 on a full seed) color
+  (JSON) for sliders. County rows (~376 on a full seed) color
   in-state polygons only; they are **not** the mesh. Unique key is `(level, state, county)`.
 - **CityCounty** — Census 2020 place join for LOCUS city slugs (`state`, `city` unique).
 - **CountyFill** — map-layer sibling to `jurisdictions` (`source` = `county` | `city`).
@@ -150,10 +181,12 @@ Dockerfile, docker-compose.yml, docker/entrypoint.sh
 - **PlacePenalty** — per-place fines aggregates behind the Penalties layer, keyed
   `(level, state, place)` where `level` is `national` | `state` | `place` and `place` is
   `COALESCE(city, county)` (= `county_fills.source_place`). A **sibling table on purpose**:
-  `build-city-county.ts` rebuilds `jurisdictions` / `county_fills` with DELETE + INSERT, so
+  `build-city-county.ts` rebuilds `city_county` / `county_fills` with DELETE + INSERT, so
   penalty columns living there would be wiped by an unrelated `pnpm build:city-county`.
   Owned and rebuilt by `pnpm build:fines`.
 - **SeedCheckpoint** — one row per completed parquet shard, for resumable seeding.
+- **ImportProgress** — source-keyed SHA256 fingerprint, committed row prefix and completion
+  flag. Batch rows and progress commit together; progress belongs to the target database.
 - **LawFine** — [LOCUS-Fines](https://huggingface.co/datasets/LocalLaws/LOCUS-Fines)
   penalty annotation, unique on `law_id` (FK → `laws`, `ON DELETE CASCADE`). Only the
   **632,005 model-read rows** (`annotation_source = 'LLM'`) are stored: every dollar
@@ -202,23 +235,41 @@ over the subset a model read, with no per-law scalar to put behind a slider.
 ## Seeding
 
 `data/seed.ts` streams the 8 LOCUS-v1 parquet shards (`@dsnp/parquetjs`), bulk-loads `laws` via
-Postgres `COPY` (`pg` + `pg-copy-streams`) in **5k-row batches** (commit per batch), tracks
-intra-shard progress in `.locus-cache/seed-progress.json`, writes a `seed_checkpoints` row when a
-shard finishes, then recomputes `jurisdictions`. `search_vector` is generated automatically and
-never written by the seeder. Remote/managed Postgres can stall mid-COPY; the seeder uses short
-load-phase timeouts + a COPY watchdog + reconnect retries (see `agents/AGENTS.md`).
+Postgres `COPY` (`pg` + `pg-copy-streams`) in **5k-row batches**. Each transaction also updates
+`import_progress`; a finished shard updates `seed_checkpoints` and marks progress complete
+atomically. Reconnect reads committed database progress before replay. `--limit` is a total
+database-row ceiling, not additional rows per invocation. Legacy `seed-progress.json` is
+ignored (cleared only by explicit `--fresh`). Completed legacy checkpoints remain usable;
+unaccounted partial imports fail safely rather than guessing a resume offset.
+
+`data/importProgress.ts` owns progress/fingerprints and the database-local advisory writer
+lock shared by seed and both builders. Apply the additive import-progress migration before
+ingesting. Source changes and unverifiable progress require operator reconciliation, never
+an automatic reset. `--fresh` atomically clears laws, fines, penalties, aggregates, city joins,
+fills, both checkpoint tables and legacy/current fines staging.
+
+Fines staging uses stable model-row ordinals and atomic progress. UNLOGGED staging survives
+client interruption, not database crashes: detected loss or legacy staging requires explicit
+`pnpm build:fines --restage`. Successful rebuilds remove staging and its progress together.
+The final attach uses transactional TRUNCATE, which blocks readers until commit.
+
+The seeder then recomputes `jurisdictions` and runs both derived builders; those optional
+build failures warn (rerun the affected builder). `search_vector` is generated automatically.
+Remote stalls use short load timeouts, a COPY watchdog and reconnect retries; see
+`agents/AGENTS.md` for recovery details and historical timing baselines.
 
 The corpus is **not** in git (~1.77 GB). `docker compose up` sample-seeds `SEED_LIMIT` rows
 (default 25000) only when `laws` is empty; set `SEED_LIMIT=0` for the full ~2.2M-row corpus. Or
 seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compose exec app pnpm seed`.
 
-### Realistic duration (order of magnitude)
+### Measured baseline (order of magnitude, not a guarantee)
 
 - Local sample (`--limit 25000` / default compose): **~1–5 min**
 - Local full corpus (Docker Postgres, shards cached): **~15–40 min**
 - Remote full fresh (`pnpm seed:prod --fresh` from laptop → managed Postgres): **~30–60+ min**,
   with occasional silent stalls; resume without `--fresh` is expected
-- Fines layer on a full corpus (`pnpm build:fines`, parquet cached): **well under a minute**
+- Local fines layer (`pnpm build:fines`, full corpus, parquet cached): **~40 seconds**;
+  remote builds can take **10–30 minutes**
 - Verify: `laws` ≈ **2,211,516**, `seed_checkpoints` = **8**, jurisdictions `national`=1 +
   one `state` per distinct code (~50) + ~**376** `county` rows (full corpus), `law_fines`
   = **632,005** (**83,625** with an amount). Existing DBs that skipped docker seed after
@@ -234,6 +285,12 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   `.env.local` and compiles `data/` normally — no `externalDir` or custom env loader. In Docker
   the DB URLs come from compose `environment:`.
 - **Env files**: `.env.local` (local dev, auto-loaded by Next) and `.env.prod` (remote admin: migrate/seed), both gitignored; `.env.example` is the tracked template. The DB/seed scripts choose the file via `dotenv-cli` (`pnpm prisma:deploy`/`pnpm seed` use `.env.local`; `pnpm prisma:deploy:prod`/`pnpm seed:prod` use `.env.prod`).
+- **Compose interpolation** reads shell/Compose `.env`, not `.env.local`. Use
+  `SEED_LIMIT=0 docker compose up` / `pnpm up:full`. Both Studio scripts already use dotenv.
+- **Build output**: dev uses `.next-dev`; production build/start use `.next`.
+  Compose mounts each in its own named volume. Do not share output between concurrent
+  dev/build processes (`next.config.ts`). Failed/invalid startup law counts stop the app
+  before seeding; a successful zero count is required.
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
   and `data/queries/*` import the client/types via relative paths.
 - **Place selection** is `dispatch({ type: "selectFocus", focus })`. `patchFilters` must
@@ -273,8 +330,8 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   states one (0.5 ms on `law_fines_effective_max_idx`) and disables the saved scope total.
 - **The rows query LEFT JOINs `law_fines`, so every `WHERE` predicate must be `laws.`-qualified.**
   `law_fines` carries its own `state` / `city` / `county`; an unqualified reference is
-  ambiguous, Postgres errors, and `queryLaws` swallows it into an empty result — i.e. every
-  place filter silently returns zero matches.
+  ambiguous and Postgres errors. Keep place-filter regressions; never swallow a core
+  failure into an empty successful response.
 - **Naming a fine tracks problem salience.** Within the model-read set, sections that state
   an amount average **+1.17** problem salience against **+0.36** for those that do not
   (unread sections sit at −0.37). `place_penalties.salience_amount` /
@@ -285,6 +342,13 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   `jurisdictions.law_count` shortcut (`shouldUseSavedScopeTotal`) — otherwise the result
   total would badly overstate the match count. `penaltyNature` is whitelisted before it
   reaches SQL; everything else is bound.
+- **Pagination does not trust estimates.** `/api/laws` fetches one lookahead row and returns
+  `hasNextPage` independently of `total`. `totalKind` is `exact`, `estimated`, or
+  `unavailable` (then `total` is null). Saved national/state counts are checked for
+  contradictions with the current rows; filtered planner estimates are labelled `About`.
+  A terminal nonempty page or empty first page proves its total; an empty later page
+  does not prove a total from its offset. Only exact totals get `Page X of Y`.
+  Do not add a full filtered COUNT on every page or use a total to disable Next.
 - Prisma **drops/resets** a shadow database. Never pass a URL that has data (local
   Docker or remote) as `--shadow-database-url`. Never `migrate reset` / `db push`
   against a database you care about. Apply with `prisma:deploy` / `prisma:deploy:prod`.
@@ -292,7 +356,8 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   it to “fix” `search_vector` drift (`DROP DEFAULT` breaks FTS). `--fresh` truncates
   `laws` — never on production unless explicitly asked.
 - **Map zoom** must not remesh: no `fitExtent` / `new Path2D` on select, data, or resize.
-- **Strict aesthetic**: only `#000` / `#fff` and white-opacity grays via theme tokens.
+- **Aesthetic**: black/white foundation with shipped axis, fines and brand accents.
+  Reuse theme tokens and map ramps rather than inventing another palette.
 - **Docker bind mount is path-bound**: the `app` service mounts the project dir at `/workspace`
   via an absolute host path captured at container-create time. Renaming/moving the folder breaks
   it (empty `/workspace`); the entrypoint fails fast — recreate with `docker compose up -d
@@ -348,14 +413,14 @@ messages follow Conventional Commits. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Future Phases (tracked as GitHub issues)
 
-Not built yet; good first issues to file:
+Not built yet; consult existing issues before filing duplicates:
 
-1. **Score New Law** (lead premium feature) — `POST /api/score` + UI running arbitrary text
+1. **Score New Law** (issue #30) — `POST /api/score` + UI running arbitrary text
    through the four HF LocalLaws scorer models, behind a configurable `HF_INFERENCE_BASE_URL`.
    Strong fit for the first USDC-gated unlock.
 2. **USDC / agentic payments** — open-core monetization gating premium capability while the core
    remains source-available under BUSL terms.
 
 County-level view is **shipped** (camera zoom, county aggregates, sparse copy). Remaining
-data-shape work (ugly slugs, gazetteer, LOCUS-v1.1) is coverage/docs — see issue #25.
+data-shape work (ugly slugs, gazetteer, LOCUS-v1.1) is coverage/docs — see closed issue #25.
 Do not treat empty county outlines as a fill bug.
