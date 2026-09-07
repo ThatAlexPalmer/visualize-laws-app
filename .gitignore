@@ -45,3 +45,8 @@ yarn-error.log*
 # Vercel CLI link (project/org ids; do not commit)
 .vercel
 /.pnpm-store
+/test-results/
+/playwright-report/
+
+# private local database backups and verification artifacts
+/dev/

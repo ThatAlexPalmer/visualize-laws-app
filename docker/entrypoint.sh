@@ -55,8 +55,17 @@ if ! pnpm prisma:deploy; then
 fi
 echo "[entrypoint] migrations applied."
 
-count=$(pnpm -s exec tsx data/db-count.ts 2>/dev/null | tr -dc '0-9')
-if [ -z "$count" ] || [ "$count" = "0" ]; then
+if ! count=$(pnpm -s exec tsx data/db-count.ts); then
+  echo "[entrypoint] FATAL: unable to count laws; refusing to seed."
+  exit 1
+fi
+case "$count" in
+  ''|*[!0-9]*)
+    echo "[entrypoint] FATAL: invalid law count; refusing to seed."
+    exit 1
+    ;;
+esac
+if [ "$count" = "0" ]; then
   limit="${SEED_LIMIT:-25000}"
   if [ "$limit" = "0" ] || [ -z "$limit" ]; then
     echo "[entrypoint] laws table is empty — seeding the FULL corpus (SEED_LIMIT=0; downloads ~1.77 GB)..."

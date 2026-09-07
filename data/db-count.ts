@@ -1,8 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 
-// Prints the number of rows in `laws` (0 if empty or unreachable). Used by the
+// Prints the number of rows in `laws`; query failures exit nonzero. Used by the
 // Docker entrypoint to decide whether to run the one-time sample seed.
 const prisma = new PrismaClient();
-const count = await prisma.law.count().catch(() => 0);
-process.stdout.write(String(count));
-await prisma.$disconnect().catch(() => {});
+try {
+  process.stdout.write(String(await prisma.law.count()));
+} catch {
+  // Do not expose a connection string or treat an unreadable database as empty.
+  process.stderr.write("Unable to count laws; check database connectivity and migrations.\n");
+  process.exitCode = 1;
+} finally {
+  await prisma.$disconnect().catch(() => {});
+}
