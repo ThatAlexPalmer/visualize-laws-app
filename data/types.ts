@@ -78,7 +78,7 @@ export type SortKey = Axis | "fine";
 export const FINE_SORT_KEY = "fine" as const;
 
 export function isSortKey(value: string): value is SortKey {
-  return value === FINE_SORT_KEY || value in AXIS_BY_KEY;
+  return value === FINE_SORT_KEY || AXES.some((axis) => axis.key === value);
 }
 
 /** `penalty_nature` vocabulary. Whitelisted before it reaches SQL. */
@@ -142,12 +142,16 @@ export interface LawRecord extends LawSummary {
   content: string;
 }
 
-export interface LawsResponse {
+export type LawsResponse = {
   rows: LawSummary[];
-  total: number;
   page: number;
   pageSize: number;
-}
+  /** Determined by a lookahead row, never by a saved count or planner estimate. */
+  hasNextPage: boolean;
+} & (
+  | { total: number; totalKind: "exact" | "estimated" }
+  | { total: null; totalKind: "unavailable" }
+);
 
 export interface AxisAverages {
   avgOpacity: number;

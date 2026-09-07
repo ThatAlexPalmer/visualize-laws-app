@@ -12,10 +12,18 @@ export const revalidate = 0;
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ state: string }> },
-): Promise<NextResponse<JurisdictionDetailResponse>> {
+): Promise<NextResponse<JurisdictionDetailResponse | { error: string }>> {
   const { state } = await params;
   const { searchParams } = new URL(req.url);
-  return NextResponse.json(
-    await getJurisdictionDetail(state, searchParams.get("county")),
-  );
+  try {
+    return NextResponse.json(
+      await getJurisdictionDetail(state, searchParams.get("county")),
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch {
+    return NextResponse.json(
+      { error: "Could not load jurisdiction detail." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }

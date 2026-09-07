@@ -2,7 +2,7 @@
 
 // Paginated results list backed by GET /api/laws (server-side filter / sort /
 // pagination). Reads `filters` from the store; each row opens the LawModal.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
@@ -23,6 +23,13 @@ import { Button } from "@/components/ui/buttons";
 import { Cluster, Panel as PanelBase, Row, ScrollArea } from "@/components/ui/containers";
 import { LawMarkdown } from "@/components/law/LawMarkdown";
 import { Kicker, Mono } from "@/components/ui/text";
+import { useCachedFetch } from "@/lib/useCachedFetch";
+
+async function fetchResults(query: string, signal: AbortSignal): Promise<LawsResponse> {
+  const response = await fetch(`/api/laws?${query}`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
 
 /** desc → asc → off, per column. */
 function nextSort(
@@ -57,13 +64,6 @@ const Toolbar = styled(Row)`
   }
 `;
 
-// Subtle "updating…" affordance shown during stale-while-revalidate refreshes.
-// `text-transform: none` opts out of the uppercase Kicker it sits inside.
-const Updating = styled(motion.span)`
-  margin-left: ${({ theme }) => theme.space(2)};
-  color: ${({ theme }) => theme.colors.g76};
-  text-transform: none;
-`;
 
 const SortBar = styled(Cluster)`
   justify-content: flex-end;
@@ -90,10 +90,6 @@ const SortButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const Scroll = styled(ScrollArea)<{ $stale?: boolean }>`
-  transition: opacity ${({ theme }) => theme.motion.base}s ease;
-  opacity: ${({ $stale }) => ($stale ? 0.6 : 1)};
-`;
 
 // Eight laws make up a page. Let those rows share the entire scroll viewport
 // instead of collecting at its top, while retaining a usable minimum row
@@ -247,66 +243,37 @@ export function ResultsPanel() {
   const { filters, unhinged } = state;
   const query = useMemo(() => filtersToSearchParams(filters).toString(), [filters]);
 
-  // `data` holds the last successful response and is intentionally NOT cleared
-  // between queries, so the previous page stays visible while a new one loads.
-  const [data, setData] = useState<LawsResponse | null>(null);
-  const [isFetching, setIsFetching] = useState(true);
-  const [error, setError] = useState(false);
-  const reqId = useRef(0);
+  const result = useCachedFetch(query, fetchResults, false);
+  const data = result.value ?? null;
+  const isFetching = result.status === "loading";
+  const error = result.status === "error";
 
-  useEffect(() => {
-    const id = ++reqId.current;
-    const ctrl = new AbortController();
-    setIsFetching(true);
-    setError(false);
-    fetch(`/api/laws?${query}`, { signal: ctrl.signal, cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<LawsResponse>;
-      })
-      .then((json) => {
-        if (id !== reqId.current) return;
-        setData(json);
-        setIsFetching(false);
-      })
-      .catch((err) => {
-        if (ctrl.signal.aborted || id !== reqId.current) return;
-        setError(true);
-        setIsFetching(false);
-        void err;
-      });
-    return () => ctrl.abort();
-  }, [query]);
-
-  const total = data?.total ?? 0;
+  const total = data?.total ?? null;
   const pageSize = filters.pageSize;
   const page = filters.page;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = data?.totalKind === "exact" && total !== null
+    ? Math.max(1, Math.ceil(total / pageSize)) : null;
   const rows = data?.rows ?? [];
+  const rangeStart = (page - 1) * pageSize + 1;
+  const rangeEnd = rangeStart + rows.length - 1;
+  const resultLabel = total === null
+    ? rows.length > 0
+      ? `Results ${rangeStart.toLocaleString()}–${rangeEnd.toLocaleString()}`
+      : "No results on this page"
+    : `${data?.totalKind === "estimated" ? "About " : ""}${total.toLocaleString()} ${
+      unhinged ? "ORDINANCES FROM THE VOID" : `result${total === 1 ? "" : "s"}`
+    }`;
+  const navigationUnavailable = isFetching || error || !data;
 
-  // Stale-while-revalidate: skeletons only when there is nothing to show yet;
-  // once the first page has loaded we keep it (subtly dimmed) while refetching.
-  const isInitialLoading = isFetching && data === null;
-  const isRevalidating = isFetching && data !== null;
-  const showError = error && data === null;
 
   return (
     <Panel>
       <Toolbar $gap={3}>
         <Kicker>
-          {isInitialLoading
+          {isFetching
             ? ui("Loading…", unhinged)
-            : unhinged
-              ? `${total.toLocaleString()} ORDINANCES FROM THE VOID`
-              : `${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
-          {isRevalidating && (
-            <Updating
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1.1, repeat: Infinity }}
-            >
-              updating…
-            </Updating>
-          )}
+            : error ? "Results unavailable"
+            : resultLabel}
         </Kicker>
         <SortBar $gap={1}>
           {AXES.map((a) => {
@@ -316,6 +283,7 @@ export function ResultsPanel() {
               <SortButton
                 key={a.key}
                 $active={active}
+                aria-pressed={active}
                 onClick={() =>
                   dispatch({
                     type: "patchFilters",
@@ -336,6 +304,7 @@ export function ResultsPanel() {
               means. Present on every layer. */}
           <SortButton
             $active={filters.sort?.key === FINE_SORT_KEY}
+            aria-pressed={filters.sort?.key === FINE_SORT_KEY}
             onClick={() =>
               dispatch({
                 type: "patchFilters",
@@ -354,8 +323,8 @@ export function ResultsPanel() {
         </SortBar>
       </Toolbar>
 
-      <Scroll $stale={isRevalidating}>
-        {isInitialLoading ? (
+      <ScrollArea>
+        {isFetching ? (
           <ResultRows>
             {Array.from({ length: 8 }).map((_, i) => (
               <SkeletonRow
@@ -372,10 +341,15 @@ export function ResultsPanel() {
               </SkeletonRow>
             ))}
           </ResultRows>
-        ) : showError ? (
-          <Centered>Could not load results. Is the database seeded?</Centered>
+        ) : error ? (
+          <Centered role="alert">
+            Could not load results.
+            <Button type="button" onClick={result.retry}>Retry results</Button>
+          </Centered>
         ) : rows.length === 0 ? (
-          <Centered>{ui("No laws match these filters.", unhinged)}</Centered>
+          <Centered>{page > 1
+            ? "No results on this page. Go back to the previous page."
+            : ui("No laws match these filters.", unhinged)}</Centered>
         ) : (
           <ResultRows>
             <AnimatePresence initial={false}>
@@ -430,26 +404,26 @@ export function ResultsPanel() {
             </AnimatePresence>
           </ResultRows>
         )}
-      </Scroll>
+      </ScrollArea>
 
       <Pager $gap={3}>
         <PageButton
           type="button"
           $variant="ghost"
           $size="sm"
-          disabled={page <= 1 || isFetching}
+          disabled={page <= 1 || navigationUnavailable}
           onClick={() => dispatch({ type: "setPage", page: page - 1 })}
         >
           {unhinged ? "← RETREAT" : "← Prev"}
         </PageButton>
         <PageInfo>
-          Page {page} of {totalPages}
+          Page {page}{totalPages !== null && page <= totalPages ? ` of ${totalPages}` : ""}
         </PageInfo>
         <PageButton
           type="button"
           $variant="ghost"
           $size="sm"
-          disabled={page >= totalPages || isFetching}
+          disabled={navigationUnavailable || !data?.hasNextPage}
           onClick={() => dispatch({ type: "setPage", page: page + 1 })}
         >
           {unhinged ? "CONTINUE SUFFERING →" : "Next →"}

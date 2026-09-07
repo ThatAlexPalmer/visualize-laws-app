@@ -189,6 +189,8 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
     stateDetailStatus,
     countyDetail,
     countyDetailStatus,
+    retryState,
+    retryCounty,
   } = useJurisdictions();
   const { selectedState, unhinged, filters } = state;
   const selectedCounty = filters.county;
@@ -215,7 +217,9 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const loading = selectedState
     ? detailStatus === "loading" && !agg
     : jurisdictionsStatus === "loading";
-  const nationalError = !selectedState && jurisdictionsStatus === "error";
+  const hasError = jurisdictionsStatus === "error" || (selectedState && detailStatus === "error");
+  const retryDetail = jurisdictionsStatus === "error"
+    ? retry : selectedState ? (scoped ? retryCounty : retryState) : retry;
   const label = selectedCounty
     ? prettySlug(selectedCounty)
     : selectedState
@@ -247,14 +251,14 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
         >
-          {nationalError ? (
-            <RetryState>
+          {hasError ? (
+            <RetryState role="alert">
               <span>Aggregate data unavailable.</span>
               <Clear
                 type="button"
                 $variant="subtle"
                 $size="sm"
-                onClick={retry}
+                onClick={retryDetail}
               >
                 Retry
               </Clear>

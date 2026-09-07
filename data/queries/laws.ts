@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { hasPenaltyFilter, shouldUseSavedScopeTotal } from "../filters";
+import { hasPenaltyFilter, normalizePagination, shouldUseSavedScopeTotal } from "../filters";
 import { prisma } from "../db";
 import { slugVariants } from "../slugs";
 import {
@@ -100,8 +100,8 @@ function penaltyExistsSql(
 // --- Totals -----------------------------------------------------------------
 //
 // Bare US / state reuses `jurisdictions.law_count` (same number as the rail).
-// Extra filters still use a planner estimate: count(*) over 2.2M filtered rows
-// is too expensive for every page step.
+// Extra filters use explicitly labelled planner estimates, avoiding a full
+// count on every page. Only the rows query's lookahead controls continuation.
 
 /**
  * Pull the estimated row count from an `EXPLAIN (FORMAT JSON)` result. Postgres
@@ -125,7 +125,7 @@ function extractPlanRows(explainResult: unknown): number | null {
   if (!Array.isArray(parsed) || parsed.length === 0) return null;
   const top = parsed[0] as { Plan?: { "Plan Rows"?: unknown } };
   const planRows = top?.Plan?.["Plan Rows"];
-  return typeof planRows === "number" && Number.isFinite(planRows)
+  return typeof planRows === "number" && Number.isSafeInteger(planRows) && planRows >= 0
     ? planRows
     : null;
 }
@@ -137,7 +137,8 @@ async function estimateTotalFromCatalog(): Promise<number | null> {
       `SELECT reltuples::float8 AS total FROM pg_class WHERE oid = 'laws'::regclass`,
     );
     const total = rows[0]?.total;
-    return typeof total === "number" && total > 0 ? total : null;
+    return typeof total === "number" && Number.isFinite(total) && total > 0 &&
+      total <= Number.MAX_SAFE_INTEGER ? Math.round(total) : null;
   } catch {
     return null;
   }
@@ -150,7 +151,8 @@ async function savedScopeLawCount(state: string | null): Promise<number | null> 
       where: state ? { level: "state", state } : { level: "national" },
       select: { lawCount: true },
     });
-    return row ? row.lawCount : null;
+    return row && Number.isSafeInteger(row.lawCount) && row.lawCount >= 0
+      ? row.lawCount : null;
   } catch {
     return null;
   }
@@ -161,7 +163,7 @@ async function savedScopeLawCount(state: string | null): Promise<number | null> 
  * query is only planned, never executed. The SELECT list and ORDER BY do not
  * affect the row estimate, and LIMIT/OFFSET are intentionally omitted so we
  * estimate the full filtered set. `params` are bound exactly as for the rows
- * query, so the planner uses the real values for an accurate estimate.
+ * query. Estimates can still be very wrong and must not control pagination.
  */
 async function estimateFilteredRows(
   whereSql: string,
@@ -349,9 +351,7 @@ export async function getLawById(id: number): Promise<LawDetail | null> {
 
 /** Run a filtered/sorted/paginated query for laws from the LawFilters contract. */
 export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
-  const page = Math.max(1, Math.floor(filters.page || 1));
-  const pageSize = Math.min(100, Math.max(1, Math.floor(filters.pageSize || 25)));
-  const offset = (page - 1) * pageSize;
+  const { page, pageSize, offset } = normalizePagination(filters.page, filters.pageSize);
 
   // Build the WHERE clause as parameterized fragments.
   const params: unknown[] = [];
@@ -459,7 +459,7 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   // The rows query appends its own LIMIT/OFFSET params after the WHERE params.
   const limitParam = `$${params.length + 1}`;
   const offsetParam = `$${params.length + 2}`;
-  const rowsParams = [...params, pageSize, offset];
+  const rowsParams = [...params, pageSize + 1, offset];
   // LEFT JOIN, always: the stated fine rides along on every row so the results
   // list shows it on any layer. It cannot drop rows or fan out — law_fines is
   // unique on law_id.
@@ -493,17 +493,32 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
         sortByFine ? ROWS_FROM : "laws",
       );
 
-  const [rows, counted] = await Promise.all([
+  const [fetched, counted] = await Promise.all([
     prisma.$queryRawUnsafe<LawSummary[]>(rowsSql, ...rowsParams),
     totalPromise,
   ]);
 
-  if (usedSaved && counted !== null) {
-    return { rows, total: counted, page, pageSize };
+  const hasNextPage = fetched.length > pageSize;
+  const rows = fetched.slice(0, pageSize);
+  const pagination = { rows, page, pageSize, hasNextPage };
+
+  // A terminal page proves the total, even when it is exactly pageSize rows.
+  // An empty page beyond page 1 proves only that its offset is past the end.
+  if (!hasNextPage && (rows.length > 0 || offset === 0)) {
+    return { ...pagination, total: offset + rows.length, totalKind: "exact" };
   }
 
-  // Never report fewer than the rows the caller can already see on this page.
-  const floor = offset + rows.length;
-  const total = Math.max(Math.round(counted ?? 0), floor);
-  return { rows, total, page, pageSize };
+  const observed = fetched.length > 0 ? offset + fetched.length : 0;
+  if (usedSaved) {
+    // Do not call a saved aggregate exact when the current rows contradict it.
+    if (counted !== null && counted >= observed &&
+        (rows.length > 0 || counted <= offset)) {
+      return { ...pagination, total: counted, totalKind: "exact" };
+    }
+    return { ...pagination, total: null, totalKind: "unavailable" };
+  }
+  if (counted !== null) {
+    return { ...pagination, total: Math.max(counted, observed), totalKind: "estimated" };
+  }
+  return { ...pagination, total: null, totalKind: "unavailable" };
 }
