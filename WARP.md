@@ -101,8 +101,6 @@ into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a
 - FIPS → lowercase USPS is `components/map/fips.ts`. Place slugs join in `data/slugs.ts`.
   City stand-ins join by Census FIPS (`joinCountyFills`).
 - QuickSearch may zoom to a state and highlight a county; it does not remesh.
-- `MapKeyboard` exposes state selection, county inspection and explicit selection of
-  joined codes without pointer input. Unscored counties remain inspectable, not selectable.
 - Atlas failures clear the rejected loader promise and expose retry. County data/atlas
   readiness gates the camera target for selection, repaint and resize alike.
 

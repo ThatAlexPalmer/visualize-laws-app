@@ -1,5 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { JurisdictionAgg, LawSummary, LawsResponse } from "../../data/types";
+import { geoAlbersUsa } from "d3-geo";
+import { feature } from "topojson-client";
+import statesTopo from "us-atlas/states-10m.json" with { type: "json" };
+
+// Match the map's fixed 960×600 world without importing its bundler-only JSON loader.
+const topology = statesTopo as unknown as Parameters<typeof feature>[0];
+const usProjection = geoAlbersUsa().fitExtent(
+  [[24, 24], [936, 576]], feature(topology, topology.objects.states),
+);
 
 const law: LawSummary = {
   id: 1, header: "Fixture parking law", state: "co", city: null, county: "denver",
@@ -39,6 +48,16 @@ async function fixtures(page: Page) {
 
 test.beforeEach(async ({ page }) => { await fixtures(page); });
 
+async function mapPosition(page: Page, coordinates: [number, number]) {
+  const world = usProjection(coordinates)!;
+  return page.locator("canvas").first().evaluate((canvas: HTMLCanvasElement, [x, y]) => {
+    const transform = canvas.getContext("2d")!.getTransform();
+    const dpr = canvas.width / canvas.getBoundingClientRect().width;
+    return { x: (transform.a * x + transform.e) / dpr,
+      y: (transform.d * y + transform.f) / dpr };
+  }, world);
+}
+
 test("camera waits for county data on repaint and resize, then snaps with reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => {
@@ -61,8 +80,7 @@ test("camera waits for county data on repaint and resize, then snaps with reduce
   const scale = () => page.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) =>
     canvas.getContext("2d")!.getTransform().a / devicePixelRatio);
   await expect.poll(scale).toBeGreaterThan(0);
-  await page.getByText("Browse map by keyboard", { exact: true }).click();
-  await page.getByLabel("Map state", { exact: true }).selectOption("co");
+  await page.getByLabel("State", { exact: true }).selectOption("co");
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.getByRole("navigation").getByRole("button", { name: "Paternalism", exact: true }).click();
   await page.waitForTimeout(100);
@@ -82,7 +100,7 @@ test("camera waits for county data on repaint and resize, then snaps with reduce
   expect(baked).toBeGreaterThan(3000);
   await page.setViewportSize({ width: 1450, height: 1000 });
   await page.getByRole("navigation").getByRole("button", { name: "Opacity", exact: true }).click();
-  await page.getByLabel("Map state", { exact: true }).selectOption("");
+  await page.getByLabel("State", { exact: true }).selectOption("");
   await page.waitForTimeout(100);
   expect(await pathCount()).toBe(baked);
 });
@@ -123,22 +141,31 @@ test("failed filter refresh cannot display old rows, and retry uses the current 
   await expect(page.getByRole("button", { name: /Retried filtered law/ })).toBeVisible();
 });
 
-test("keyboard map inspects uncovered counties without selecting them", async ({ page }) => {
+test("pointer map navigation works without the keyboard browsing panel", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
-  const browse = page.getByText("Browse map by keyboard", { exact: true });
-  await browse.focus();
-  await page.keyboard.press("Enter");
-  await page.getByLabel("Map state", { exact: true }).selectOption("co");
-  const counties = page.getByLabel("Inspect county", { exact: true });
-  await expect(counties.locator("option", { hasText: "Denver" })).toHaveCount(1);
-  await counties.selectOption({ label: "Adams" });
-  await expect(page.getByText("No score data · not annotated", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select this code" })).toHaveCount(0);
-  await counties.selectOption({ label: "Denver" });
-  await page.getByRole("button", { name: "Select this code" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("textbox", { name: "County", exact: true })).toHaveValue("Denver");
+  await expect(page.getByRole("button", { name: /Fixture parking law/ })).toBeVisible();
+  await expect(page.getByText("Browse map by keyboard", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Map state", { exact: true })).toHaveCount(0);
+  const canvas = page.locator("canvas").last();
+  const scale = () => page.locator("canvas").first().evaluate((el: HTMLCanvasElement) =>
+    el.getContext("2d")!.getTransform().a / devicePixelRatio);
+  const usScale = await scale();
+  await canvas.click({ position: await mapPosition(page, [-105.5, 39]) });
+  await expect(page.getByLabel("State", { exact: true })).toHaveValue("co");
+  await expect.poll(scale).toBeGreaterThan(usScale * 2);
+  const uncovered = await mapPosition(page, [-104.3, 39.87]);
+  await canvas.hover({ position: uncovered });
+  await expect(page.getByText("Adams · no data", { exact: true })).toBeVisible();
+  await canvas.click({ position: uncovered });
+  const countyField = page.getByRole("textbox", { name: "County", exact: true });
+  await expect(countyField).toHaveValue("");
+  await expect(page.getByLabel("State", { exact: true })).toHaveValue("co");
+  await canvas.click({ position: await mapPosition(page, [-104.99, 39.74]) });
+  await expect(countyField).toHaveValue("Denver");
+  await canvas.click({ position: { x: 5, y: 5 } });
+  await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
+  await expect(countyField).toHaveValue("");
 });
 
 test("state errors offer a retry on mobile instead of endless loading", async ({ page }) => {
@@ -147,8 +174,9 @@ test("state errors offer a retry on mobile instead of endless loading", async ({
   await page.route("**/api/jurisdictions/co", (route) =>
     route.fulfill(failed ? { status: 503, json: { error: "offline" } } : { json: detail }));
   await page.goto("/");
-  await page.getByText("Browse map by keyboard", { exact: true }).click();
-  await page.getByLabel("Map state", { exact: true }).selectOption("co");
+  await expect(page.getByText("Browse map by keyboard", { exact: true })).toHaveCount(0);
+  await page.getByRole("searchbox").fill("Colorado");
+  await page.getByRole("searchbox").press("Enter");
   const retry = page.getByRole("button", { name: /county data unavailable.*retry/ });
   await expect(retry).toBeVisible();
   await expect(page.getByText("Loading counties in Colorado.", { exact: true })).toHaveCount(0);
@@ -173,8 +201,7 @@ test("clearing an in-flight place lookup does not restore obsolete text or focus
   release();
   await page.waitForTimeout(400);
   await expect(page.getByRole("searchbox")).toHaveValue("");
-  await page.getByText("Browse map by keyboard", { exact: true }).click();
-  await expect(page.getByLabel("Map state", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
 });
 
 test("multiple slider edits survive a responsive remount", async ({ page }) => {

@@ -256,9 +256,8 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
 - One readiness-gated camera target handles selection, resize and repaint; reduced
   motion snaps rather than tweening. Failed atlas imports can be retried.
 - Desktop and mobile layer buttons expose the selected axis/Fines layer with `aria-pressed`.
-- `MapKeyboard` provides state selection and county score/fines inspection; only
-  joined codes can be selected. Native modal dialogs trap focus, make the background
-  inert, dismiss on Escape and restore the invoking control's focus.
+- Native modal dialogs trap focus, make the background inert, dismiss on Escape
+  and restore the invoking control's focus.
 
 ## Penalties map layer (invariants)
 
