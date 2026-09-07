@@ -1,4 +1,14 @@
 # Changelog
+## 1.3.2
+
+- Browse every matching law with reliable pagination, clearly labelled estimated totals, and retryable loading errors.
+- Use keyboard map controls and accessible law dialogs; keep filter edits across mobile and desktop layouts.
+- Resume interrupted imports safely with database-owned progress, isolated regression suites, and safer Docker startup.
+
+Adds the additive `20260907000000_import_progress` migration for ingestion progress.
+Apply committed migrations before using the new seed/fines importers; no corpus reset
+or reimport is required. Merge/build does not migrate or seed production. See
+`agents/AGENTS.md` for backup, rebuild and verification guidance.
 
 ## 1.3.1
 
