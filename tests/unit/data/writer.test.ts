@@ -117,7 +117,7 @@ test("copyBatch no-ops empty lines and destroys the typed socket on timeout", as
   const idle = { query() { throw new Error("should not COPY"); } } as unknown as Client;
   await copyBatch(idle, "COPY t FROM STDIN", []);
 
-  let destroyed: Error | undefined;
+  const destroyed: Error[] = [];
   const hung = new Writable({
     write() {
       /* never ack — hang until the watchdog destroys the socket */
@@ -128,7 +128,7 @@ test("copyBatch no-ops empty lines and destroys the typed socket on timeout", as
     connection: {
       stream: {
         destroy(err?: Error) {
-          destroyed = err;
+          if (err) destroyed.push(err);
           hung.destroy(err);
         },
       },
@@ -139,17 +139,16 @@ test("copyBatch no-ops empty lines and destroys the typed socket on timeout", as
     connection: {
       stream: {
         destroy(err?: Error) {
-          destroyed = err;
+          if (err) destroyed.push(err);
         },
       },
     },
   } as unknown as Client);
-  assert.equal(destroyed?.message, "COPY watchdog timeout");
+  assert.equal(destroyed[0]?.message, "COPY watchdog timeout");
 
-  destroyed = undefined;
   await assert.rejects(
     copyBatch(client, "COPY t FROM STDIN", ["a\n"], 20),
     /COPY batch \(1 rows\) timed out/,
   );
-  assert.equal(destroyed?.message, "COPY watchdog timeout");
+  assert.equal(destroyed.at(-1)?.message, "COPY watchdog timeout");
 });
