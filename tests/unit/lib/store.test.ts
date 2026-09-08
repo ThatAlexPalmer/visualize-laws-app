@@ -20,7 +20,7 @@ function base(): ExplorerState {
     selectedLaw: null,
     unhinged: false,
     filtersOpen: false,
-    filterResetVersion: 0,
+    resetEpoch: 0,
   };
 }
 
@@ -108,6 +108,26 @@ test("patchFilters cannot sneak a city, county, or state", () => {
   assert.equal(q.state, "co");
   assert.equal(q.city, undefined);
   assert.equal(q.county, undefined);
+});
+
+test("resetFilters clears place identity and bumps resetEpoch", () => {
+  const start = reduce(
+    base(),
+    {
+      type: "selectFocus",
+      focus: { kind: "city", state: "co", city: "denver" },
+    },
+    { type: "patchFilters", filters: { q: "parking", function: "Rules" } },
+  );
+  const next = reduce(start, { type: "resetFilters" });
+  assert.equal(next.focus, null);
+  assert.equal(next.placeDraft, null);
+  assert.equal(next.resetEpoch, start.resetEpoch + 1);
+  assert.deepEqual(next.filters, {
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+    sort: null,
+  });
 });
 
 test("setPlaceText writes draft text without changing the focused state", () => {

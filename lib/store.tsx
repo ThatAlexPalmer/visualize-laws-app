@@ -27,7 +27,8 @@ export interface ExplorerState {
   selectedLaw: LawSummary | null;
   unhinged: boolean;
   filtersOpen: boolean;
-  filterResetVersion: number;
+  /** Bumped on Reset so in-flight search/place lookups cancel even if `q` is already empty. */
+  resetEpoch: number;
 }
 
 // A short page keeps the explorer feeling like a focused control surface while
@@ -49,7 +50,7 @@ const initialState: ExplorerState = {
   selectedLaw: null,
   unhinged: false,
   filtersOpen: false,
-  filterResetVersion: 0,
+  resetEpoch: 0,
 };
 
 export type ExplorerAction =
@@ -128,7 +129,7 @@ export function explorerReducer(
         filters: { ...initialFilters },
         focus: null,
         placeDraft: null,
-        filterResetVersion: state.filterResetVersion + 1,
+        resetEpoch: state.resetEpoch + 1,
       };
     case "selectState":
       return applyFocus(

@@ -1,7 +1,7 @@
 "use client";
 
 import styled from "styled-components";
-import { DesktopFilters, Sidebar } from "@/components/sidebar/Sidebar";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ConnectedMapLegend } from "@/components/map/Legend";
 import { MapChrome } from "@/components/map/MapChrome";
 import { MapPanel } from "@/components/map/MapPanel";
@@ -76,7 +76,7 @@ const Lower = styled.div`
     gap: ${({ theme }) => theme.space(3)};
     padding: ${({ theme }) => theme.space(3)};
 
-    > * {
+    > *:not([data-filter-shell]) {
       border: 1px solid ${({ theme }) => theme.colors.g08};
     }
   }
@@ -88,7 +88,6 @@ export default function Page() {
       <Shell>
         <Body>
           <AggregateRail />
-          <Sidebar />
           <Main>
             <MapViewProvider>
               <MapChrome>
@@ -100,7 +99,7 @@ export default function Page() {
             <JurisdictionPanel />
             <Lower>
               <ResultsPanel />
-              <DesktopFilters />
+              <Sidebar />
             </Lower>
           </Main>
         </Body>

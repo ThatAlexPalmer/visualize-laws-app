@@ -3,6 +3,7 @@
 // Advanced filter rail. Non-place controls patch `filters`. City/county go
 // through `resolveQueryFocus` / `setPlaceText` so they share QuickSearch's
 // resolver. Text and slider inputs debounce (~300ms) before dispatch.
+// One instance: the shell restyles at the compact breakpoint instead of remounting.
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
@@ -68,38 +69,58 @@ const NATURE_OPTS: { label: string; value: PenaltyNature }[] = [
   { label: "Criminal and civil", value: "both" },
 ];
 
-const MobileAside = styled(motion.aside)<{ $open: boolean }>`
-  position: fixed;
-  inset: 59px 0 auto;
-  width: 100%;
-  max-height: calc(100dvh - 59px);
-  padding: ${({ theme }) => theme.space(4)};
-  padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
-  padding-right: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
-  overflow-y: auto;
-  background: ${({ theme }) => theme.colors.bg};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
-  z-index: 92;
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space(5)};
-  visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
-  pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
-  transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
-  will-change: transform;
-  transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0s linear ${({ $open }) => ($open ? "0s" : "240ms")};
-`;
-
-const DesktopPanel = styled(PanelBase)`
+const FilterSlot = styled.div`
   min-height: 0;
   height: 100%;
   align-self: stretch;
+  display: flex;
+  flex-direction: column;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    grid-column: 1;
+    grid-row: 1;
+    height: 0;
+    min-height: 0;
+    border: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
 `;
 
-const DesktopScroll = styled(ScrollArea)`
+const FilterChrome = styled(PanelBase)<{ $open: boolean }>`
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    position: fixed;
+    inset: 59px 0 auto;
+    width: 100%;
+    height: auto;
+    max-height: calc(100dvh - 59px);
+    align-self: auto;
+    overflow: hidden;
+    background: ${({ theme }) => theme.colors.bg};
+    border: 0;
+    border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+    z-index: 92;
+    visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
+    pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
+    transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
+    will-change: transform;
+    transition:
+      transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear ${({ $open }) => ($open ? "0s" : "240ms")};
+  }
+`;
+
+const FilterScroll = styled(ScrollArea)`
   /* The form fills the remaining viewport band. At ordinary desktop heights
      every control is visible; short windows gain an internal scrollbar instead
      of pushing the pager and footer below the viewport. */
@@ -133,6 +154,34 @@ const DesktopScroll = styled(ScrollArea)`
 
   ${SegItem} {
     padding: ${({ theme }) => theme.space(1)} 0;
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    gap: ${({ theme }) => theme.space(5)};
+    padding: ${({ theme }) => theme.space(4)};
+    padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
+    padding-right: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
+
+    ${Field} {
+      gap: ${({ theme }) => theme.space(2)};
+    }
+
+    ${Stack} {
+      gap: ${({ theme }) => theme.space(4)};
+    }
+
+    ${Input},
+    ${Select} {
+      padding: 10px 12px;
+    }
+
+    ${Segmented} {
+      padding: 3px;
+    }
+
+    ${SegItem} {
+      padding: ${({ theme }) => theme.space(1.5)} 0;
+    }
   }
 `;
 
@@ -214,7 +263,7 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
   ) as Record<Axis, ScoreRange>;
 }
 
-function FilterControls({ idPrefix }: { idPrefix: string }) {
+function FilterControls() {
   const { state, dispatch } = useExplorer();
   const { data } = useJurisdictions();
   const filters = queryFilters(state);
@@ -222,13 +271,13 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   const selectedState = focusState(state.focus);
   const bounds = data?.national?.bounds ?? null;
   const placeLookupAbort = useRef<AbortController | null>(null);
+  const dirtyAxes = useRef(new Set<Axis>());
 
   const [city, setCity] = useState(filters.city ?? "");
   const [county, setCounty] = useState(filters.county ?? "");
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges((axis) => filters[axis] ?? { ...DEFAULT_SCORE_RANGE }),
   );
-  const pendingRanges = useRef<Partial<Record<Axis, ScoreRange | undefined>>>({});
 
   const domainFor = (axis: Axis): ScoreRange => {
     const b = bounds?.[axis];
@@ -237,41 +286,6 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     }
     return DEFAULT_SCORE_RANGE;
   };
-
-  // When bounds arrive, expand any still-unfiltered slider to the new domain.
-  useEffect(() => {
-    setRanges((prev) => {
-      const next = { ...prev };
-      for (const a of AXES) {
-        if (!filters[a.key] && !(a.key in pendingRanges.current)) {
-          next[a.key] = domainFor(a.key);
-        }
-      }
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bounds]);
-
-  const cityDeb = useDebouncedCallback((v: string) => {
-    void applyPlace("city", v);
-  }, 300);
-
-  useEffect(() => () => {
-    placeLookupAbort.current?.abort();
-    // A responsive remount must not discard edits still inside the debounce window.
-    rangeDeb.flush();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    placeLookupAbort.current?.abort();
-    cityDeb.cancel();
-    countyDeb.cancel();
-    rangeDeb.cancel();
-    pendingRanges.current = {};
-  }, [state.filterResetVersion]); // eslint-disable-line react-hooks/exhaustive-deps
-  const countyDeb = useDebouncedCallback((v: string) => {
-    void applyPlace("county", v);
-  }, 300);
 
   const applyPlace = async (
     field: "city" | "county",
@@ -314,13 +328,41 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     }
     dispatch({ type: "setPlaceText", field, value: trimmed });
   };
-  const rangeDeb = useDebouncedCallback(() => {
-    const pending = pendingRanges.current;
-    pendingRanges.current = {};
-    if (Object.keys(pending).length > 0) {
-      dispatch({ type: "patchFilters", filters: pending });
-    }
+
+  const cityDeb = useDebouncedCallback((v: string) => {
+    void applyPlace("city", v);
   }, 300);
+  const countyDeb = useDebouncedCallback((v: string) => {
+    void applyPlace("county", v);
+  }, 300);
+  const rangeDeb = useDebouncedCallback((next: Record<Axis, ScoreRange>) => {
+    const patch = Object.fromEntries(
+      AXES.map((a) => {
+        const d = domainFor(a.key);
+        const r = next[a.key] ?? d;
+        return [a.key, r.min <= d.min && r.max >= d.max ? undefined : r];
+      }),
+    );
+    dirtyAxes.current.clear();
+    dispatch({ type: "patchFilters", filters: patch });
+  }, 300);
+
+  // When bounds arrive, expand idle sliders only — in-flight edits stay dirty.
+  useEffect(() => {
+    setRanges((prev) => {
+      const next = { ...prev };
+      for (const a of AXES) {
+        if (filters[a.key] || dirtyAxes.current.has(a.key)) continue;
+        next[a.key] = domainFor(a.key);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bounds]);
+
+  useEffect(() => () => {
+    placeLookupAbort.current?.abort();
+  }, []);
 
   // Keep local inputs in sync with the store (chips, map clicks, reset).
   useEffect(() => {
@@ -335,9 +377,8 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     setRanges((previous) => {
       const next = { ...previous };
       for (const a of AXES) {
-        if (!(a.key in pendingRanges.current)) {
-          next[a.key] = filters[a.key] ?? domainFor(a.key);
-        }
+        if (dirtyAxes.current.has(a.key)) continue;
+        next[a.key] = filters[a.key] ?? domainFor(a.key);
       }
       return next;
     });
@@ -351,7 +392,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
 
   const onReset = () => {
     placeLookupAbort.current?.abort();
-    pendingRanges.current = {};
+    dirtyAxes.current.clear();
     cityDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
@@ -391,10 +432,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
                 domainMax={d.max}
                 value={ranges[a.key] ?? d}
                 onChange={(r) => {
-                  setRanges((prev) => ({ ...prev, [a.key]: r }));
-                  pendingRanges.current[a.key] =
-                    r.min <= d.min && r.max >= d.max ? undefined : r;
-                  rangeDeb.run();
+                  dirtyAxes.current.add(a.key);
+                  const next = { ...ranges, [a.key]: r };
+                  setRanges(next);
+                  rangeDeb.run(next);
                 }}
               />
             );
@@ -403,9 +444,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-state`}>State</FieldLabel>
+        <FieldLabel htmlFor="filter-state">State</FieldLabel>
         <Select
-          id={`${idPrefix}-state`}
+          id="filter-state"
           value={filters.state ?? ""}
           onChange={(e) =>
             dispatch({ type: "selectState", state: e.target.value || null })
@@ -421,9 +462,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-city`}>City</FieldLabel>
+        <FieldLabel htmlFor="filter-city">City</FieldLabel>
         <Input
-          id={`${idPrefix}-city`}
+          id="filter-city"
           type="text"
           placeholder="e.g. Pagosa Springs"
           value={city}
@@ -440,9 +481,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-county`}>County</FieldLabel>
+        <FieldLabel htmlFor="filter-county">County</FieldLabel>
         <Input
-          id={`${idPrefix}-county`}
+          id="filter-county"
           type="text"
           placeholder="e.g. El Paso"
           value={county}
@@ -459,9 +500,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-function`}>Function</FieldLabel>
+        <FieldLabel htmlFor="filter-function">Function</FieldLabel>
         <Select
-          id={`${idPrefix}-function`}
+          id="filter-function"
           value={filters.function ?? ""}
           onChange={(e) =>
             dispatch({
@@ -480,9 +521,9 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
       </Field>
 
       <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor={`${idPrefix}-topic`}>Topic</FieldLabel>
+        <FieldLabel htmlFor="filter-topic">Topic</FieldLabel>
         <Select
-          id={`${idPrefix}-topic`}
+          id="filter-topic"
           value={filters.topic ?? ""}
           onChange={(e) =>
             dispatch({
@@ -520,7 +561,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
               >
                 {active && (
                   <PillHighlight
-                      layoutId={`${idPrefix}-substantive-pill`}
+                    layoutId="filter-substantive-pill"
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
@@ -551,7 +592,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
               >
                 {active && (
                   <PillHighlight
-                    layoutId={`${idPrefix}-fine-pill`}
+                    layoutId="filter-fine-pill"
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
@@ -597,7 +638,7 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
         </ToggleRow>
 
         <Select
-          id={`${idPrefix}-penalty-nature`}
+          id="filter-penalty-nature"
           aria-label="Fine type"
           value={filters.penaltyNature ?? ""}
           onChange={(e) =>
@@ -630,35 +671,18 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
   );
 }
 
-export function DesktopFilters() {
-  const isCompact = useCompactLayout();
-  if (isCompact) return null;
-  return (
-    <DesktopPanel as="aside" aria-label="Search and filters">
-      <DesktopScroll as={motion.div} variants={container} initial="hidden" animate="show">
-        <FilterControls idPrefix="desktop-filter" />
-      </DesktopScroll>
-    </DesktopPanel>
-  );
-}
-
-/** Compact-only filter drawer controlled by the top-navigation FILTERS action. */
+/** Single filter instance. Desktop: in-flow rail. Compact: FILTERS drawer. */
 export function Sidebar() {
   const { state, dispatch } = useExplorer();
   const isCompact = useCompactLayout();
+  const compactClosed = isCompact && !state.filtersOpen;
 
   useEffect(() => {
-    if (!isCompact || !state.filtersOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dispatch({ type: "closeFilters" });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isCompact, state.filtersOpen, dispatch]);
+    if (!isCompact) dispatch({ type: "closeFilters" });
+  }, [isCompact, dispatch]);
 
-  if (!isCompact) return null;
   return (
-    <>
+    <FilterSlot data-filter-shell>
       <Backdrop
         type="button"
         $open={state.filtersOpen}
@@ -666,17 +690,18 @@ export function Sidebar() {
         tabIndex={-1}
         onClick={() => dispatch({ type: "closeFilters" })}
       />
-      <MobileAside
+      <FilterChrome
+        as="aside"
         id="filters-panel"
+        aria-label="Search and filters"
         $open={state.filtersOpen}
-        aria-hidden={!state.filtersOpen}
-        inert={!state.filtersOpen}
-        variants={container}
-        initial="hidden"
-        animate="show"
+        aria-hidden={compactClosed}
+        inert={compactClosed}
       >
-        <FilterControls idPrefix="mobile-filter" />
-      </MobileAside>
-    </>
+        <FilterScroll as={motion.div} variants={container} initial="hidden" animate="show">
+          <FilterControls />
+        </FilterScroll>
+      </FilterChrome>
+    </FilterSlot>
   );
 }

@@ -187,6 +187,25 @@ test("state errors offer a retry on mobile instead of endless loading", async ({
   await expect(retry).toHaveCount(0);
 });
 
+test("reset cancels an in-flight search even when q is still empty", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/places?**", async (route) => {
+    await gate;
+    await route.fulfill({ json: { places: [{ state: "co", city: "denver", name: "Denver", lawCount: 12 }] } })
+      .catch(() => {});
+  });
+  await page.goto("/");
+  const request = page.waitForRequest("**/api/places?**");
+  await page.getByRole("searchbox").fill("Denver");
+  await request;
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  release();
+  await page.waitForTimeout(400);
+  await expect(page.getByRole("searchbox")).toHaveValue("");
+  await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
+});
+
 test("clearing an in-flight place lookup does not restore obsolete text or focus", async ({ page }) => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -204,18 +223,6 @@ test("clearing an in-flight place lookup does not restore obsolete text or focus
   await page.waitForTimeout(400);
   await expect(page.getByRole("searchbox")).toHaveValue("");
   await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
-});
-
-test("multiple slider edits survive a responsive remount", async ({ page }) => {
-  await page.goto("/");
-  const minimums = page.getByRole("slider", { name: /minimum/ });
-  await minimums.nth(0).fill("-1");
-  await minimums.nth(1).fill("-2");
-  await page.setViewportSize({ width: 900, height: 1000 });
-  await page.waitForTimeout(400);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(minimums.nth(0)).toHaveValue("-1");
-  await expect(minimums.nth(1)).toHaveValue("-2");
 });
 
 test("estimated totals do not cap pages, and final-page totals are exact", async ({ page }) => {
