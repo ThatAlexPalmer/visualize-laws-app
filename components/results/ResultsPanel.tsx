@@ -2,7 +2,6 @@
 
 // Paginated results list backed by GET /api/laws (server-side filter / sort /
 // pagination). Reads `filters` from the store; each row opens the LawModal.
-import { useMemo } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { queryFilters, useExplorer } from "@/lib/store";
@@ -242,10 +241,7 @@ export function ResultsPanel() {
   const { state, dispatch } = useExplorer();
   const { unhinged } = state;
   const filters = queryFilters(state);
-  const query = useMemo(
-    () => filtersToSearchParams(queryFilters(state)).toString(),
-    [state.filters, state.focus, state.placeDraft],
-  );
+  const query = filtersToSearchParams(filters).toString();
 
   const result = useCachedFetch(query, fetchResults, false);
   const data = result.value ?? null;

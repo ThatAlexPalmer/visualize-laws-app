@@ -44,8 +44,8 @@ export function focusesEqual(
 ): boolean {
   if (a === b) return true;
   if (!a || !b || a.kind !== b.kind || a.state !== b.state) return false;
-  if (a.kind === "city") return a.city === b.city;
-  if (a.kind === "county") return a.county === b.county;
-  if (a.kind === "atlas") return a.name === b.name;
+  if (a.kind === "city" && b.kind === "city") return a.city === b.city;
+  if (a.kind === "county" && b.kind === "county") return a.county === b.county;
+  if (a.kind === "atlas" && b.kind === "atlas") return a.name === b.name;
   return true;
 }
