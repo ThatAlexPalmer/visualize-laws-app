@@ -132,10 +132,10 @@ export interface LawSummary {
   problemSalience: number;
   /**
    * The stated fine, when the supplement's model read this law and found one.
-   * Carried on the list row so fines stay visible on every layer, not only
-   * when the Fines layer is selected.
+   * Always set (`null` = not annotated or no amount). Carried on every list
+   * and notable-law row so fines stay visible on every layer.
    */
-  fine?: number | null;
+  fine: number | null;
 }
 
 export interface LawRecord extends LawSummary {

@@ -14,7 +14,7 @@ const law: LawSummary = {
   id: 1, header: "Fixture parking law", state: "co", city: null, county: "denver",
   sourceJurisdictionType: "counties", isSubstantive: true, function: "Rules",
   topic: "Transportation", opacity: 1, enforcementDiscretion: 2,
-  paternalism: 0, problemSalience: 1,
+  paternalism: 0, problemSalience: 1, fine: null,
 };
 const state: JurisdictionAgg = {
   level: "state", state: "co", county: null, name: "Colorado", lawCount: 12,

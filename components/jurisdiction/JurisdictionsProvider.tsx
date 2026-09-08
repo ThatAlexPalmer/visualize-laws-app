@@ -11,12 +11,12 @@ import {
 } from "react";
 import { useExplorer } from "@/lib/store";
 import { useCachedFetch } from "@/lib/useCachedFetch";
-import { matchCountySlug } from "@/lib/types";
 import {
-  isCompleteNational,
+  matchCountySlug,
   type JurisdictionDetailResponse,
   type JurisdictionsResponse,
 } from "@/lib/types";
+import { fetchJurisdictions } from "./fetchJurisdictions";
 
 type JurisdictionsStatus = "loading" | "ready" | "error";
 
@@ -40,19 +40,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readJurisdictions(body: unknown): JurisdictionsResponse {
-  if (!isRecord(body) || !Array.isArray(body.rows)) {
-    throw new Error("Jurisdiction response has an invalid shape");
-  }
-  return {
-    rows: body.rows as JurisdictionsResponse["rows"],
-    national:
-      body.national === undefined
-        ? null
-        : (body.national as JurisdictionsResponse["national"]),
-  };
-}
-
 function readDetail(body: unknown): JurisdictionDetailResponse {
   if (!isRecord(body) || !Array.isArray(body.topLaws)) {
     throw new Error("Jurisdiction detail has an invalid shape");
@@ -73,41 +60,6 @@ function readDetail(body: unknown): JurisdictionDetailResponse {
       ? (body.topCities as JurisdictionDetailResponse["topCities"])
       : [],
   };
-}
-
-async function fetchJurisdictions(
-  signal: AbortSignal,
-  reload = false,
-): Promise<JurisdictionsResponse> {
-  let lastError: unknown;
-  let lastIncomplete: JurisdictionsResponse | null = null;
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await fetch("/api/jurisdictions", {
-        signal,
-        ...(reload || attempt > 0 ? { cache: "reload" } : {}),
-      });
-      if (!response.ok) {
-        throw new Error(`Jurisdiction request failed with ${response.status}`);
-      }
-      const body = readJurisdictions(await response.json());
-      if (!isCompleteNational(body)) {
-        lastIncomplete = body;
-        throw new Error("Jurisdiction aggregates are incomplete");
-      }
-      return body;
-    } catch (error) {
-      if (signal.aborted) throw error;
-      lastError = error;
-      if (attempt === 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, 300));
-      }
-    }
-  }
-
-  if (lastIncomplete) return lastIncomplete;
-  throw lastError;
 }
 
 async function fetchJurisdictionDetail(

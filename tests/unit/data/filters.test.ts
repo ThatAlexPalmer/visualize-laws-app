@@ -118,46 +118,61 @@ test("axis min/max use ${axis.key}Min / ${axis.key}Max", () => {
   assert.equal(sp.get("opacityMax"), "1.25");
 });
 
-test("shouldUseSavedScopeTotal: US and state-only reuse the saved total", () => {
-  assert.equal(shouldUseSavedScopeTotal(fromQs()), true);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co")), true);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&page=2&pageSize=8")), true);
+test("shouldUseSavedScopeTotal: empty or state-only WHERE reuses the saved total", () => {
+  assert.equal(shouldUseSavedScopeTotal([]), true);
+  assert.equal(shouldUseSavedScopeTotal(["laws.state = $1"]), true);
+  // Sort / page never appear in WHERE, so they do not change the decision.
   assert.equal(
-    shouldUseSavedScopeTotal(fromQs("state=co&sort=opacity&dir=desc")),
+    shouldUseSavedScopeTotal(["laws.state = $1"], ["laws.state = $1"]),
     true,
   );
 });
 
-test("shouldUseSavedScopeTotal: extra filters keep their own count", () => {
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&q=water")), false);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&city=denver")), false);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&county=denver")), false);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&function=zoning")), false);
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&topic=animals")), false);
+test("shouldUseSavedScopeTotal: extra WHERE fragments keep their own count", () => {
   assert.equal(
-    shouldUseSavedScopeTotal(fromQs("state=co&isSubstantive=true")),
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.city IN ($2)"]),
     false,
   );
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&opacityMin=0")), false);
   assert.equal(
-    shouldUseSavedScopeTotal(fromQs("state=co&paternalismMax=1")),
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.county ILIKE $2 ESCAPE '\\'"]),
+    false,
+  );
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", `laws."function" = $2`]),
+    false,
+  );
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.topic = $2"]),
+    false,
+  );
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.is_substantive = $2"]),
+    false,
+  );
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.opacity >= $2"]),
+    false,
+  );
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.paternalism <= $2"]),
+    false,
+  );
+  // A predicate that is not on any historical filter list still disables —
+  // the decision is the WHERE that was built, not a parallel field list.
+  assert.equal(
+    shouldUseSavedScopeTotal(["laws.state = $1", "laws.source_jurisdiction_type = $2"]),
     false,
   );
 });
 
-test("a penalty filter disables the saved scope total", () => {
-  // The saved jurisdiction count covers every law; a penalty filter narrows to
-  // the model-read subset, so reusing it would badly overstate the result count.
-  for (const qs of [
-    "state=co&hasFine=true",
-    "state=co&jail=true",
-    "state=co&perDay=true",
-    "state=co&fineMin=100",
-    "state=co&fineMax=1000",
-    "state=co&penaltyNature=criminal",
-  ]) {
-    assert.equal(shouldUseSavedScopeTotal(fromQs(qs)), false, qs);
-  }
+test("a penalty WHERE fragment disables the saved scope total", () => {
+  assert.equal(
+    shouldUseSavedScopeTotal([
+      "laws.state = $1",
+      "EXISTS (SELECT 1 FROM law_fines lf WHERE lf.law_id = laws.id AND lf.effective_max IS NOT NULL)",
+    ]),
+    false,
+  );
 });
 
 test("hasPenaltyFilter ignores absent, false and malformed values", () => {
@@ -175,24 +190,17 @@ test("hasPenaltyFilter ignores absent, false and malformed values", () => {
   assert.equal(hasPenaltyFilter(fromQs("fineMin=0")), true);
 });
 
-test("sorting by fine disables the saved scope total", () => {
-  // Fine sort only ranks laws that state one, so the saved jurisdiction count
-  // would be far too high.
+test("a row-only predicate disables the saved scope total", () => {
+  // Fine sort adds `lfs.effective_max IS NOT NULL` to the rows WHERE only.
   assert.equal(
-    shouldUseSavedScopeTotal(fromQs("state=co&sort=fine&dir=desc")),
+    shouldUseSavedScopeTotal(
+      ["laws.state = $1"],
+      ["laws.state = $1", "lfs.effective_max IS NOT NULL"],
+    ),
     false,
   );
-  assert.equal(
-    shouldUseSavedScopeTotal({
-      page: 1,
-      pageSize: 25,
-      state: "co",
-      sort: { key: "fine", dir: "desc" },
-    }),
-    false,
-  );
-  // An axis sort still reuses it — sorting alone does not narrow the set.
-  assert.equal(shouldUseSavedScopeTotal(fromQs("state=co&sort=opacity")), true);
+  // An axis sort does not add a row-only predicate, so the saved total stands.
+  assert.equal(shouldUseSavedScopeTotal(["laws.state = $1"]), true);
 });
 
 test("penaltyNature is whitelisted against the source vocabulary", () => {

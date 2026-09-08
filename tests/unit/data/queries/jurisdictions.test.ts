@@ -54,6 +54,16 @@ test("core aggregate failures propagate instead of returning empty success", asy
   await assert.rejects(getJurisdictionDetail("co"), /core unavailable/);
 });
 
+const penaltyStats = {
+  penaltySections: 10,
+  amountSections: 4,
+  jailSections: 1,
+  perDaySections: 0,
+  medianFine: 500,
+  salienceAmount: 1.2,
+  salienceNoAmount: 0.4,
+};
+
 test("optional penalty and fill failures preserve core state and county data", async (t) => {
   t.mock.method(console, "error", () => {});
   const aggregate = {
@@ -74,6 +84,84 @@ test("optional penalty and fill failures preserve core state and county data", a
   assert.equal(detail.jurisdiction?.name, "Colorado");
   assert.equal(detail.jurisdiction?.penalties, null);
   assert.equal(detail.countyFills[0].sourcePlace, "denver");
+  assert.equal(detail.countyFills[0].penalties, null);
   assert.equal(detail.counties.length, 1);
   assert.equal((await getJurisdictions()).national?.penalties, null);
+});
+
+test("fill-path errors still attach penalties that already loaded", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const aggregate = {
+    level: "state", state: "co", county: null, name: "Colorado", lawCount: 12,
+    substantiveCount: 12, avgOpacity: 1, avgEnforcementDiscretion: 2,
+    avgPaternalism: 0, avgProblemSalience: 1,
+  };
+  const county = { ...aggregate, level: "county", county: "denver", name: "Denver" };
+  stubPrisma(t, {
+    jurisdiction: { findMany: async () => [county], findFirst: async () => aggregate },
+    law: { findMany: async () => [] },
+    $queryRaw: async () => [],
+    placePenalty: {
+      findMany: async () => [{ state: "co", place: "denver", ...penaltyStats }],
+      findFirst: async () => ({ state: "co", place: null, ...penaltyStats }),
+    },
+    countyFill: { findMany: async () => { throw new Error("fill unavailable"); } },
+  });
+  const detail = await getJurisdictionDetail("co");
+  assert.deepEqual(detail.countyFills[0].penalties, {
+    penaltySections: 10,
+    amountSections: 4,
+    jailSections: 1,
+    perDaySections: 0,
+    medianFine: 500,
+    salienceAmount: 1.2,
+    salienceNoAmount: 0.4,
+  });
+});
+
+const notableLaw = {
+  id: 7, header: "Parking", isSubstantive: true, function: "Rules",
+  topic: "Other", sourceJurisdictionType: "cities", state: "co",
+  city: "denver", county: null, opacity: 1, enforcementDiscretion: 0,
+  paternalism: 0, problemSalience: 0,
+};
+
+test("notable laws carry the stated fine from law_fines", async (t) => {
+  const aggregate = {
+    level: "state", state: "co", county: null, name: "Colorado", lawCount: 12,
+    substantiveCount: 12, avgOpacity: 1, avgEnforcementDiscretion: 2,
+    avgPaternalism: 0, avgProblemSalience: 1,
+  };
+  const county = { ...aggregate, level: "county", county: "denver", name: "Denver" };
+  stubPrisma(t, {
+    jurisdiction: { findMany: async () => [county], findFirst: async () => aggregate },
+    law: { findMany: async () => [notableLaw] },
+    lawFine: { findMany: async () => [{ lawId: 7, effectiveMax: 250 }] },
+    $queryRaw: async () => [],
+    placePenalty: { findMany: async () => [], findFirst: async () => null },
+    countyFill: { findMany: async () => [] },
+  });
+  const detail = await getJurisdictionDetail("co");
+  assert.equal(detail.topLaws[0].fine, 250);
+});
+
+test("notable laws still set fine: null when the supplement is unavailable", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const aggregate = {
+    level: "state", state: "co", county: null, name: "Colorado", lawCount: 12,
+    substantiveCount: 12, avgOpacity: 1, avgEnforcementDiscretion: 2,
+    avgPaternalism: 0, avgProblemSalience: 1,
+  };
+  const county = { ...aggregate, level: "county", county: "denver", name: "Denver" };
+  stubPrisma(t, {
+    jurisdiction: { findMany: async () => [county], findFirst: async () => aggregate },
+    law: { findMany: async () => [notableLaw] },
+    lawFine: { findMany: async () => { throw new Error("fines unavailable"); } },
+    $queryRaw: async () => [],
+    placePenalty: { findMany: async () => [], findFirst: async () => null },
+    countyFill: { findMany: async () => [] },
+  });
+  const detail = await getJurisdictionDetail("co");
+  assert.equal(Object.hasOwn(detail.topLaws[0], "fine"), true);
+  assert.equal(detail.topLaws[0].fine, null);
 });
