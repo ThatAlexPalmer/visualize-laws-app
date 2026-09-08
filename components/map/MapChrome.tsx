@@ -5,6 +5,7 @@ import styled from "styled-components";
 import { motion } from "framer-motion";
 
 import { useExplorer } from "@/lib/store";
+import { atlasCountyName, cityFilter, focusState } from "@/lib/place";
 import { theme } from "@/lib/theme";
 import {
   cityStandInLabel,
@@ -186,9 +187,9 @@ export function MapHud({ hovered }: { hovered: Hovered | null }) {
   } = useMapView();
 
   const layer = state.layer;
-  const selectedState = state.selectedState;
-  const atlasCountyName = state.atlasCountyName;
-  const selectedCity = state.filters.city ?? null;
+  const selectedState = focusState(state.focus);
+  const atlasName = atlasCountyName(state.focus);
+  const selectedCity = cityFilter(state.focus, state.placeDraft) ?? null;
 
   const hoveredCountyLabel =
     hovered?.kind === "county"
@@ -226,8 +227,8 @@ export function MapHud({ hovered }: { hovered: Hovered | null }) {
       : stateName(hovered.usps)
     : selectedCounty
       ? prettySlug(selectedCounty)
-      : atlasCountyName
-        ? atlasCountyName
+      : atlasName
+        ? atlasName
         : selectedCity
           ? prettySlug(selectedCity)
           : selectedState

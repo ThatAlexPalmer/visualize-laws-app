@@ -1,5 +1,5 @@
 import { prisma } from "../db";
-import { matchCountySlug, prettySlug, slugVariants } from "../slugs";
+import { matchCountySlug, prettySlug, resolveCountySlug, slugVariants } from "../slugs";
 import {
   AXES,
   nativeCountyToFill,
@@ -355,9 +355,7 @@ export async function getJurisdictionDetail(
       penaltiesByPlace(code),
     ]);
 
-    const countySlug = countyRaw?.trim()
-      ? matchCountySlug(counties, countyRaw)
-      : null;
+    const countySlug = resolveCountySlug(counties, countyRaw);
 
     const [jurisdiction, topLaws, topCities, countyFills, statePenaltyStats] =
       await Promise.all([

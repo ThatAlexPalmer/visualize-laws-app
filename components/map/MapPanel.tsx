@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimationControls, useReducedMotion } from "framer-motion";
 
 import { useExplorer } from "@/lib/store";
+import { atlasCountyName, cityFilter, focusState } from "@/lib/place";
 import { theme } from "@/lib/theme";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
@@ -63,9 +64,9 @@ export function MapPanel() {
   const axis = state.axis;
   const layer = state.layer;
   const hoverStroke = hoverStrokeFor(layer, axis);
-  const selectedState = state.selectedState;
-  const atlasCountyName = state.atlasCountyName;
-  const selectedCity = state.filters.city ?? null;
+  const selectedState = focusState(state.focus);
+  const atlasName = atlasCountyName(state.focus);
+  const selectedCity = cityFilter(state.focus, state.placeDraft) ?? null;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -188,7 +189,7 @@ export function MapPanel() {
       selectedState,
       selectedCounty,
       selectedCity,
-      atlasCountyName,
+      atlasCountyName: atlasName,
       hoverStroke,
       statePaths: statePathsRef.current,
       countyPaths: countyPathsRef.current,
@@ -200,7 +201,7 @@ export function MapPanel() {
     selectedState,
     selectedCounty,
     selectedCity,
-    atlasCountyName,
+    atlasName,
     hoverStroke,
     paintByFips,
   ]);

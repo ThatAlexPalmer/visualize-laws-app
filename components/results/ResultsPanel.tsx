@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
-import { useExplorer } from "@/lib/store";
+import { queryFilters, useExplorer } from "@/lib/store";
 import { filtersToSearchParams } from "@/data/filters";
 import {
   AXES,
@@ -240,8 +240,12 @@ function fmt(n: number): string {
 
 export function ResultsPanel() {
   const { state, dispatch } = useExplorer();
-  const { filters, unhinged } = state;
-  const query = useMemo(() => filtersToSearchParams(filters).toString(), [filters]);
+  const { unhinged } = state;
+  const filters = queryFilters(state);
+  const query = useMemo(
+    () => filtersToSearchParams(queryFilters(state)).toString(),
+    [state.filters, state.focus, state.placeDraft],
+  );
 
   const result = useCachedFetch(query, fetchResults, false);
   const data = result.value ?? null;

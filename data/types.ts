@@ -339,6 +339,16 @@ export function isCompleteNational(body: JurisdictionsResponse): boolean {
   return body.national !== null && body.rows.length > 0;
 }
 
+/** Resolved place identity. Unresolved typed input is `PlaceDraft`. */
+export type PlaceFocus =
+  | { kind: "state"; state: string }
+  | { kind: "county"; state: string; county: string }
+  | { kind: "city"; state: string; city: string }
+  | { kind: "atlas"; state: string; name: string };
+
+/** Filter-only city/county text. Does not zoom the map. */
+export type PlaceDraft = { field: "city" | "county"; value: string };
+
 export interface PlaceMatch {
   state: string;
   city?: string | null;
@@ -427,5 +437,6 @@ export {
   matchCountySlug,
   normalizePlaceKey,
   prettySlug,
+  resolveCountySlug,
   slugVariants,
 } from "./slugs";

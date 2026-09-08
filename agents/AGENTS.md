@@ -36,7 +36,7 @@ avoid staleness; expand only when durable.
 - `components/map/` — canvas choropleth: `MapViewProvider.tsx` (fillRows/domain/sparse/bake),
   `MapPanel.tsx` (camera + Path2D draw), `MapChrome.tsx`, `geo.ts`, `camera.ts`,
   `sparseCounties.ts`, `counties.ts`, `fips.ts`. Do not put camera state in `lib/store.tsx`.
-- `lib/store.tsx`, `lib/theme.ts`, `lib/registry.tsx` — app state (`selectFocus` / `PlaceFocus`),
+- `lib/store.tsx`, `lib/place.ts`, `lib/placeLookup.ts`, `lib/theme.ts`, `lib/registry.tsx` — app state (`selectFocus` / `PlaceFocus` + draft text; one place resolver),
   theme tokens, SSR wiring. Compact layout: `lib/useCompactLayout.ts`.
 - `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations
   (incl. generated `search_vector` + city/county trigram indexes).

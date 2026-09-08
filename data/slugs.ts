@@ -79,3 +79,16 @@ export function matchCountySlug(
     candidates.find((c) => isCountyKindSlug(c.county)) ?? candidates[0];
   return preferred?.county ?? null;
 }
+
+/**
+ * The one county-slug resolution. Waits for a county list, then
+ * `matchCountySlug`. No raw-input fallback — callers must not re-resolve.
+ */
+export function resolveCountySlug(
+  counties: Array<{ county: string | null }> | null | undefined,
+  input: string | null | undefined,
+): string | null {
+  const trimmed = input?.trim();
+  if (!trimmed || !counties?.length) return null;
+  return matchCountySlug(counties, trimmed);
+}

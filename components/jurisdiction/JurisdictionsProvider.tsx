@@ -10,9 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import { useExplorer } from "@/lib/store";
+import { countyFilter, focusState } from "@/lib/place";
 import { useCachedFetch } from "@/lib/useCachedFetch";
 import {
-  matchCountySlug,
+  resolveCountySlug,
   type JurisdictionDetailResponse,
   type JurisdictionsResponse,
 } from "@/lib/types";
@@ -80,8 +81,8 @@ async function fetchJurisdictionDetail(
 
 export function JurisdictionsProvider({ children }: { children: ReactNode }) {
   const { state: explorer } = useExplorer();
-  const selectedState = explorer.selectedState;
-  const selectedCounty = explorer.filters.county;
+  const selectedState = focusState(explorer.focus);
+  const selectedCounty = countyFilter(explorer.focus, explorer.placeDraft);
 
   const [data, setData] = useState<JurisdictionsResponse | null>(null);
   const [status, setStatus] = useState<JurisdictionsStatus>("loading");
@@ -136,12 +137,10 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
         ? "ready"
         : "loading";
 
-  const resolvedCountySlug =
-    selectedState && selectedCounty && stateDetail
-      ? matchCountySlug(stateDetail.counties, selectedCounty)
-      : selectedCounty?.trim()
-        ? selectedCounty.trim().toLowerCase()
-        : null;
+  const resolvedCountySlug = resolveCountySlug(
+    stateDetail?.counties,
+    selectedCounty,
+  );
 
   const countyKey =
     selectedState && resolvedCountySlug

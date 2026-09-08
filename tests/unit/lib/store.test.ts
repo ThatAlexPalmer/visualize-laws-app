@@ -4,17 +4,19 @@ import { test } from "node:test";
 import {
   DEFAULT_PAGE_SIZE,
   explorerReducer,
+  queryFilters,
   type ExplorerAction,
   type ExplorerState,
 } from "@/lib/store";
+import { atlasCountyName, cityFilter, countyFilter, focusState } from "@/lib/place";
 
 function base(): ExplorerState {
   return {
     axis: "opacity",
     layer: "scores",
     filters: { page: 1, pageSize: DEFAULT_PAGE_SIZE, sort: null },
-    selectedState: null,
-    atlasCountyName: null,
+    focus: null,
+    placeDraft: null,
     selectedLaw: null,
     unhinged: false,
     filtersOpen: false,
@@ -26,16 +28,20 @@ function reduce(start: ExplorerState, ...actions: ExplorerAction[]): ExplorerSta
   return actions.reduce(explorerReducer, start);
 }
 
-test("selectFocus city sets state + city and clears county / atlas", () => {
+test("selectFocus city sets focus and clears county / atlas / draft", () => {
   const next = reduce(base(), {
     type: "selectFocus",
     focus: { kind: "city", state: "co", city: "pagosa_springs" },
   });
-  assert.equal(next.selectedState, "co");
-  assert.equal(next.filters.state, "co");
-  assert.equal(next.filters.city, "pagosa_springs");
-  assert.equal(next.filters.county, undefined);
-  assert.equal(next.atlasCountyName, null);
+  assert.deepEqual(next.focus, { kind: "city", state: "co", city: "pagosa_springs" });
+  assert.equal(next.placeDraft, null);
+  assert.equal(focusState(next.focus), "co");
+  const q = queryFilters(next);
+  assert.equal(q.state, "co");
+  assert.equal(q.city, "pagosa_springs");
+  assert.equal(q.county, undefined);
+  assert.equal(atlasCountyName(next.focus), null);
+  assert.equal(next.filters.state, undefined);
   assert.equal(next.filters.page, 1);
 });
 
@@ -44,15 +50,15 @@ test("selectFocus county clears city; city then clears county", () => {
     type: "selectFocus",
     focus: { kind: "county", state: "co", county: "el_paso_county" },
   });
-  assert.equal(county.filters.county, "el_paso_county");
-  assert.equal(county.filters.city, undefined);
+  assert.equal(countyFilter(county.focus, county.placeDraft), "el_paso_county");
+  assert.equal(cityFilter(county.focus, county.placeDraft), undefined);
 
   const city = reduce(county, {
     type: "selectFocus",
     focus: { kind: "city", state: "co", city: "denver" },
   });
-  assert.equal(city.filters.city, "denver");
-  assert.equal(city.filters.county, undefined);
+  assert.equal(cityFilter(city.focus, city.placeDraft), "denver");
+  assert.equal(countyFilter(city.focus, city.placeDraft), undefined);
 });
 
 test("selectFocus atlas does not set a county filter", () => {
@@ -60,10 +66,12 @@ test("selectFocus atlas does not set a county filter", () => {
     type: "selectFocus",
     focus: { kind: "atlas", state: "tx", name: "Harris" },
   });
-  assert.equal(next.selectedState, "tx");
-  assert.equal(next.atlasCountyName, "Harris");
-  assert.equal(next.filters.county, undefined);
-  assert.equal(next.filters.city, undefined);
+  assert.equal(focusState(next.focus), "tx");
+  assert.equal(atlasCountyName(next.focus), "Harris");
+  const q = queryFilters(next);
+  assert.equal(q.state, "tx");
+  assert.equal(q.county, undefined);
+  assert.equal(q.city, undefined);
 });
 
 test("selectFocus null and selectState null clear place identity", () => {
@@ -72,10 +80,11 @@ test("selectFocus null and selectState null clear place identity", () => {
     focus: { kind: "city", state: "co", city: "denver" },
   });
   const cleared = reduce(focused, { type: "selectFocus", focus: null });
-  assert.equal(cleared.selectedState, null);
-  assert.equal(cleared.filters.state, undefined);
-  assert.equal(cleared.filters.city, undefined);
-  assert.equal(cleared.atlasCountyName, null);
+  assert.equal(cleared.focus, null);
+  assert.equal(cleared.placeDraft, null);
+  assert.equal(queryFilters(cleared).state, undefined);
+  assert.equal(queryFilters(cleared).city, undefined);
+  assert.equal(atlasCountyName(cleared.focus), null);
 
   const viaSelectState = reduce(focused, { type: "selectState", state: null });
   assert.deepEqual(viaSelectState, cleared);
@@ -93,11 +102,15 @@ test("patchFilters cannot sneak a city, county, or state", () => {
   assert.equal(next.filters.q, "water");
   assert.equal(next.filters.city, undefined);
   assert.equal(next.filters.county, undefined);
-  assert.equal(next.filters.state, "co");
-  assert.equal(next.selectedState, "co");
+  assert.equal(next.filters.state, undefined);
+  assert.deepEqual(next.focus, { kind: "state", state: "co" });
+  const q = queryFilters(next);
+  assert.equal(q.state, "co");
+  assert.equal(q.city, undefined);
+  assert.equal(q.county, undefined);
 });
 
-test("setPlaceText writes filter text without changing selectedState", () => {
+test("setPlaceText writes draft text without changing the focused state", () => {
   const start = reduce(base(), {
     type: "selectFocus",
     focus: { kind: "state", state: "co" },
@@ -107,7 +120,24 @@ test("setPlaceText writes filter text without changing selectedState", () => {
     field: "city",
     value: "den",
   });
-  assert.equal(next.selectedState, "co");
-  assert.equal(next.filters.city, "den");
-  assert.equal(next.filters.county, undefined);
+  assert.deepEqual(next.focus, { kind: "state", state: "co" });
+  assert.deepEqual(next.placeDraft, { field: "city", value: "den" });
+  assert.equal(queryFilters(next).city, "den");
+  assert.equal(queryFilters(next).county, undefined);
+});
+
+test("setPlaceText on a city focus keeps the state and drops the city", () => {
+  const start = reduce(base(), {
+    type: "selectFocus",
+    focus: { kind: "city", state: "co", city: "denver" },
+  });
+  const next = reduce(start, {
+    type: "setPlaceText",
+    field: "county",
+    value: "el",
+  });
+  assert.deepEqual(next.focus, { kind: "state", state: "co" });
+  assert.deepEqual(next.placeDraft, { field: "county", value: "el" });
+  assert.equal(queryFilters(next).city, undefined);
+  assert.equal(queryFilters(next).county, "el");
 });

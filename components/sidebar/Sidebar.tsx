@@ -1,11 +1,13 @@
 "use client";
 
-// Advanced filter rail. All controls are wired to the store's `filters`; text
-// and slider inputs are debounced (~300ms) before dispatching to avoid query spam.
+// Advanced filter rail. Non-place controls patch `filters`. City/county go
+// through `resolveQueryFocus` / `setPlaceText` so they share QuickSearch's
+// resolver. Text and slider inputs debounce (~300ms) before dispatch.
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { motion } from "framer-motion";
-import { useExplorer } from "@/lib/store";
+import { queryFilters, useExplorer } from "@/lib/store";
+import { cityFilter, countyFilter, focusState } from "@/lib/place";
 import {
   AXES,
   DEFAULT_SCORE_RANGE,
@@ -23,12 +25,8 @@ import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import { useCompactLayout } from "@/lib/useCompactLayout";
 import {
   MIN_PLACE_ZOOM_CHARS,
-  lookupPlaces,
-} from "@/components/jurisdiction/placeLookup";
-import {
-  loadCountyFeatures,
-  matchAtlasCounties,
-} from "@/components/map/counties";
+  resolveQueryFocus,
+} from "@/lib/placeLookup";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 import { RangeSlider } from "./RangeSlider";
 import { Button } from "@/components/ui/buttons";
@@ -219,7 +217,9 @@ function makeFullRanges(domainFor: (a: Axis) => ScoreRange) {
 function FilterControls({ idPrefix }: { idPrefix: string }) {
   const { state, dispatch } = useExplorer();
   const { data } = useJurisdictions();
-  const { filters, unhinged } = state;
+  const filters = queryFilters(state);
+  const { unhinged } = state;
+  const selectedState = focusState(state.focus);
   const bounds = data?.national?.bounds ?? null;
   const placeLookupAbort = useRef<AbortController | null>(null);
 
@@ -280,10 +280,10 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     placeLookupAbort.current?.abort();
     const trimmed = v.trim();
     if (!trimmed) {
-      if (state.selectedState) {
+      if (selectedState) {
         dispatch({
           type: "selectFocus",
-          focus: { kind: "state", state: state.selectedState },
+          focus: { kind: "state", state: selectedState },
         });
       } else {
         dispatch({ type: "setPlaceText", field, value: undefined });
@@ -297,37 +297,17 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
     placeLookupAbort.current?.abort();
     const ac = new AbortController();
     placeLookupAbort.current = ac;
-    if (field === "county") void loadCountyFeatures().catch(() => {});
     try {
-      const places = await lookupPlaces(field, trimmed, ac.signal);
+      const focus = await resolveQueryFocus(trimmed, {
+        currentState: selectedState,
+        uniqueOnly: true,
+        prefer: field,
+        signal: ac.signal,
+      });
       if (ac.signal.aborted) return;
-      if (field === "city") {
-        const hit = places[0];
-        if (places.length === 1 && hit?.city && hit.state) {
-          dispatch({
-            type: "selectFocus",
-            focus: { kind: "city", state: hit.state, city: hit.city },
-          });
-          return;
-        }
-      } else {
-        const hit = places[0];
-        if (places.length === 1 && hit?.county && hit.state) {
-          dispatch({
-            type: "selectFocus",
-            focus: { kind: "county", state: hit.state, county: hit.county },
-          });
-          return;
-        }
-        const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
-        if (ac.signal.aborted) return;
-        if (atlas.length === 1) {
-          dispatch({
-            type: "selectFocus",
-            focus: { kind: "atlas", state: atlas[0].state, name: atlas[0].name },
-          });
-          return;
-        }
+      if (focus) {
+        dispatch({ type: "selectFocus", focus });
+        return;
       }
     } catch {
       if (ac.signal.aborted) return;
@@ -344,11 +324,13 @@ function FilterControls({ idPrefix }: { idPrefix: string }) {
 
   // Keep local inputs in sync with the store (chips, map clicks, reset).
   useEffect(() => {
-    setCity(filters.city == null ? "" : prettySlug(filters.city));
-  }, [filters.city]);
+    const next = cityFilter(state.focus, state.placeDraft);
+    setCity(next == null ? "" : prettySlug(next));
+  }, [state.focus, state.placeDraft]);
   useEffect(() => {
-    setCounty(filters.county == null ? "" : prettySlug(filters.county));
-  }, [filters.county]);
+    const next = countyFilter(state.focus, state.placeDraft);
+    setCounty(next == null ? "" : prettySlug(next));
+  }, [state.focus, state.placeDraft]);
   useEffect(() => {
     setRanges((previous) => {
       const next = { ...previous };

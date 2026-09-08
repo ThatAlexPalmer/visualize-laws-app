@@ -280,7 +280,7 @@ export function ConnectedMapLegend() {
   const { domain, sparseCounties } = useMapView();
   const axis = state.axis;
   const layer = state.layer;
-  const selectedState = state.selectedState;
+  const selectedState = state.focus?.state ?? null;
 
   // Penalty figures for the current scope: the selected state, else the nation.
   const penalties: PenaltyStats | null = selectedState
