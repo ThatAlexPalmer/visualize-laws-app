@@ -30,6 +30,7 @@ import {
 } from "./cityCounty";
 import { prettySlug } from "./slugs";
 import { acquireWriter, connectWriter } from "./importProgress";
+import { loadEnv, writerConnectionString } from "./writer";
 
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PLACE_CACHE = resolve(CACHE_DIR, "national_place2020.txt");
@@ -66,29 +67,6 @@ export interface CityCountyBuildStats {
   nativeFills: number;
   cityFills: number;
   uniqueFips: number;
-}
-
-function loadEnv(): void {
-  for (const name of [".env.local", ".env"]) {
-    const envPath = resolve(process.cwd(), name);
-    if (!existsSync(envPath)) continue;
-    for (const rawLine of readFileSync(envPath, "utf8").split("\n")) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq === -1) continue;
-      let key = line.slice(0, eq).trim();
-      if (key.startsWith("export ")) key = key.slice("export ".length).trim();
-      let value = line.slice(eq + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (process.env[key] === undefined) process.env[key] = value;
-    }
-  }
 }
 
 async function ensureCached(url: string, dest: string): Promise<string> {
@@ -343,11 +321,7 @@ function fmt(n: number): string {
 
 export async function runCityCountyBuild(): Promise<CityCountyBuildStats> {
   loadEnv();
-  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DIRECT_URL / DATABASE_URL is not set (check your .env.local)");
-  }
-  const client = await connectWriter(connectionString);
+  const client = await connectWriter(writerConnectionString());
   try {
     const stats = await buildCityCountyTables(client);
     console.log(

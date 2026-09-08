@@ -29,7 +29,7 @@
  * model-row ordinals. Reruns reconcile the database checkpoint before replay.
  * UNLOGGED staging loss is detected and requires explicit --restage.
  */
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -43,7 +43,6 @@ import {
   parquetReadObjects,
 } from "hyparquet";
 import { Client } from "pg";
-import { from as copyFrom } from "pg-copy-streams";
 
 import {
   FINES_EXPECTED_ROWS,
@@ -58,6 +57,12 @@ import {
   acquireWriter, connectWriter, fingerprintFile, getProgress, saveProgress,
   ImportStateError,
 } from "./importProgress";
+import {
+  LOAD_STATEMENT_TIMEOUT_MS,
+  copyBatch,
+  loadEnv,
+  writerConnectionString,
+} from "./writer";
 
 // --- Configuration ---------------------------------------------------------
 
@@ -72,10 +77,6 @@ const READ_CHUNK_ROWS = 50_000;
 const COPY_BATCH_SIZE = 5_000;
 const MAX_BATCH_ATTEMPTS = 8;
 const RETRY_BACKOFF_MS = 2_000;
-/** Fail fast on hung COPY; the join sets its own (disabled) timeout. */
-const LOAD_STATEMENT_TIMEOUT_MS = 45_000;
-/** Client watchdog sits just above statement_timeout so PG can cancel first. */
-const LOAD_QUERY_TIMEOUT_MS = 90_000;
 /** 0 = disabled. The join scans 2.2M rows and hashes every law body. */
 const JOIN_STATEMENT_TIMEOUT_MS = 0;
 
@@ -265,31 +266,6 @@ export interface FinesBuildStats {
   places: number;
 }
 
-// --- Env (tsx does not auto-load .env) -------------------------------------
-
-function loadEnv(): void {
-  for (const name of [".env.local", ".env"]) {
-    const envPath = resolve(process.cwd(), name);
-    if (!existsSync(envPath)) continue;
-    for (const rawLine of readFileSync(envPath, "utf8").split("\n")) {
-      const line = rawLine.trim();
-      if (!line || line.startsWith("#")) continue;
-      const eq = line.indexOf("=");
-      if (eq === -1) continue;
-      let key = line.slice(0, eq).trim();
-      if (key.startsWith("export ")) key = key.slice("export ".length).trim();
-      let value = line.slice(eq + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (process.env[key] === undefined) process.env[key] = value;
-    }
-  }
-}
-
 // --- Helpers ---------------------------------------------------------------
 
 function fmt(n: number): string {
@@ -298,14 +274,6 @@ function fmt(n: number): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-function connectionStringFromEnv(): string {
-  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DIRECT_URL / DATABASE_URL is not set (check your .env.local)");
-  }
-  return url;
 }
 
 /** Download the supplement parquet into the cache if it is not already there. */
@@ -329,55 +297,6 @@ async function ensureParquet(): Promise<string> {
   );
   await rename(tmp, PARQUET_CACHE);
   return PARQUET_CACHE;
-}
-
-/** Reject if `promise` does not settle in `ms`, running `onTimeout` first. */
-async function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-  onTimeout?: () => void,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
-          try {
-            onTimeout?.();
-          } catch {
-            /* ignore */
-          }
-          reject(new Error(`${label} timed out after ${ms}ms (stalled COPY?)`));
-        }, ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-
-/** COPY one batch on the current connection, with a socket-level watchdog. */
-async function copyBatch(client: Client, lines: string[]): Promise<void> {
-  if (lines.length === 0) return;
-  const stream = client.query(copyFrom(COPY_SQL));
-  await withTimeout(
-    pipeline(Readable.from(lines, { objectMode: false }), stream),
-    LOAD_QUERY_TIMEOUT_MS,
-    `COPY batch (${lines.length} rows)`,
-    () => {
-      try {
-        const conn = (client as unknown as {
-          connection?: { stream?: { destroy?: (err?: Error) => void } };
-        }).connection;
-        conn?.stream?.destroy?.(new Error("COPY watchdog timeout"));
-      } catch {
-        /* ignore */
-      }
-    },
-  );
 }
 
 // --- Build -----------------------------------------------------------------
@@ -458,7 +377,7 @@ export async function buildFinesTable(
     const size = batch.length;
     await client.query("BEGIN");
     try {
-      await copyBatch(client, batch);
+      await copyBatch(client, COPY_SQL, batch);
       await saveProgress(client, SOURCE, fingerprint, staged + size);
       await client.query("COMMIT");
     } catch (error) {
@@ -565,7 +484,7 @@ export async function runFinesBuild(
   opts: BuildFinesOptions = {},
 ): Promise<FinesBuildStats> {
   loadEnv();
-  const connectionString = opts.connectionString ?? connectionStringFromEnv();
+  const connectionString = opts.connectionString ?? writerConnectionString();
   let client = await connectWriter(connectionString);
   const startedAt = Date.now();
   try {
