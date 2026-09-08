@@ -55,7 +55,9 @@ export const MapStage = styled.div`
   }
 `;
 
-export const BaseCanvas = styled(motion.canvas)`
+export const BaseCanvas = styled(motion.canvas).attrs({
+  "aria-hidden": true,
+})`
   position: absolute;
   inset: 0;
   width: 100%;
@@ -64,7 +66,9 @@ export const BaseCanvas = styled(motion.canvas)`
   pointer-events: none;
 `;
 
-export const OverlayCanvas = styled.canvas`
+export const OverlayCanvas = styled.canvas.attrs({
+  "aria-hidden": true,
+})`
   position: absolute;
   inset: 0;
   width: 100%;

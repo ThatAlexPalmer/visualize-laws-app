@@ -81,13 +81,6 @@ export function matchAtlasCounties(
   return out;
 }
 
-export function countiesForState(
-  all: CountyFeatureEntry[],
-  stateFips: string,
-): CountyFeatureEntry[] {
-  return all.filter((c) => c.stateFips === stateFips);
-}
-
 /**
  * Join LOCUS county slugs to atlas features.
  * Duplicate atlas names in a state (county vs independent city) keep the

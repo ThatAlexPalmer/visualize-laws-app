@@ -87,17 +87,6 @@ export function normalize(value: number, domain: Domain): number {
   return t < 0 ? 0 : t > 1 ? 1 : t;
 }
 
-// Monochrome (white-on-black) ramp bounds, expressed as alpha on pure white.
-const MIN_ALPHA = 0.06;
-const MAX_ALPHA = 0.92;
-
-/** White at an opacity mapped from t in [0,1] — monochrome fallback. */
-export function rampColor(t: number): string {
-  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
-  const alpha = MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * clamped;
-  return `rgba(255,255,255,${alpha.toFixed(3)})`;
-}
-
 /**
  * Axis-aware choropleth fill: sweeps lightness 4%→56% at a fixed hue,
  * producing a wide, readable gradient on a black background.
