@@ -100,15 +100,6 @@ const FunnyButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const FiltersButton = styled(FunnyButton)`
-  display: none;
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
-    display: inline-flex;
-    align-items: center;
-  }
-`;
-
 const MenuButton = styled.button`
   display: none;
 
@@ -238,15 +229,6 @@ export function TopNav() {
       </Brand>
       <LayerPicker layout="pills" {...picker} />
       <RightNav>
-        <FiltersButton
-          type="button"
-          $active={state.filtersOpen}
-          onClick={() => dispatch({ type: "toggleFilters" })}
-          aria-expanded={state.filtersOpen}
-          aria-controls="filters-panel"
-        >
-          FILTERS
-        </FiltersButton>
         <FunnyButton
           type="button"
           $active={unhinged}
