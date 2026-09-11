@@ -6,13 +6,14 @@
 import styled from "styled-components";
 import { AnimatePresence, motion } from "framer-motion";
 import { useExplorer } from "@/lib/store";
+import { cityFilter, countyFilter, focusState } from "@/lib/place";
 import {
   AXES,
   amountShare,
   formatFine,
   formatShare,
-  matchCountySlug,
   prettySlug,
+  resolveCountySlug,
   stateName,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
@@ -192,17 +193,15 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
     retryState,
     retryCounty,
   } = useJurisdictions();
-  const { selectedState, unhinged, filters } = state;
-  const selectedCounty = filters.county;
-  const selectedCity = filters.city;
+  const { unhinged } = state;
+  const selectedState = focusState(state.focus);
+  const selectedCounty = countyFilter(state.focus, state.placeDraft);
+  const selectedCity = cityFilter(state.focus, state.placeDraft);
 
   const scoped = Boolean(selectedState && selectedCounty);
   const detail = scoped ? countyDetail : stateDetail;
   const detailStatus = scoped ? countyDetailStatus : stateDetailStatus;
-  const countySlug =
-    selectedCounty && stateDetail
-      ? matchCountySlug(stateDetail.counties, selectedCounty)
-      : null;
+  const countySlug = resolveCountySlug(stateDetail?.counties, selectedCounty);
   const countyAggFromState = countySlug
     ? (stateDetail?.counties.find((c) => c.county === countySlug) ?? null)
     : null;
@@ -392,6 +391,6 @@ export function AggregateRail() {
 export function JurisdictionPanel() {
   const isCompact = useCompactLayout();
   const { state } = useExplorer();
-  if (!isCompact || !state.selectedState) return null;
+  if (!isCompact || !focusState(state.focus)) return null;
   return <AggregatePanel placement="mobile" />;
 }

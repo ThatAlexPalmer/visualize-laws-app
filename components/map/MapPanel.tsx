@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimationControls, useReducedMotion } from "framer-motion";
 
 import { useExplorer } from "@/lib/store";
+import { atlasCountyName, cityFilter, focusState } from "@/lib/place";
 import { theme } from "@/lib/theme";
 import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvider";
 
@@ -43,7 +44,7 @@ const SIZE_REFIT_THRESHOLD_PX = 8;
 
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
-  const { status, stateDetail, stateDetailStatus } = useJurisdictions();
+  const { status } = useJurisdictions();
   const {
     countiesBaked,
     setCountiesBaked,
@@ -63,9 +64,9 @@ export function MapPanel() {
   const axis = state.axis;
   const layer = state.layer;
   const hoverStroke = hoverStrokeFor(layer, axis);
-  const selectedState = state.selectedState;
-  const atlasCountyName = state.atlasCountyName;
-  const selectedCity = state.filters.city ?? null;
+  const selectedState = focusState(state.focus);
+  const atlasName = atlasCountyName(state.focus);
+  const selectedCity = cityFilter(state.focus, state.placeDraft) ?? null;
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -188,7 +189,7 @@ export function MapPanel() {
       selectedState,
       selectedCounty,
       selectedCity,
-      atlasCountyName,
+      atlasCountyName: atlasName,
       hoverStroke,
       statePaths: statePathsRef.current,
       countyPaths: countyPathsRef.current,
@@ -200,7 +201,7 @@ export function MapPanel() {
     selectedState,
     selectedCounty,
     selectedCity,
-    atlasCountyName,
+    atlasName,
     hoverStroke,
     paintByFips,
   ]);
@@ -298,8 +299,9 @@ export function MapPanel() {
       cancelled = true;
     };
   }, [selectedState, countiesBaked, bakeCountyPaths, atlasAttempt, setAtlasError]);
-  const cameraTarget = selectedState && countiesBaked &&
-    stateDetail && stateDetailStatus === "ready" ? selectedState : null;
+  // Zoom on atlas bake. Fills wait on county rows; do not null the camera
+  // (and drop the mesh) while aggregates load.
+  const cameraTarget = selectedState && countiesBaked ? selectedState : null;
 
   useEffect(() => {
     if (!size) return;

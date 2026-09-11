@@ -1,4 +1,4 @@
-import { STATE_NAMES, type PlaceMatch } from "@/lib/types";
+import { STATE_NAMES, type PlaceFocus, type PlaceMatch } from "@/lib/types";
 import {
   loadCountyFeatures,
   matchAtlasCounties,
@@ -6,11 +6,13 @@ import {
 
 export const MIN_PLACE_ZOOM_CHARS = 3;
 
-export type PlaceFocus =
-  | { kind: "state"; state: string }
-  | { kind: "county"; state: string; county: string }
-  | { kind: "city"; state: string; city: string }
-  | { kind: "atlas"; state: string; name: string };
+export type PlaceLookupOpts = {
+  currentState: string | null;
+  uniqueOnly: boolean;
+  signal?: AbortSignal;
+  /** Sidebar city/county field: search that kind first. Omits state-name match. */
+  prefer?: "city" | "county";
+};
 
 /** Exact USPS code or full name. Prefixes (`col`) do not match. */
 export function matchStateQuery(q: string): string | null {
@@ -53,53 +55,46 @@ function toCityFocus(row: PlaceMatch | null): PlaceFocus | null {
 }
 
 /**
- * State name/code first. Then a city unless the query says county/parish/borough.
- * `uniqueOnly` still zooms when several states share a city name by taking the largest.
+ * Rank city/county hits. `undefined` means no hits — caller may try atlas.
+ * `null` means hits existed but were not unique enough to zoom.
  */
-export async function resolveQueryFocus(
-  q: string,
-  opts: {
-    currentState: string | null;
-    uniqueOnly: boolean;
-    signal?: AbortSignal;
-  },
-): Promise<PlaceFocus | null> {
-  const trimmed = q.trim();
-  if (!trimmed) return null;
-
-  const stateCode = matchStateQuery(trimmed);
-  if (stateCode) return { kind: "state", state: stateCode };
-
-  const [counties, cities] = await Promise.all([
-    lookupPlaces("county", trimmed, opts.signal),
-    lookupPlaces("city", trimmed, opts.signal),
-  ]);
-  if (opts.signal?.aborted) return null;
-
-  const wantCounty = queryWantsCounty(trimmed);
-  const primary = wantCounty ? counties : cities;
-  const secondary = wantCounty ? cities : counties;
+export function pickFromPlaces(opts: {
+  query: string;
+  currentState: string | null;
+  uniqueOnly: boolean;
+  prefer?: "city" | "county";
+  cities: PlaceMatch[];
+  counties: PlaceMatch[];
+}): PlaceFocus | null | undefined {
+  const wantCounty =
+    opts.prefer === "county" ||
+    (opts.prefer !== "city" && queryWantsCounty(opts.query));
+  const primary = wantCounty ? opts.counties : opts.cities;
+  const secondary = wantCounty ? opts.cities : opts.counties;
   const toFocus = wantCounty ? toCountyFocus : toCityFocus;
   const toOther = wantCounty ? toCityFocus : toCountyFocus;
 
   if (opts.uniqueOnly) {
     if (primary.length === 1) return toFocus(primary[0]);
     if (primary.length > 1) {
-      // Same place name in multiple states — pick the current state or the largest.
       return toFocus(pickPlace(primary, opts.currentState));
     }
     if (secondary.length === 1) return toOther(secondary[0]);
-  } else {
-    const first = toFocus(pickPlace(primary, opts.currentState));
-    if (first) return first;
-    const second = toOther(pickPlace(secondary, opts.currentState));
-    if (second) return second;
+    if (secondary.length > 0) return null;
+    return undefined;
   }
 
-  if (primary.length > 0 || secondary.length > 0) return null;
+  const first = toFocus(pickPlace(primary, opts.currentState));
+  if (first) return first;
+  const second = toOther(pickPlace(secondary, opts.currentState));
+  if (second) return second;
+  return undefined;
+}
 
-  const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
-  if (opts.signal?.aborted) return null;
+function pickFromAtlas(
+  atlas: Array<{ state: string; name: string }>,
+  opts: { currentState: string | null; uniqueOnly: boolean },
+): PlaceFocus | null {
   if (opts.uniqueOnly && atlas.length !== 1) return null;
   const here = opts.currentState
     ? atlas.find((m) => m.state === opts.currentState)
@@ -108,6 +103,45 @@ export async function resolveQueryFocus(
   return atlasPick
     ? { kind: "atlas", state: atlasPick.state, name: atlasPick.name }
     : null;
+}
+
+/**
+ * State name/code first (unless `prefer` is set). Then a city unless the
+ * query says county/parish/borough (or `prefer` is county).
+ * `uniqueOnly` still zooms when several states share a city name by taking
+ * the current state or the largest.
+ */
+export async function resolveQueryFocus(
+  q: string,
+  opts: PlaceLookupOpts,
+): Promise<PlaceFocus | null> {
+  const trimmed = q.trim();
+  if (!trimmed) return null;
+
+  if (!opts.prefer) {
+    const stateCode = matchStateQuery(trimmed);
+    if (stateCode) return { kind: "state", state: stateCode };
+  }
+
+  const [counties, cities] = await Promise.all([
+    lookupPlaces("county", trimmed, opts.signal),
+    lookupPlaces("city", trimmed, opts.signal),
+  ]);
+  if (opts.signal?.aborted) return null;
+
+  const fromPlaces = pickFromPlaces({
+    query: trimmed,
+    currentState: opts.currentState,
+    uniqueOnly: opts.uniqueOnly,
+    prefer: opts.prefer,
+    cities,
+    counties,
+  });
+  if (fromPlaces !== undefined) return fromPlaces;
+
+  const atlas = matchAtlasCounties(await loadCountyFeatures(), trimmed);
+  if (opts.signal?.aborted) return null;
+  return pickFromAtlas(atlas, opts);
 }
 
 export async function lookupPlaces(

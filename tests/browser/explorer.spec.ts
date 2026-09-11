@@ -80,18 +80,20 @@ test("camera waits for county data on repaint and resize, then snaps with reduce
   const scale = () => page.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) =>
     canvas.getContext("2d")!.getTransform().a / devicePixelRatio);
   await expect.poll(scale).toBeGreaterThan(0);
+  const usScale = await scale();
+  expect(usScale).toBeLessThan(1);
   await page.getByLabel("State", { exact: true }).selectOption("co");
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.getByRole("navigation").getByRole("button", { name: "Paternalism", exact: true }).click();
-  await page.waitForTimeout(100);
-  // US camera fits the 960x600 world in the map; Colorado zoom is >2x that scale.
-  const waitingScale = await scale();
-  expect(waitingScale).toBeLessThan(1);
   await expect(page.getByText("Loading counties in Colorado.", { exact: true })).toBeVisible();
+  // Zoom on atlas bake, not aggregate rows — outlines must not drop to US while loading.
+  await expect.poll(scale).toBeGreaterThan(usScale * 2);
+  const waitingScale = await scale();
   release();
   await expect(page.getByText("Loading counties in Colorado.", { exact: true })).toHaveCount(0);
   const focusedScale = await scale();
-  expect(focusedScale).toBeGreaterThan(waitingScale * 2);
+  expect(focusedScale).toBeGreaterThan(usScale * 2);
+  expect(focusedScale).toBeGreaterThanOrEqual(waitingScale);
   await page.waitForTimeout(100);
   expect(await scale()).toBe(focusedScale);
   const pathCount = () => page.evaluate(() =>

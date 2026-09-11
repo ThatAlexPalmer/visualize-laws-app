@@ -51,10 +51,13 @@ against `localhost:5432`.
 ### Layers
 
 - **Presentation (`app/`, `components/`, `lib/`)**: App Router pages + a single-page shell
-  (`app/page.tsx`). UI state (axis/layer, filters, state/law selection, atlas county,
-  Funny mode, filter-panel visibility and reset version) lives in a
-  small React context store (`lib/store.tsx`). Place identity is `selectFocus(PlaceFocus | null)`;
-  `patchFilters` does not write city/county/state. Map derived state lives in
+  (`app/page.tsx`). UI state (axis/layer, non-place filters, `PlaceFocus` + draft text,
+  selected law, Funny mode, filter-panel visibility and reset version) lives in a
+  small React context store (`lib/store.tsx`). Place identity is `selectFocus(PlaceFocus | null)`
+  plus `setPlaceText` for unresolved city/county input. `queryFilters` derives
+  `state/city/county` for the API; `patchFilters` does not write them. One resolver
+  (`lib/placeLookup.ts`) is shared by QuickSearch and Sidebar. One county slug
+  (`resolveCountySlug`). Map derived state lives in
   `components/map/MapViewProvider.tsx`, not the explorer store. All styling is styled-components
   against the tokens in `lib/theme.ts`; SSR is wired via `lib/registry.tsx`.
 - **Data access (`data/queries/`)**: `data/queries/laws.ts` builds a parameterized SQL query
@@ -101,8 +104,9 @@ into a fixed Albers USA world (`geo.ts` `usProjection`, 960×600). Zoom tweens a
 - FIPS → lowercase USPS is `components/map/fips.ts`. Place slugs join in `data/slugs.ts`.
   City stand-ins join by Census FIPS (`joinCountyFills`).
 - QuickSearch may zoom to a state and highlight a county; it does not remesh.
-- Atlas failures clear the rejected loader promise and expose retry. County data/atlas
-  readiness gates the camera target for selection, repaint and resize alike.
+- Atlas failures clear the rejected loader promise and expose retry. Atlas bake
+  gates the camera; county rows gate fills, not zoom. Do not drop the mesh while
+  in-state aggregates load.
 
 ## Development Commands
 
@@ -291,8 +295,11 @@ Do not expand public `README.md` with remote DB / internal agent ops.
   before seeding; a successful zero count is required.
 - **Alias**: `@/*` → repo root (see `tsconfig.json`); route handlers import `@/data/queries/*`
   and `data/queries/*` import the client/types via relative paths.
-- **Place selection** is `dispatch({ type: "selectFocus", focus })`. `patchFilters` must
-  not write `city` / `county` / `state`.
+- **Place selection** is `dispatch({ type: "selectFocus", focus })` plus draft text
+  via `setPlaceText`. Store `focus` / `placeDraft` are the identity;
+  `queryFilters` derives `city` / `county` / `state` for `/api/laws`.
+  `patchFilters` must not write those fields. QuickSearch and Sidebar call
+  `resolveQueryFocus`. County slugs go through `resolveCountySlug`.
 - **Parameterized SQL only** in `data/queries/laws.ts` — user input is always bound; only
   whitelisted column names / sort directions are interpolated. Place search boosts slug
   hits with `IS TRUE` (nullable city/county `OR` is NULL and sorts first under DESC).

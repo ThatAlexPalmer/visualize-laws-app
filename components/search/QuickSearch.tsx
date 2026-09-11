@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { useExplorer } from "@/lib/store";
+import { focusState } from "@/lib/place";
 import { useDebouncedCallback } from "@/lib/useDebouncedCallback";
 import {
   MIN_PLACE_ZOOM_CHARS,
   resolveQueryFocus,
-  type PlaceFocus,
-} from "@/components/jurisdiction/placeLookup";
+} from "@/lib/placeLookup";
+import type { PlaceFocus } from "@/lib/types";
 
 const Positioner = styled.div`
   position: absolute;
@@ -122,8 +123,8 @@ const Clear = styled.button`
 export function QuickSearch() {
   const { state, dispatch } = useExplorer();
   const [query, setQuery] = useState(state.filters.q ?? "");
-  const selectedStateRef = useRef(state.selectedState);
-  selectedStateRef.current = state.selectedState;
+  const selectedStateRef = useRef(focusState(state.focus));
+  selectedStateRef.current = focusState(state.focus);
   const lookupAbort = useRef<AbortController | null>(null);
 
   const applyFocus = (focus: PlaceFocus): void => {

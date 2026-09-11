@@ -36,7 +36,7 @@ avoid staleness; expand only when durable.
 - `components/map/` — canvas choropleth: `MapViewProvider.tsx` (fillRows/domain/sparse/bake),
   `MapPanel.tsx` (camera + Path2D draw), `MapChrome.tsx`, `geo.ts`, `camera.ts`,
   `sparseCounties.ts`, `counties.ts`, `fips.ts`. Do not put camera state in `lib/store.tsx`.
-- `lib/store.tsx`, `lib/theme.ts`, `lib/registry.tsx` — app state (`selectFocus` / `PlaceFocus`),
+- `lib/store.tsx`, `lib/place.ts`, `lib/placeLookup.ts`, `lib/theme.ts`, `lib/registry.tsx` — app state (`selectFocus` / `PlaceFocus` + draft text; one place resolver),
   theme tokens, SSR wiring. Compact layout: `lib/useCompactLayout.ts`.
 - `data/prisma/schema.prisma` + `data/prisma/migrations/` — database schema and SQL migrations
   (incl. generated `search_vector` + city/county trigram indexes).
@@ -255,8 +255,9 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
   `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
-- One readiness-gated camera target handles selection, resize and repaint; reduced
-  motion snaps rather than tweening. Failed atlas imports can be retried.
+- One atlas-bake-gated camera target handles selection, resize and repaint;
+  county rows gate fills, not zoom. Reduced motion snaps rather than tweening.
+  Failed atlas imports can be retried.
 - Desktop and mobile layer buttons expose the selected axis/Fines layer with `aria-pressed`.
 - Native modal dialogs trap focus, make the background inert, dismiss on Escape
   and restore the invoking control's focus.
