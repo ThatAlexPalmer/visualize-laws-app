@@ -5,10 +5,7 @@ import { queryLaws } from "@/data/queries/laws";
 import { GET } from "@/app/api/laws/route";
 import type { LawSummary } from "@/data/types";
 
-import {
-  searchParamsToFilters,
-  shouldUseSavedScopeTotal,
-} from "@/data/filters";
+import { searchParamsToFilters } from "@/data/filters";
 import { isSortKey } from "@/data/types";
 
 test("isSortKey accepts the four axes plus fine, and nothing else", () => {
@@ -27,21 +24,25 @@ test("isSortKey accepts the four axes plus fine, and nothing else", () => {
   }
 });
 
-test("queryLaws saved-scope total follows LawFilters, not raw params", () => {
-  const stateOnly = searchParamsToFilters(new URLSearchParams("state=co"));
-  assert.equal(shouldUseSavedScopeTotal(stateOnly), true);
+test("queryLaws saved-scope total follows the built WHERE, not a filter list", async (t) => {
+  const stub = fixture(t, { saved: 100 });
+
+  await queryLaws(searchParamsToFilters(new URLSearchParams("state=co")));
+  assert.equal(stub.savedCalls(), 1);
 
   const fineSort = searchParamsToFilters(
     new URLSearchParams("state=co&sort=fine&dir=desc"),
   );
   assert.equal(fineSort.sort?.key, "fine");
-  assert.equal(shouldUseSavedScopeTotal(fineSort), false);
+  await queryLaws(fineSort);
+  assert.equal(stub.savedCalls(), 1);
 
   const penalty = searchParamsToFilters(
     new URLSearchParams("state=co&hasFine=true"),
   );
   assert.equal(penalty.hasFine, true);
-  assert.equal(shouldUseSavedScopeTotal(penalty), false);
+  await queryLaws(penalty);
+  assert.equal(stub.savedCalls(), 1);
 });
 
 const law: LawSummary = {
@@ -52,7 +53,7 @@ const law: LawSummary = {
 
 function fixture(t: TestContext, options: {
   size?: number; estimate?: unknown; saved?: number | null; failRows?: boolean;
-  failEstimate?: boolean; catalog?: number | null;
+  failEstimate?: boolean; catalog?: number | null; omitFine?: boolean;
 } = {}) {
   const calls: { sql: string; params: unknown[] }[] = [];
   let savedCalls = 0;
@@ -69,7 +70,11 @@ function fixture(t: TestContext, options: {
       }
       if (sql.includes("reltuples")) return [{ total: options.catalog ?? null }];
       if (options.failRows) throw new Error("rows unavailable");
-      return Array.from({ length: options.size ?? 9 }, (_, i) => ({ ...law, id: i + 1 }));
+      return Array.from({ length: options.size ?? 9 }, (_, i) => {
+        const row = { ...law, id: i + 1 };
+        if (options.omitFine) delete (row as { fine?: number | null }).fine;
+        return row;
+      });
     },
   };
   // Prisma delegates are proxy-backed; restore each override after the test.
@@ -145,6 +150,16 @@ test("empty out-of-range page with no estimate has no total", async (t) => {
   assert.deepEqual(await queryLaws(filtered(100)), {
     rows: [], page: 100, pageSize: 8, total: null, totalKind: "unavailable", hasNextPage: false,
   });
+});
+
+test("list rows always carry fine as number | null", async (t) => {
+  fixture(t, { omitFine: true, size: 2, estimate: 2 });
+  const result = await queryLaws({ page: 1, pageSize: 8, state: "co", city: "denver" });
+  assert.equal(result.rows.length, 2);
+  for (const row of result.rows) {
+    assert.equal(Object.hasOwn(row, "fine"), true);
+    assert.equal(row.fine, null);
+  }
 });
 
 test("saved scope counts stay exact when consistent with the current rows", async (t) => {

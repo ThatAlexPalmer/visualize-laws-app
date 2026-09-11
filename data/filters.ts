@@ -1,7 +1,6 @@
 // LawFilters ↔ URLSearchParams. Pure: no React, no Prisma.
 import {
   AXES,
-  FINE_SORT_KEY,
   isPenaltyNature,
   isSortKey,
   type LawFilters,
@@ -140,24 +139,19 @@ export function hasPenaltyFilter(f: LawFilters): boolean {
 }
 
 /**
- * Unfiltered US or a single state — the rail already shows `jurisdictions.law_count`.
- * Extra filters (q, city, county, function, topic, substantive, sliders, penalties)
- * keep the planner estimate. Sort / page do not count as extra filters, except
- * sorting by fine, which restricts to laws that state one.
+ * Saved `jurisdictions.law_count` is honest only when the query's WHERE is the
+ * same scope the rail already counted: empty (US) or a single state predicate.
+ * Extra fragments — or a row-only predicate such as fine sort — mean a
+ * different set. Pass the WHERE `queryLaws` already built; do not re-list
+ * filters here (a missed field would overstate the rail).
  */
-export function shouldUseSavedScopeTotal(f: LawFilters): boolean {
-  if (f.sort?.key === FINE_SORT_KEY) return false;
-  if (f.q?.trim()) return false;
-  if (f.city?.trim()) return false;
-  if (f.county?.trim()) return false;
-  if (f.function?.trim()) return false;
-  if (f.topic?.trim()) return false;
-  if (f.isSubstantive === true || f.isSubstantive === false) return false;
-  for (const axis of AXES) {
-    const r = f[axis.key];
-    if (!r) continue;
-    if (Number.isFinite(r.min) || Number.isFinite(r.max)) return false;
-  }
-  if (hasPenaltyFilter(f)) return false;
-  return true;
+export function shouldUseSavedScopeTotal(
+  where: readonly string[],
+  rowsWhere: readonly string[] = where,
+): boolean {
+  if (rowsWhere.length !== where.length) return false;
+  if (where.length === 0) return true;
+  return where.length === 1 && STATE_SCOPE_PREDICATE.test(where[0]);
 }
+
+const STATE_SCOPE_PREDICATE = /^laws\.state = \$\d+$/;

@@ -120,7 +120,10 @@ export async function lookupPlaces(
     cache: "no-store",
     signal,
   });
-  if (!response.ok) return [];
+  if (!response.ok) {
+    // HTTP failure is not "no match" — [] would zoom via atlas / skip as empty.
+    throw new Error(`Place lookup failed with ${response.status}`);
+  }
   const body: unknown = await response.json();
   if (!body || typeof body !== "object" || !("places" in body)) return [];
   const places = (body as { places: unknown }).places;

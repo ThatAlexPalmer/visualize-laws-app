@@ -9,6 +9,7 @@ import {
   type JurisdictionAgg,
   type JurisdictionDetailResponse,
   type JurisdictionsResponse,
+  type LawSummary,
   type PenaltyStats,
   type PlaceLookupResponse,
 } from "../types";
@@ -286,6 +287,42 @@ export async function resolvePlace(opts: {
   return { places: [] };
 }
 
+async function queryTopLaws(
+  state: string,
+  countySlug: string | null,
+): Promise<LawSummary[]> {
+  const rows = await prisma.law.findMany({
+    where: countySlug
+      ? {
+          state,
+          county: { equals: countySlug, mode: "insensitive" },
+        }
+      : { state },
+    orderBy: { opacity: "desc" },
+    take: 10,
+    select: LAW_SELECT,
+  });
+  return attachLawFines(rows);
+}
+
+/** Stated fine on every notable-law row; a missing supplement is `null`, not omitted. */
+async function attachLawFines(
+  laws: Array<Omit<LawSummary, "fine">>,
+): Promise<LawSummary[]> {
+  if (laws.length === 0) return [];
+  let byId = new Map<number, number | null>();
+  try {
+    const rows = await prisma.lawFine.findMany({
+      where: { lawId: { in: laws.map((law) => law.id) } },
+      select: { lawId: true, effectiveMax: true },
+    });
+    byId = new Map(rows.map((row) => [row.lawId, row.effectiveMax]));
+  } catch (err) {
+    console.error("attachLawFines failed:", err);
+  }
+  return laws.map((law) => ({ ...law, fine: byId.get(law.id) ?? null }));
+}
+
 async function queryTopCities(state: string): Promise<CityAgg[]> {
   return prisma.$queryRaw<CityAgg[]>`
     SELECT city, count(*)::int AS "lawCount"
@@ -332,17 +369,7 @@ export async function getJurisdictionDetail(
             where: { level: "state", state: code },
             select: AGG_SELECT,
           }),
-      prisma.law.findMany({
-        where: countySlug
-          ? {
-              state: code,
-              county: { equals: countySlug, mode: "insensitive" },
-            }
-          : { state: code },
-        orderBy: { opacity: "desc" },
-        take: 10,
-        select: LAW_SELECT,
-      }),
+      queryTopLaws(code, countySlug),
       // Always state-level: LOCUS rows never set city and county together, so a
       // county-scoped city query would be empty and hide the city chips.
       queryTopCities(code),
@@ -396,24 +423,29 @@ async function queryCountyFills(
       orderBy: { name: "asc" },
     });
     if (stored.length === 0) {
-      return nativeCounties.map(nativeCountyToFill).map((fill) => ({
-        ...fill,
-        penalties: penalties.get(fill.sourcePlace) ?? null,
-      }));
+      return attachFillPenalties(nativeCounties.map(nativeCountyToFill), penalties);
     }
-    return stored
-      .filter(
+    return attachFillPenalties(
+      stored.filter(
         (row): row is CountyFill =>
           row.source === "county" || row.source === "city",
-      )
-      .map((row) => ({
-        // `source_place` is the city or county slug, which is exactly the key
-        // place_penalties uses — no mapping needed.
-        ...row,
-        penalties: penalties.get(row.sourcePlace) ?? null,
-      }));
+      ),
+      penalties,
+    );
   } catch (err) {
     console.error(`queryCountyFills(${state}) failed:`, err);
-    return nativeCounties.map(nativeCountyToFill);
+    // Core county scores still render; attach the penalties we already have
+    // rather than dropping the layer on this path.
+    return attachFillPenalties(nativeCounties.map(nativeCountyToFill), penalties);
   }
+}
+
+function attachFillPenalties(
+  fills: CountyFill[],
+  penalties: Map<string, PenaltyStats>,
+): CountyFill[] {
+  return fills.map((fill) => ({
+    ...fill,
+    penalties: penalties.get(fill.sourcePlace) ?? null,
+  }));
 }

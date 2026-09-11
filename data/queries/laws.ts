@@ -182,6 +182,11 @@ async function estimateFilteredRows(
   }
 }
 
+/** Every list / detail producer sets `fine: number | null` — never omit the key. */
+function withFine<T extends { fine?: number | null }>(row: T): T & { fine: number | null } {
+  return { ...row, fine: row.fine ?? null };
+}
+
 // Summary columns returned by list endpoints. Full content is fetched only when
 // a user opens a law, keeping filter/page responses small.
 //
@@ -319,6 +324,7 @@ export async function getLawById(id: number): Promise<LawDetail | null> {
     paternalism: row.paternalism,
     problemSalience: row.problemSalience,
     content: row.content,
+    fine: row.effectiveMax ?? null,
   };
 
   // `fine_relevant` is NOT NULL in law_fines, so a null here means the LEFT
@@ -471,7 +477,7 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
 
-  const useSaved = shouldUseSavedScopeTotal(filters);
+  const useSaved = shouldUseSavedScopeTotal(where, rowsWhere);
   let usedSaved = false;
   const totalPromise = useSaved
     ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {
@@ -499,7 +505,7 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   ]);
 
   const hasNextPage = fetched.length > pageSize;
-  const rows = fetched.slice(0, pageSize);
+  const rows = fetched.slice(0, pageSize).map(withFine);
   const pagination = { rows, page, pageSize, hasNextPage };
 
   // A terminal page proves the total, even when it is exactly pageSize rows.
