@@ -196,8 +196,7 @@ export function paintMapBase({
   ctx.strokeStyle = "rgba(255,255,255,0.32)";
   for (const e of statePaths) ctx.stroke(e.path);
 
-  // In-flight state view is a flat wash + loading line, not a county mesh.
-  if (focus && !countiesInFlight) {
+  if (focus) {
     const focusedState = statePaths.find((e) => e.usps === focus);
     // Cover the focused state's choropleth so unscored counties stay unpainted
     // (a 1.5% white wash over the state fill still reads as "colored").
@@ -206,7 +205,8 @@ export function paintMapBase({
       ctx.fill(focusedState.path);
     }
     const inState = countyPaths.filter((c) => c.usps === focus);
-    if (!sparseCounties) {
+    // Stroke baked outlines while rows load; withhold fills until they land.
+    if (!countiesInFlight && !sparseCounties) {
       for (const e of inState) {
         const paint = paintByFips.get(e.fips);
         const agg = paint
@@ -316,7 +316,13 @@ export function paintMapOverlay({
     const se = countyPaths.find((e) => {
       if (e.usps !== focus) return false;
       const paint = paintByFips.get(e.fips);
-      if (selectedCounty && paint?.countySlug === selectedCounty) return true;
+      if (
+        selectedCounty &&
+        (paint?.countySlug === selectedCounty ||
+          normalizePlaceKey(e.name) === normalizePlaceKey(selectedCounty))
+      ) {
+        return true;
+      }
       if (
         selectedCity &&
         paint?.source === "city" &&

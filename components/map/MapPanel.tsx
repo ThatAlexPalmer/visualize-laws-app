@@ -44,7 +44,7 @@ const SIZE_REFIT_THRESHOLD_PX = 8;
 
 export function MapPanel() {
   const { state, dispatch } = useExplorer();
-  const { status, stateDetail, stateDetailStatus } = useJurisdictions();
+  const { status } = useJurisdictions();
   const {
     countiesBaked,
     setCountiesBaked,
@@ -299,8 +299,9 @@ export function MapPanel() {
       cancelled = true;
     };
   }, [selectedState, countiesBaked, bakeCountyPaths, atlasAttempt, setAtlasError]);
-  const cameraTarget = selectedState && countiesBaked &&
-    stateDetail && stateDetailStatus === "ready" ? selectedState : null;
+  // Zoom on atlas bake. Fills wait on county rows; do not null the camera
+  // (and drop the mesh) while aggregates load.
+  const cameraTarget = selectedState && countiesBaked ? selectedState : null;
 
   useEffect(() => {
     if (!size) return;

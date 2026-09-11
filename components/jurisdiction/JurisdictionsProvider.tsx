@@ -10,12 +10,11 @@ import {
   type ReactNode,
 } from "react";
 import { useExplorer } from "@/lib/store";
-import { countyFilter, focusState } from "@/lib/place";
+import { countyDetailRequest, countyFilter, focusState } from "@/lib/place";
 import { useCachedFetch } from "@/lib/useCachedFetch";
-import {
-  resolveCountySlug,
-  type JurisdictionDetailResponse,
-  type JurisdictionsResponse,
+import type {
+  JurisdictionDetailResponse,
+  JurisdictionsResponse,
 } from "@/lib/types";
 import { fetchJurisdictions } from "./fetchJurisdictions";
 
@@ -137,10 +136,13 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
         ? "ready"
         : "loading";
 
-  const resolvedCountySlug = resolveCountySlug(
-    stateDetail?.counties,
-    selectedCounty,
-  );
+  const { slug: resolvedCountySlug, awaiting: awaitingCountySlug } =
+    countyDetailRequest({
+      selectedState,
+      selectedCounty,
+      focus: explorer.focus,
+      counties: stateDetail?.counties,
+    });
 
   const countyKey =
     selectedState && resolvedCountySlug
@@ -154,13 +156,15 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
   const countyFetch = useCachedFetch(countyKey, fetchCounty);
 
   const countyDetail = countyKey ? (countyFetch.value ?? null) : null;
-  const countyDetailStatus: JurisdictionsStatus = !countyKey
-    ? "ready"
-    : countyFetch.status === "error"
-      ? "error"
-      : countyFetch.status === "ready"
-        ? "ready"
-        : "loading";
+  const countyDetailStatus: JurisdictionsStatus = awaitingCountySlug
+    ? "loading"
+    : !countyKey
+      ? "ready"
+      : countyFetch.status === "error"
+        ? "error"
+        : countyFetch.status === "ready"
+          ? "ready"
+          : "loading";
 
   const value = useMemo(
     () => ({

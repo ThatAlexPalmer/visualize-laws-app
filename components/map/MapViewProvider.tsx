@@ -9,9 +9,8 @@ import {
 } from "react";
 
 import { useExplorer } from "@/lib/store";
-import { countyFilter, focusState } from "@/lib/place";
+import { countyDetailRequest, countyFilter, focusState } from "@/lib/place";
 import {
-  resolveCountySlug,
   stateName,
   type CountyFill,
   type JurisdictionAgg,
@@ -60,7 +59,6 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
   const selectedState = focusState(state.focus);
   const selectedCountyRaw = countyFilter(state.focus, state.placeDraft) ?? null;
   const rows = data?.rows ?? EMPTY_ROWS;
-  const countyRows = stateDetail?.counties ?? EMPTY_ROWS;
 
   const fillRows = useMemo(
     () => resolveFillRows(stateDetail),
@@ -79,7 +77,12 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
     return m;
   }, [rows]);
 
-  const selectedCounty = resolveCountySlug(countyRows, selectedCountyRaw);
+  const selectedCounty = countyDetailRequest({
+    selectedState,
+    selectedCounty: selectedCountyRaw ?? undefined,
+    focus: state.focus,
+    counties: stateDetail?.counties,
+  }).slug;
 
   const scoredCounties = useMemo(
     () => fillRows.filter((r) => r.sourcePlace),

@@ -255,8 +255,9 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
   `city_county` is the additive lookup.
 - Zoom-out must drop the county mesh immediately (`focusStateRef` cleared at the
   start of the US tween) so outlines do not linger.
-- One readiness-gated camera target handles selection, resize and repaint; reduced
-  motion snaps rather than tweening. Failed atlas imports can be retried.
+- One atlas-bake-gated camera target handles selection, resize and repaint;
+  county rows gate fills, not zoom. Reduced motion snaps rather than tweening.
+  Failed atlas imports can be retried.
 - Desktop and mobile layer buttons expose the selected axis/Fines layer with `aria-pressed`.
 - Native modal dialogs trap focus, make the background inert, dismiss on Escape
   and restore the invoking control's focus.

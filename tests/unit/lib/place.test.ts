@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   atlasCountyName,
   cityFilter,
+  countyDetailRequest,
   countyFilter,
   focusesEqual,
   focusState,
@@ -32,6 +33,47 @@ test("derived place fields come from focus + draft, not parallel store keys", ()
   const draft = { field: "county" as const, value: "el" };
   assert.equal(countyFilter({ kind: "state", state: "co" }, draft), "el");
   assert.equal(cityFilter({ kind: "state", state: "co" }, draft), undefined);
+});
+
+test("countyDetailRequest uses a county focus slug without waiting for the list", () => {
+  const focus: PlaceFocus = { kind: "county", state: "co", county: "el_paso_county" };
+  assert.deepEqual(
+    countyDetailRequest({
+      selectedState: "co",
+      selectedCounty: "el_paso_county",
+      focus,
+      counties: null,
+    }),
+    { slug: "el_paso_county", awaiting: false },
+  );
+
+  const draft = countyDetailRequest({
+    selectedState: "co",
+    selectedCounty: "el",
+    focus: { kind: "state", state: "co" },
+    counties: null,
+  });
+  assert.deepEqual(draft, { slug: null, awaiting: true });
+
+  assert.deepEqual(
+    countyDetailRequest({
+      selectedState: "co",
+      selectedCounty: "El Paso",
+      focus: { kind: "state", state: "co" },
+      counties: [{ county: "el_paso_county" }],
+    }),
+    { slug: "el_paso_county", awaiting: false },
+  );
+
+  assert.deepEqual(
+    countyDetailRequest({
+      selectedState: "tx",
+      selectedCounty: "el",
+      focus: { kind: "state", state: "tx" },
+      counties: [],
+    }),
+    { slug: null, awaiting: false },
+  );
 });
 
 test("focusesEqual compares kind + members", () => {
