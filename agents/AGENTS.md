@@ -176,7 +176,7 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
 - `pnpm exec playwright install chromium` once, then `pnpm build && pnpm test:browser`.
   The suite owns localhost:3100 (no server reuse), intercepts API traffic and gives the
   server an unreachable fixture DB URL. Covers focus/inert/Escape, request cancellation,
-  retry, slider remounts and reduced-motion camera readiness/no-remeshing.
+  retry, and reduced-motion camera readiness/no-remeshing.
 - CI currently runs lint/typecheck/unit tests; integration/browser checks are separate
   local commands, not implicitly included in `pnpm test`.
 
@@ -215,8 +215,8 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
 - US queries run after `connection()`, not during build. State core failures propagate
   to 503; optional penalty/fill failures preserve scores/native fills.
 - Client retries abort and invalidate the current resource. Results do not display
-  previous-key rows during loading/errors. Place clear/reset/unmount cancels requests;
-  pending multi-axis edits survive debounce and responsive unmount.
+  previous-key rows during loading/errors. Place clear/reset/unmount cancels requests.
+  One FilterControls instance; compact/desktop is a CSS restyle, not a remount.
 - Place lookup is `GET /api/places?city=` / `?county=` (`resolvePlace`, `no-store`).
   Client `lookupPlaces` must not hit `/api/jurisdictions?...`.
 - Loading ≠ sparse. US wait: `Loading the map.` State wait (atlas or county rows):

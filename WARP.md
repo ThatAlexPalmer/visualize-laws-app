@@ -52,12 +52,13 @@ against `localhost:5432`.
 
 - **Presentation (`app/`, `components/`, `lib/`)**: App Router pages + a single-page shell
   (`app/page.tsx`). UI state (axis/layer, non-place filters, `PlaceFocus` + draft text,
-  selected law, Funny mode, filter-panel visibility and reset version) lives in a
+  selected law, Funny mode, filter-panel visibility and reset epoch) lives in a
   small React context store (`lib/store.tsx`). Place identity is `selectFocus(PlaceFocus | null)`
   plus `setPlaceText` for unresolved city/county input. `queryFilters` derives
   `state/city/county` for the API; `patchFilters` does not write them. One resolver
   (`lib/placeLookup.ts`) is shared by QuickSearch and Sidebar. One county slug
-  (`resolveCountySlug`). Map derived state lives in
+  (`resolveCountySlug`). One FilterControls instance (compact/desktop is CSS).
+  Map derived state lives in
   `components/map/MapViewProvider.tsx`, not the explorer store. All styling is styled-components
   against the tokens in `lib/theme.ts`; SSR is wired via `lib/registry.tsx`.
 - **Data access (`data/queries/`)**: `data/queries/laws.ts` builds a parameterized SQL query
@@ -74,8 +75,8 @@ Funny mode changes copy via `lib/copy.ts`, not data. `lib/useCompactLayout.ts` c
 responsive layout. `JurisdictionsProvider` owns shared national/state requests;
 `lib/useCachedFetch.ts` pairs responses/errors with resource keys and exposes explicit
 retry (abort + invalidate). Results opt out of caching and hide previous-key rows during
-refresh/failure. Place lookups cancel on clear/reset/unmount; slider edits merge before
-debouncing and flush on responsive unmount.
+refresh/failure. Place lookups cancel on clear/reset/unmount; slider edits debounce
+in the single FilterControls instance (compact/desktop is CSS, not a remount).
 
 `LawModal` is a native modal dialog with focus containment, Escape dismissal and focus
 restoration. `MotionConfig` and the imperative camera honor reduced-motion preferences.

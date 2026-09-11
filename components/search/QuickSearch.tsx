@@ -177,9 +177,7 @@ export function QuickSearch() {
     debounced.cancel();
     lookupAbort.current?.abort();
     setQuery(state.filters.q ?? "");
-    // filterResetVersion intentionally cancels a pending query even if q was
-    // already undefined when Reset was pressed.
-  }, [state.filters.q, state.filterResetVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.filters.q, state.resetEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => lookupAbort.current?.abort(), []);
 
