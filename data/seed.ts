@@ -26,7 +26,6 @@
 import {
   createWriteStream,
   existsSync,
-  readFileSync,
   unlinkSync,
 } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
@@ -38,7 +37,6 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { ParquetReader } from "@dsnp/parquetjs";
 import { Client } from "pg";
-import { from as copyFrom } from "pg-copy-streams";
 
 import { buildCityCountyTables } from "./build-city-county";
 import { buildFinesTable } from "./build-fines";
@@ -48,6 +46,12 @@ import {
   connectWriter, fingerprintFile, getProgress, saveProgress,
   verifyCorpusProgress, resetCorpus, ImportStateError,
 } from "./importProgress";
+import {
+  LOAD_STATEMENT_TIMEOUT_MS,
+  copyBatch,
+  loadEnv,
+  writerConnectionString,
+} from "./writer";
 
 // --- Configuration ---------------------------------------------------------
 
@@ -58,12 +62,6 @@ const BATCH_SIZE = 5_000;
 // on a fresh connection if the socket drops / stalls mid-load.
 const MAX_SHARD_ATTEMPTS = 8;
 const RETRY_BACKOFF_MS = 2_000;
-// Fail-fast on hung COPY batches (Prisma Postgres stalls have been silent).
-// Aggregates over ~2.2M rows need a long/disabled timeout separately.
-const LOAD_STATEMENT_TIMEOUT_MS = 45_000;
-// Client watchdog slightly above statement_timeout so PG can cancel first;
-// still short enough that silent stalls recover quickly.
-const LOAD_QUERY_TIMEOUT_MS = 90_000;
 const AGG_STATEMENT_TIMEOUT_MS = 0; // 0 = disabled
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PROGRESS_PATH = resolve(CACHE_DIR, "seed-progress.json");
@@ -76,29 +74,6 @@ const COPY_SQL =
   'COPY laws (header, content, is_substantive, "function", topic, ' +
   "source_jurisdiction_type, state, city, county, enforcement_discretion, " +
   "opacity, paternalism, problem_salience) FROM STDIN";
-
-// --- Minimal .env loader (tsx does not auto-load .env) ---------------------
-
-function loadEnv(): void {
-  const envPath = resolve(process.cwd(), ".env");
-  if (!existsSync(envPath)) return;
-  for (const rawLine of readFileSync(envPath, "utf8").split("\n")) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    let key = line.slice(0, eq).trim();
-    if (key.startsWith("export ")) key = key.slice("export ".length).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = value;
-  }
-}
 
 // --- CLI -------------------------------------------------------------------
 
@@ -270,60 +245,6 @@ async function ensureShard(n: number): Promise<string> {
   return dest;
 }
 
-/** Reject if `promise` does not settle within `ms` (and run `onTimeout`). */
-async function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-  onTimeout?: () => void,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
-          try {
-            onTimeout?.();
-          } catch {
-            /* ignore */
-          }
-          reject(
-            new Error(
-              `${label} timed out after ${ms}ms (likely stalled COPY/load)`,
-            ),
-          );
-        }, ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-/** Write a batch of COPY lines on the current transaction/connection. */
-async function copyBatch(client: Client, lines: string[]): Promise<void> {
-  if (lines.length === 0) return;
-  const stream = client.query(copyFrom(COPY_SQL));
-  // Client-side watchdog: statement_timeout alone has not always aborted silent
-  // remote stalls; destroying the socket forces the retry/reconnect path.
-  await withTimeout(
-    pipeline(Readable.from(lines, { objectMode: false }), stream),
-    LOAD_QUERY_TIMEOUT_MS,
-    `COPY batch (${lines.length} rows)`,
-    () => {
-      try {
-        const sock = (client as any).connection?.stream as
-          | { destroy?: (err?: Error) => void }
-          | undefined;
-        sock?.destroy?.(new Error("COPY watchdog timeout"));
-      } catch {
-        /* ignore */
-      }
-    },
-  );
-}
-
 interface ShardResult {
   /** Rows newly committed on this call (excludes already-skipped progress). */
   rows: number;
@@ -369,7 +290,7 @@ export async function loadShard(
     const size = batch.length;
     await client.query("BEGIN");
     try {
-      await copyBatch(client, batch);
+      await copyBatch(client, COPY_SQL, batch);
       await saveProgress(client, source, opts.fingerprint, committed + size);
       await client.query("COMMIT");
     } catch (err) {
@@ -576,10 +497,7 @@ async function computeAggregates(client: Client): Promise<void> {
 async function main(): Promise<void> {
   loadEnv();
   const opts = parseArgs(process.argv.slice(2));
-  const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DIRECT_URL / DATABASE_URL is not set (check your .env)");
-  }
+  const connectionString = writerConnectionString();
 
   const connect = () => connectWriter(connectionString);
   let client = await connect();

@@ -48,6 +48,8 @@ avoid staleness; expand only when durable.
   Prisma 6→7 is tracked in #45; do not import `@prisma/client` from routes.
 - `data/slugs.ts` — place slug variants / atlas join keys. Do not rewrite stored slugs.
 - `data/seed.ts` — parquet → Postgres ingest with checkpoints + stall recovery.
+- `data/writer.ts` — shared `loadEnv` (`.env.local` then `.env`), COPY batch and
+  timeout watchdog for seed and both builders. Do not add another copy.
 - `data/importProgress.ts` — shared writer lock, fingerprints and transactional progress;
   `tests/integration/importProgress.integration.test.ts` — isolated PG18 recovery fixtures.
 - `data/cityCounty.ts` + `data/build-city-county.ts` — Census 2020 place join and
