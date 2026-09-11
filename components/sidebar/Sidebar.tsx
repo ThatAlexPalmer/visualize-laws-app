@@ -278,6 +278,7 @@ function FilterControls() {
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges((axis) => filters[axis] ?? { ...DEFAULT_SCORE_RANGE }),
   );
+  const rangesRef = useRef(ranges);
 
   const domainFor = (axis: Axis): ScoreRange => {
     const b = bounds?.[axis];
@@ -355,6 +356,7 @@ function FilterControls() {
         if (filters[a.key] || dirtyAxes.current.has(a.key)) continue;
         next[a.key] = domainFor(a.key);
       }
+      rangesRef.current = next;
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -380,6 +382,7 @@ function FilterControls() {
         if (dirtyAxes.current.has(a.key)) continue;
         next[a.key] = filters[a.key] ?? domainFor(a.key);
       }
+      rangesRef.current = next;
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,7 +401,9 @@ function FilterControls() {
     rangeDeb.cancel();
     setCity("");
     setCounty("");
-    setRanges(makeFullRanges(domainFor));
+    const next = makeFullRanges(domainFor);
+    rangesRef.current = next;
+    setRanges(next);
     dispatch({ type: "resetFilters" });
   };
 
@@ -433,7 +438,8 @@ function FilterControls() {
                 value={ranges[a.key] ?? d}
                 onChange={(r) => {
                   dirtyAxes.current.add(a.key);
-                  const next = { ...ranges, [a.key]: r };
+                  const next = { ...rangesRef.current, [a.key]: r };
+                  rangesRef.current = next;
                   setRanges(next);
                   rangeDeb.run(next);
                 }}
