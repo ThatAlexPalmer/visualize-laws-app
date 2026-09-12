@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import { useExplorer } from "@/lib/store";
-import { countyDetailRequest, countyFilter, focusState } from "@/lib/place";
+import { focusState } from "@/lib/place";
 import {
   stateName,
   type CountyFill,
@@ -49,7 +49,8 @@ const MapViewContext = createContext<MapViewValue | null>(null);
 
 export function MapViewProvider({ children }: { children: ReactNode }) {
   const { state } = useExplorer();
-  const { data, status, stateDetail, stateDetailStatus } = useJurisdictions();
+  const { data, status, stateDetail, stateDetailStatus, resolvedCountySlug } =
+    useJurisdictions();
   const [countiesBaked, setCountiesBaked] = useState(false);
   const [atlasError, setAtlasError] = useState(false);
   const [atlasAttempt, setAtlasAttempt] = useState(0);
@@ -57,7 +58,7 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
   const axis = state.axis;
   const layer = state.layer;
   const selectedState = focusState(state.focus);
-  const selectedCountyRaw = countyFilter(state.focus, state.placeDraft) ?? null;
+  const selectedCounty = resolvedCountySlug;
   const rows = data?.rows ?? EMPTY_ROWS;
 
   const fillRows = useMemo(
@@ -76,13 +77,6 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
     for (const r of rows) if (r.state) m.set(r.state.toLowerCase(), r);
     return m;
   }, [rows]);
-
-  const selectedCounty = countyDetailRequest({
-    selectedState,
-    selectedCounty: selectedCountyRaw ?? undefined,
-    focus: state.focus,
-    counties: stateDetail?.counties,
-  }).slug;
 
   const scoredCounties = useMemo(
     () => fillRows.filter((r) => r.sourcePlace),

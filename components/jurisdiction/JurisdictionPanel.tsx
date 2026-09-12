@@ -13,7 +13,6 @@ import {
   formatFine,
   formatShare,
   prettySlug,
-  resolveCountySlug,
   stateName,
 } from "@/lib/types";
 import { resolveAxisCopy, ui } from "@/lib/copy";
@@ -192,6 +191,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
     countyDetailStatus,
     retryState,
     retryCounty,
+    resolvedCountySlug,
   } = useJurisdictions();
   const { unhinged } = state;
   const selectedState = focusState(state.focus);
@@ -201,9 +201,8 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
   const scoped = Boolean(selectedState && selectedCounty);
   const detail = scoped ? countyDetail : stateDetail;
   const detailStatus = scoped ? countyDetailStatus : stateDetailStatus;
-  const countySlug = resolveCountySlug(stateDetail?.counties, selectedCounty);
-  const countyAggFromState = countySlug
-    ? (stateDetail?.counties.find((c) => c.county === countySlug) ?? null)
+  const countyAggFromState = resolvedCountySlug
+    ? (stateDetail?.counties.find((c) => c.county === resolvedCountySlug) ?? null)
     : null;
 
   const agg = selectedState
