@@ -32,6 +32,8 @@ interface JurisdictionsContextValue {
   countyDetail: JurisdictionDetailResponse | null;
   countyDetailStatus: JurisdictionsStatus;
   retryCounty: () => void;
+  /** Client county slug from `countyDetailRequest` — map and panel consume this. */
+  resolvedCountySlug: string | null;
 }
 
 const JurisdictionsContext = createContext<JurisdictionsContextValue | null>(null);
@@ -177,6 +179,7 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       countyDetailStatus,
       retryState: stateFetch.retry,
       retryCounty: countyFetch.retry,
+      resolvedCountySlug,
     }),
     [
       stateFetch.retry,
@@ -188,6 +191,7 @@ export function JurisdictionsProvider({ children }: { children: ReactNode }) {
       stateDetailStatus,
       countyDetail,
       countyDetailStatus,
+      resolvedCountySlug,
     ],
   );
 

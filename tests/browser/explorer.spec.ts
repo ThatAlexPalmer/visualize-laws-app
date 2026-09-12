@@ -170,6 +170,21 @@ test("pointer map navigation works without the keyboard browsing panel", async (
   await expect(countyField).toHaveValue("");
 });
 
+test("compact FILTERS opens the one filter instance", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const panel = page.locator("#filters-panel");
+  await expect(panel).toBeHidden();
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: "FILTERS", exact: true }).click();
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThan(120);
+  await expect(panel.getByLabel("City", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Reset", exact: true })).toBeVisible();
+});
+
 test("state errors offer a retry on mobile instead of endless loading", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   let failed = true;

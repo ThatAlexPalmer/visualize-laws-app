@@ -63,7 +63,7 @@ export const theme = {
     none: "none",
     focus: "0 0 0 2px rgba(255,255,255,0.68)",
   },
-  z: { map: 1, sidebar: 10, nav: 20, modal: 100 },
+  z: { map: 1, sidebar: 10, nav: 20, sheet: 90, modal: 100 },
 } as const;
 
 export type Theme = typeof theme;

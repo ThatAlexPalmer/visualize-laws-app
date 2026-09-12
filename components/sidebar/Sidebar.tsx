@@ -101,7 +101,8 @@ const FilterChrome = styled(PanelBase)<{ $open: boolean }>`
     position: fixed;
     inset: 59px 0 auto;
     width: 100%;
-    height: auto;
+    min-height: auto;
+    height: fit-content;
     max-height: calc(100dvh - 59px);
     align-self: auto;
     overflow: hidden;
@@ -109,7 +110,7 @@ const FilterChrome = styled(PanelBase)<{ $open: boolean }>`
     border: 0;
     border-bottom: 1px solid ${({ theme }) => theme.colors.g20};
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
-    z-index: 92;
+    z-index: ${({ theme }) => theme.z.sheet};
     visibility: ${({ $open }) => ($open ? "visible" : "hidden")};
     pointer-events: ${({ $open }) => ($open ? "auto" : "none")};
     transform: translate3d(0, ${({ $open }) => ($open ? "0" : "-100%")}, 0);
@@ -157,6 +158,7 @@ const FilterScroll = styled(ScrollArea)`
   }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
+    flex: 0 1 auto;
     gap: ${({ theme }) => theme.space(5)};
     padding: ${({ theme }) => theme.space(4)};
     padding-left: max(${({ theme }) => theme.space(4)}, calc((100vw - 640px) / 2));
@@ -192,7 +194,7 @@ const Backdrop = styled.button<{ $open: boolean }>`
     display: block;
     position: fixed;
     inset: 59px 0 0;
-    z-index: 91;
+    z-index: ${({ theme }) => theme.z.sheet};
     border: 0;
     padding: 0;
     background: rgba(0, 0, 0, 0.72);
