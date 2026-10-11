@@ -57,7 +57,7 @@ export function RangeSlider({
       <Row $justify="space-between" $align="baseline" $gap={2}>
         <Kicker $tone="g76">{label}</Kicker>
         <Vals>
-          {format(lo)} — {format(hi)}
+          {format(lo)} – {format(hi)}
         </Vals>
       </Row>
       <SliderTrack>

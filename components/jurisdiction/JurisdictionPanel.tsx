@@ -297,7 +297,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                       <span>{ui("Typical fine", unhinged)}</span>
                       <FineNum>
                         {agg.penalties.medianFine === null
-                          ? "—"
+                          ? "–"
                           : formatFine(agg.penalties.medianFine)}
                       </FineNum>
                     </FineRow>
@@ -306,7 +306,7 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
                       <FineNum>
                         {(() => {
                           const share = amountShare(agg.penalties);
-                          return share === null ? "—" : formatShare(share);
+                          return share === null ? "–" : formatShare(share);
                         })()}
                       </FineNum>
                     </FineRow>
