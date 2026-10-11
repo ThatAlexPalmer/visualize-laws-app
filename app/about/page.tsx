@@ -184,7 +184,7 @@ const item = {
 };
 
 const COVERS: [string, string][] = [
-  ["Zoning & land use", "what you can build — and whether your block gets a taco truck"],
+  ["Zoning & land use", "what you can build, and whether your block gets a taco truck"],
   ["Noise", "quiet hours, and how early the leaf blower may legally ruin a Saturday"],
   ["Parking", "street-sweeping tickets, permit zones, snow-emergency towing"],
   ["Building codes", "so the deck stays a deck and not a headline"],
@@ -210,10 +210,10 @@ const NORMAL_COPY = {
   kicker: "ABOUT",
   title: "Visualizing laws and their characteristics",
   lede:
-    "Visualize Laws turns legal text into something you can map, search, sort, and compare. Each law is scored across opacity, enforcement discretion, paternalism, and problem salience — four ways of seeing how a rule reads, what it permits, and what problem it is trying to solve.",
+    "Visualize Laws turns legal text into something you can map, search, sort, and compare. Each law gets four scores: Opacity (how hard it is to read), Enforcement Discretion (how much enforcers can decide), Paternalism (how much it limits you), and Problem Salience (how real the problem is).",
   layersTitle: "Three layers of U.S. law, starting local",
   layersBody:
-    "U.S. law operates across federal, state, and local layers. This first version begins with local law because LOCUS-v1 provides a uniquely broad, structured corpus of ordinances from cities and counties across the country.",
+    "This app exists because it has the most city and county laws in one place.",
   federal: "FEDERAL",
   federalMeta: "U.S. Congress · the whole country",
   state: "STATE",
@@ -226,7 +226,7 @@ const NORMAL_COPY = {
   governsBody: "Dull name, surprisingly personal reach. Local codes usually cover:",
   whyTitle: "Why bother with them at all?",
   whyBody:
-    "Because a dense city and a rural town want wildly different things. One needs rules for short-term rentals and 2 a.m. noise; the other cares about ATVs and livestock. Local ordinances let every community write its own fine print — as long as it doesn't break the bigger rules.",
+    "Because a dense city and a rural town want wildly different things. One needs rules for short-term rentals and 2 a.m. noise; the other cares about ATVs and livestock. Local laws let every community write its own fine print, as long as it doesn't break state or federal law.",
   coverageTitle: "Current coverage: LOCUS-v1",
   coverageBody:
     "The catch: these laws are public, but they're scattered across thousands of clunky vendor sites. LOCUS rounded up ~2.2 million of them into a single local-law corpus. That dataset is the starting point for Visualize Laws; state and federal laws are not included yet.",
@@ -235,7 +235,7 @@ const NORMAL_COPY = {
   roadmapBody:
     "The long-term goal is to make local, state, and federal law explorable through the same visual system. Planned coverage begins with financial regulation: securities laws, money-transmission laws, the Investment Company Act and related regulation, banking law, and adjacent areas of financial services.",
   roadmapWhy:
-    "Starting there supports research and infrastructure for financial products and tokenized securities, where understanding how overlapping rules differ across jurisdictions is especially useful.",
+    "We start there because money rules change from place to place.",
   roadmapNote:
     "This is the roadmap, not current coverage. Today's searchable corpus remains LOCUS-v1 local ordinances.",
   cite: "Built on LOCUS-v1",
@@ -249,10 +249,10 @@ const FUNNY_COPY = {
   kicker: "WHAT IS THIS",
   title: "The fine print has a map now",
   lede:
-    "America wrote millions of local laws and scattered them across the internet like a bureaucratic treasure hunt. Visualize Laws puts them on a map, makes them searchable, and scores their HUH? Factor, Wiggle Room, Nanny Index, and whether the problem Actually Matters.",
+    "America wrote millions of local laws and scattered them across the internet like a bureaucratic treasure hunt. Visualize Laws puts them on a map, makes them searchable, and scores each law: HUH? FACTOR (how hard it is to read), WIGGLE ROOM (how much enforcers can decide), NANNY INDEX (how much it limits you), and ACTUALLY MATTERS (how real the problem is).",
   layersTitle: "Three levels of government walked into a database",
   layersBody:
-    "Federal law covers the country, state law covers a state, and local law covers the place arguing about your fence. We started at the bottom of the stack because LOCUS-v1 assembled an unusually broad, structured corpus of city and county ordinances.",
+    "Federal law covers the country, state law covers a state, and local law covers the place arguing about your fence. This app exists because it has the most city and county laws in one place.",
   federal: "FEDERAL",
   federalMeta: "Congress · nationwide main quest",
   state: "STATE",
@@ -265,7 +265,7 @@ const FUNNY_COPY = {
   governsBody: "Local codes answer the questions nobody asked until two neighbors got involved:",
   whyTitle: "Why are there so many of these?",
   whyBody:
-    "A dense city, a beach town, and a rural county do not want the same rulebook. Local ordinances let each community customize the fine print for its own rentals, livestock, parking, noise, and recurring civic arguments — without overruling state or federal law.",
+    "A dense city, a beach town, and a rural county do not want the same rulebook. Local laws let each community customize the fine print for its own rentals, livestock, parking, noise, and recurring civic arguments, without overruling state or federal law.",
   coverageTitle: "Current rabbit hole: LOCUS-v1",
   coverageBody:
     "The laws were public; finding them was the sport. LOCUS collected roughly 2.2 million local laws from thousands of scattered sources into one corpus. That is what you can search today. State and federal laws have not entered the arena yet.",
@@ -274,7 +274,7 @@ const FUNNY_COPY = {
   roadmapBody:
     "The long-term plan is one visual system for local, state, and federal law. The first planned expansion is financial regulation: securities laws, money-transmission laws, the Investment Company Act and related regulation, banking law, and adjacent financial-services rules.",
   roadmapWhy:
-    "That priority supports research and infrastructure for financial products and tokenized securities, where overlapping jurisdictional rules are less a fun surprise and more an engineering requirement.",
+    "Money rules are next, because that's where conflicting rules actually break things.",
   roadmapNote:
     "Roadmap, not magic trick: the searchable corpus today is still LOCUS-v1 local ordinances.",
   cite: "Receipts: LOCUS-v1",

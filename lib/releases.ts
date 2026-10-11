@@ -30,7 +30,7 @@ export const RELEASES: readonly AppRelease[] = [
     href: githubRelease("v1.3.1"),
     notes: [
       "Search, the map, and the city/county fields pick the same place.",
-      "If results fail to load, see an error — not a fake empty list.",
+      "If results fail to load, you see an error, not an empty list.",
       "The map and its legend share one model, so zoom and color stay in sync.",
     ],
   },
@@ -39,7 +39,7 @@ export const RELEASES: readonly AppRelease[] = [
     released: "2026-08-30",
     href: githubRelease("v1.2.0"),
     notes: [
-      "Open a law and see the fine it states — the amount, whether each day counts again, and whether jail is mentioned.",
+      "Open a law and see the fine it states: the amount, whether each day counts again, and whether jail is mentioned.",
       "Filter to laws that state a fine, mention jail, or charge per day.",
       "Colour the map by how often a place’s code states a dollar fine.",
     ],
@@ -51,7 +51,7 @@ export const RELEASES: readonly AppRelease[] = [
     notes: [
       "Type a state name (colorado) and go to that state, not a city that shares the name.",
       "See that state’s full law list, not only laws that mention the word.",
-      "Read law titles and bodies as formatted text — headings and tables, not raw marks.",
+      "Read law titles and bodies as normal text, with headings and tables.",
     ],
   },
   {
@@ -61,7 +61,7 @@ export const RELEASES: readonly AppRelease[] = [
     notes: [
       "Zoom a state and see counties colored from a city’s code when that city sits in only one county.",
       "Hover those counties to see they are the city’s code, not county law.",
-      "Houston, Dallas, and Austin stay empty — they span more than one county.",
+      "Houston, Dallas, and Austin stay empty. They span more than one county.",
     ],
   },
   {

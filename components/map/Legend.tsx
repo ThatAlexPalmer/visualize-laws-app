@@ -198,7 +198,7 @@ function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
   const share =
     stats.penaltySections > 0
       ? formatShare(stats.amountSections / stats.penaltySections)
-      : "—";
+      : "–";
 
   // The link between this layer and the four axes: within the sections a model
   // read, the ones naming a dollar figure score markedly higher on problem
@@ -220,7 +220,7 @@ function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
       <Stat>
         <StatLabel>Typical fine</StatLabel>
         <StatValue>
-          {stats.medianFine === null ? "—" : formatFine(stats.medianFine)}
+          {stats.medianFine === null ? "–" : formatFine(stats.medianFine)}
         </StatValue>
       </Stat>
       <Stat>
@@ -258,8 +258,8 @@ export function MapLegend({ axis, layer, axisLabel, blurb, domain }: Props) {
       <Blurb>{blurb}</Blurb>
       <Bar style={barStyle} />
       <Scale>
-        <span>{domain ? fmtDomain(domain.min, layer) : "—"}</span>
-        <span>{domain ? fmtDomain(domain.max, layer) : "—"}</span>
+        <span>{domain ? fmtDomain(domain.min, layer) : "–"}</span>
+        <span>{domain ? fmtDomain(domain.max, layer) : "–"}</span>
       </Scale>
       <Direction>
         <span>less</span>

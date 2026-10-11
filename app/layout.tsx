@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://visualizelaws.com"),
   title: "visualizelaws.com",
   description:
-    "Explore the complete LOCUS-v1 corpus of ~2.2M U.S. local laws: search, filter, and an interactive map.",
+    "Search and map 2.2M U.S. local laws.",
   applicationName: "visualizelaws.com",
   alternates: { canonical: "/" },
   manifest: "/site.webmanifest",

@@ -428,7 +428,7 @@ export const STATE_NAMES: Record<string, string> = {
 };
 
 export function stateName(code: string | null | undefined): string {
-  if (!code) return "—";
+  if (!code) return "–";
   return STATE_NAMES[code.toLowerCase()] ?? code.toUpperCase();
 }
 
