@@ -30,7 +30,7 @@ export const RELEASES: readonly AppRelease[] = [
     href: githubRelease("v1.3.1"),
     notes: [
       "Search, the map, and the city/county fields pick the same place.",
-      "Failed loads now show an error, not an empty list.",
+      "If results fail to load, you see an error, not an empty list.",
       "The map and its legend share one model, so zoom and color stay in sync.",
     ],
   },
@@ -51,7 +51,7 @@ export const RELEASES: readonly AppRelease[] = [
     notes: [
       "Type a state name (colorado) and go to that state, not a city that shares the name.",
       "See that state’s full law list, not only laws that mention the word.",
-      "Read law titles and bodies as formatted text: headings and tables, not raw marks.",
+      "Read law titles and bodies as normal text, with headings and tables.",
     ],
   },
   {
