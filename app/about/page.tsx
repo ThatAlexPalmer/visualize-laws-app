@@ -210,7 +210,7 @@ const NORMAL_COPY = {
   kicker: "ABOUT",
   title: "Visualizing laws and their characteristics",
   lede:
-    "Visualize Laws turns legal text into something you can map, search, sort, and compare. Each law gets four scores: how hard it is to read, how much enforcers can decide, how much it limits you, and how real the problem is.",
+    "Visualize Laws turns legal text into something you can map, search, sort, and compare. Each law gets four scores: Opacity (how hard it is to read), Enforcement Discretion (how much enforcers can decide), Paternalism (how much it limits you), and Problem Salience (how real the problem is).",
   layersTitle: "Three layers of U.S. law, starting local",
   layersBody:
     "This app exists because it has the most city and county laws in one place.",
@@ -249,7 +249,7 @@ const FUNNY_COPY = {
   kicker: "WHAT IS THIS",
   title: "The fine print has a map now",
   lede:
-    "America wrote millions of local laws and scattered them across the internet like a bureaucratic treasure hunt. Visualize Laws puts them on a map, makes them searchable, and scores their HUH? Factor, Wiggle Room, Nanny Index, and whether the problem Actually Matters.",
+    "America wrote millions of local laws and scattered them across the internet like a bureaucratic treasure hunt. Visualize Laws puts them on a map, makes them searchable, and scores each law: HUH? FACTOR (how hard it is to read), WIGGLE ROOM (how much enforcers can decide), NANNY INDEX (how much it limits you), and ACTUALLY MATTERS (how real the problem is).",
   layersTitle: "Three levels of government walked into a database",
   layersBody:
     "Federal law covers the country, state law covers a state, and local law covers the place arguing about your fence. This app exists because it has the most city and county laws in one place.",
