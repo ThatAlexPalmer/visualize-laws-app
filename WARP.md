@@ -216,7 +216,7 @@ dedupes and hash-joins them onto `laws`. `data/fines.ts` holds the pure helpers.
 
 ### Penalties map layer
 
-A **fifth layer, not a fifth axis**. `lib/store.tsx` carries `layer: "scores" | "penalties"`
+A **layer, not a fifth axis**. `lib/store.tsx` carries `layer: "scores" | "penalties"`
 alongside `axis`; picking any axis returns to `scores`. The four axes stay a clean
 `Record<Axis, …>` contract — they are z-scored per-law averages, while penalties are counts
 over the subset a model read, with no per-law scalar to put behind a slider.
@@ -230,7 +230,7 @@ over the subset a model read, with no per-law scalar to put behind a slider.
   Median is surfaced as a **number** in the legend strip and hover, where it is the finding.
   It does spread at county level (NC $37.50–$5,000 across 16 values), hence the hover figure.
 - A place with no annotation is **not painted** and hovers `not annotated` — never `no penalty`.
-- `median_fine` is NULL below `PENALTY_MEDIAN_MIN` (5) amount sections; 48 of 2,287 places.
+- `median_fine` is NULL below `PENALTY_MEDIAN_MIN` (5) amount sections; 41 of 2,287 places.
 - The legend `Slot` is a stat strip: ramp card plus penalty figures, filling the band that is
   otherwise dead beside the 260px legend. The stat cards mount **outside** the
   `sparseCounties` early return, or they vanish in the eight thin states.
@@ -278,9 +278,6 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
   = **632,005** (**83,625** with an amount). Existing DBs that skipped docker seed after
   the city-index migration need `pnpm seed --shards ''`; ones predating the fines
   migration need `pnpm prisma:deploy` then `pnpm build:fines`.
-
-Maintainer/agent detail (single-writer, background logs, verify SQL): **`agents/AGENTS.md`**.
-Do not expand public `README.md` with remote DB / internal agent ops.
 
 ## Important Patterns & Gotchas
 
