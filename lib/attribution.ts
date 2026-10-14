@@ -7,7 +7,6 @@ export const DATASET_URL = "https://huggingface.co/LocalLaws";
 
 // LOCUS author who announced the work (one of the four paper authors).
 export const AUTHOR_NAME = "Joe Barrow";
-export const AUTHOR_URL = "https://x.com/barrowjoseph";
 
 // This app (distinct from the LOCUS dataset + research).
 export const APP_AUTHOR = "thatalexpalmer";
