@@ -6,7 +6,7 @@
 import styled, { css } from "styled-components";
 import Link from "next/link";
 
-type Variant = "primary" | "ghost" | "danger" | "subtle";
+type Variant = "primary" | "ghost" | "subtle";
 type Size = "sm" | "md";
 
 interface ButtonProps {
@@ -40,12 +40,7 @@ const buttonBase = css<ButtonProps>`
         ? theme.colors.g76
         : theme.colors.fg};
   border: 1px solid
-    ${({ theme, $variant }) =>
-      $variant === "ghost"
-        ? theme.colors.g20
-        : $variant === "danger"
-          ? theme.colors.g68
-          : "transparent"};
+    ${({ theme, $variant }) => ($variant === "ghost" ? theme.colors.g20 : "transparent")};
 
   &:hover:not(:disabled) {
     ${({ theme, $variant }) =>
