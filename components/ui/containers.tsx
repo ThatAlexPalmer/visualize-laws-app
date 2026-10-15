@@ -45,14 +45,6 @@ export const Cluster = styled.div<{ $gap?: number }>`
   gap: ${({ theme, $gap }) => theme.space($gap ?? 2)};
 `;
 
-/** Hairline rule. */
-export const Divider = styled.hr`
-  width: 100%;
-  margin: 0;
-  border: 0;
-  border-top: 1px solid ${({ theme }) => theme.colors.g12};
-`;
-
 /** Flex child that scrolls vertically within a fixed-height parent. */
 export const ScrollArea = styled.div`
   flex: 1;
