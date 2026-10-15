@@ -31,7 +31,6 @@ export const FINES_COPY = {
 
 /** Static UI string replacements. Key = the normal string. */
 export const UNHINGED_UI: Record<string, string> = {
-  "Search & Filters": "FIND YOUR OPPRESSOR",
   "Reset": "FORGET EVERYTHING",
   "Scores": "VIBES",
   "Fines": "THE BILL",
@@ -44,8 +43,6 @@ export const UNHINGED_UI: Record<string, string> = {
   "Procedural": "RED TAPE",
   "Any function": "WHO KNOWS",
   "Any topic": "LITERALLY ANYTHING",
-  "Select a state on the map to see its profile.":
-    "Pick a state. Any state. They all did something.",
   "Average scores": "Mean vibes",
   "Notable laws": "Hall of fame (or shame)",
   "Cities": "Towns that did this",
