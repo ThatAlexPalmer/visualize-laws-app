@@ -28,7 +28,7 @@ export const theme = {
   },
   // 4px base spacing scale
   space: (n: number) => `${n * 4}px`,
-  radius: { sm: "4px", md: "8px", lg: "14px", pill: "999px" },
+  radius: { sm: "4px", md: "8px", pill: "999px" },
   font: {
     sans: "var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     mono: "var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -42,7 +42,7 @@ export const theme = {
     xxl: "40px",
   },
   // numeric font weights (consumed via styled-components, not global CSS)
-  fontWeights: { normal: 400, medium: 500, semibold: 600, bold: 700 },
+  fontWeights: { medium: 500, semibold: 600, bold: 700 },
   // framer-motion durations (seconds)
   motion: {
     fast: 0.18,
@@ -54,16 +54,10 @@ export const theme = {
   // `default` mirrors motion.fast (0.18s) + motion.ease for a consistent feel.
   transitions: {
     default: "all 0.18s cubic-bezier(0.22, 1, 0.36, 1)",
-    spring: "0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55)",
   },
   // min-width breakpoints matching the app's existing media queries.
-  breakpoints: { xs: "520px", sm: "560px", md: "720px", lg: "1100px" },
-  // Subtle monochrome elevation + focus ring (white-on-black aesthetic).
-  shadows: {
-    none: "none",
-    focus: "0 0 0 2px rgba(255,255,255,0.68)",
-  },
-  z: { map: 1, sidebar: 10, nav: 20, sheet: 90, modal: 100 },
+  breakpoints: { xs: "520px", sm: "560px", lg: "1100px" },
+  z: { map: 1, nav: 20, sheet: 90, modal: 100 },
 } as const;
 
 export type Theme = typeof theme;
