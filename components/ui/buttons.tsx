@@ -1,17 +1,15 @@
 "use client";
 
 // Button primitives. A single themeable <Button> drives every call-to-action
-// through the `$variant` / `$size` / `$pill` transient props, with a matching
+// through the `$variant` / `$pill` transient props, with a matching
 // link-styled variant for Next navigation and a square icon button.
 import styled, { css } from "styled-components";
 import Link from "next/link";
 
 type Variant = "primary" | "ghost" | "subtle";
-type Size = "sm" | "md";
 
 interface ButtonProps {
   $variant?: Variant;
-  $size?: Size;
   $pill?: boolean;
 }
 
@@ -24,11 +22,8 @@ const buttonBase = css<ButtonProps>`
   cursor: pointer;
   font-family: ${({ theme }) => theme.font.mono};
   font-weight: ${({ theme }) => theme.fontWeights.medium};
-  font-size: ${({ theme, $size }) => ($size === "md" ? theme.fontSize.sm : theme.fontSize.xs)};
-  padding: ${({ theme, $size }) =>
-    $size === "md"
-      ? `${theme.space(2)} ${theme.space(4)}`
-      : `${theme.space(1)} ${theme.space(2.5)}`};
+  font-size: ${({ theme }) => theme.fontSize.xs};
+  padding: ${({ theme }) => `${theme.space(1)} ${theme.space(2.5)}`};
   border-radius: ${({ theme, $pill }) => ($pill ? theme.radius.pill : theme.radius.md)};
   transition: ${({ theme }) => theme.transitions.default};
 

@@ -367,7 +367,6 @@ export default function AboutPage() {
               rel="noreferrer"
               $variant="ghost"
               $pill
-              $size="sm"
             >
               {copy.paper}
             </LinkButton>
@@ -377,7 +376,6 @@ export default function AboutPage() {
               rel="noreferrer"
               $variant="ghost"
               $pill
-              $size="sm"
             >
               {copy.dataset}
             </LinkButton>

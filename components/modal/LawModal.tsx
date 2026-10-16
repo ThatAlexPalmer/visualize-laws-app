@@ -360,7 +360,6 @@ export function LawModal() {
                 <Button
                   type="button"
                   $variant="ghost"
-                  $size="sm"
                   onClick={() => setRetryAttempt((attempt) => attempt + 1)}
                 >
                   Retry
