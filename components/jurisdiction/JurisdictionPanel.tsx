@@ -233,7 +233,6 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
           <Clear
             type="button"
             $variant="subtle"
-            $size="sm"
             onClick={() => dispatch({ type: "selectState", state: null })}
           >
             Clear
@@ -255,7 +254,6 @@ function AggregatePanel({ placement }: { placement: "rail" | "mobile" }) {
               <Clear
                 type="button"
                 $variant="subtle"
-                $size="sm"
                 onClick={retryDetail}
               >
                 Retry

@@ -418,7 +418,6 @@ function FilterControls() {
             type="button"
             $variant="ghost"
             $pill
-            $size="sm"
             onClick={onReset}
           >
             {ui("Reset", unhinged)}
@@ -615,7 +614,6 @@ function FilterControls() {
             type="button"
             $variant="ghost"
             $pill
-            $size="sm"
             $on={filters.jail === true}
             aria-pressed={filters.jail === true}
             onClick={() =>
@@ -631,7 +629,6 @@ function FilterControls() {
             type="button"
             $variant="ghost"
             $pill
-            $size="sm"
             $on={filters.perDay === true}
             aria-pressed={filters.perDay === true}
             onClick={() =>
