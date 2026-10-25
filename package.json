@@ -67,7 +67,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.1",
     "hyparquet": "^1.31.4",
-    "prisma": "^6.19.3",
+    "prisma": "^7.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2"
   },
