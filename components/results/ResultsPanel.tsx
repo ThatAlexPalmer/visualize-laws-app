@@ -410,7 +410,6 @@ export function ResultsPanel() {
         <PageButton
           type="button"
           $variant="ghost"
-          $size="sm"
           disabled={page <= 1 || navigationUnavailable}
           onClick={() => dispatch({ type: "setPage", page: page - 1 })}
         >
@@ -422,7 +421,6 @@ export function ResultsPanel() {
         <PageButton
           type="button"
           $variant="ghost"
-          $size="sm"
           disabled={navigationUnavailable || !data?.hasNextPage}
           onClick={() => dispatch({ type: "setPage", page: page + 1 })}
         >
