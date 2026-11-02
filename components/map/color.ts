@@ -2,7 +2,6 @@ import {
   amountShare,
   type Axis,
   type AxisAverages,
-  type AxisBounds,
   type MapLayer,
   type PenaltyStats,
 } from "@/lib/types";
@@ -45,27 +44,12 @@ export interface Domain {
 }
 
 /**
- * Pick a color-scale domain for an axis. Prefers the national per-axis bounds
- * (so all axes share a stable scale); falls back to the min/max across the
- * supplied rows. A single finite value (one county, or all averages equal)
- * expands around that value so normalize() lands at 0.5 — mid-ramp fill
- * instead of null / no paint. Returns null only when there is no finite value.
+ * Color-scale domain from the rows on screen. A single finite value
+ * (one county, or identical averages) expands around that value so
+ * normalize() lands at 0.5 — mid-ramp fill instead of no paint.
+ * Returns null only when there is no finite value.
  */
-export function computeDomain(
-  axis: Axis,
-  rows: AxisAverages[],
-  bounds?: AxisBounds,
-): Domain | null {
-  const b = bounds?.[axis];
-  if (
-    Array.isArray(b) &&
-    Number.isFinite(b[0]) &&
-    Number.isFinite(b[1]) &&
-    b[1] > b[0]
-  ) {
-    return { min: b[0], max: b[1] };
-  }
-
+export function computeDomain(axis: Axis, rows: AxisAverages[]): Domain | null {
   let min = Infinity;
   let max = -Infinity;
   for (const r of rows) {
@@ -136,21 +120,17 @@ export function layerValue(
 }
 
 /**
- * Domain for the active layer.
- *
- * The penalties domain is always derived from the rows on screen and never
- * from national `bounds`: it is a bounded share, so a plain linear stretch
- * across the visible min/max keeps the contrast readable at both zoom levels.
- * No log or percentile clamp is needed — that is only a hazard for the raw
- * dollar amounts, which this layer deliberately does not paint.
+ * Domain for the active layer, from the rows on screen. National slider
+ * bounds are not a color scale. Penalties are a share, so a log or
+ * percentile clamp is only a hazard for raw dollar amounts, which this
+ * layer does not paint.
  */
 export function computeLayerDomain(
   layer: MapLayer,
   axis: Axis,
   rows: LayerRow[],
-  bounds?: AxisBounds,
 ): Domain | null {
-  if (layer !== "penalties") return computeDomain(axis, rows, bounds);
+  if (layer !== "penalties") return computeDomain(axis, rows);
 
   let min = Infinity;
   let max = -Infinity;
