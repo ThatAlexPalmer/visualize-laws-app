@@ -32,8 +32,6 @@ export const AXIS_BY_KEY: Record<Axis, AxisMeta> = Object.fromEntries(
 /** LOCUS-v1 categorical label vocabularies. */
 export const FUNCTIONS = ["Context", "Rules", "Process", "Enforcement", "Structural"] as const;
 export const TOPICS = ["Buildings", "Business", "Nuisance", "Zoning", "Other"] as const;
-export type FunctionLabel = (typeof FUNCTIONS)[number];
-export type TopicLabel = (typeof TOPICS)[number];
 
 export interface ScoreRange {
   min: number;
