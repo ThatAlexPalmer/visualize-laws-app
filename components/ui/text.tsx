@@ -20,7 +20,6 @@ export const Mono = styled.span`
   font-family: ${({ theme }) => theme.font.mono};
 `;
 
-/** Muted body copy. Tone defaults to the brightest gray (`g80`). */
 export const Muted = styled.p<{ $tone?: "g68" | "g76" | "g90"; $size?: "sm" | "md" | "lg" }>`
   margin: 0;
   line-height: 1.6;
@@ -37,7 +36,6 @@ export const Kicker = styled.span<{ $tone?: "g68" | "g76" }>`
   color: ${({ theme, $tone }) => theme.colors[$tone ?? "g76"]};
 `;
 
-/** Subtle mono text link (g64 → fg on hover). Render as a Next `<Link>` via `as`. */
 export const MonoLink = styled.a<{ $size?: "xs" | "sm" }>`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme, $size }) => theme.fontSize[$size ?? "sm"]};

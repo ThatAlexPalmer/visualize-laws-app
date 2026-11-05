@@ -1,8 +1,7 @@
 "use client";
 
 // Form control primitives + the extracted range-slider chrome. Every control
-// shares one monochrome field treatment (g04 fill, g12 border, g48 focus) so
-// the look can be tuned from a single place.
+// shares one monochrome field treatment so the look can be tuned from a single place.
 import styled, { css } from "styled-components";
 import { motion } from "framer-motion";
 
