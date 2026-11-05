@@ -165,7 +165,6 @@ const Links = styled(Cluster)`
   margin-top: ${({ theme }) => theme.space(4)};
 `;
 
-// External resource links reuse the ghost ButtonLink (pill, g20 border → g48).
 const LinkButton = styled(ButtonLink)`
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
 `;

@@ -52,7 +52,6 @@ export const ScrollArea = styled.div`
   overflow-y: auto;
 `;
 
-/** Block-level mono section label (uppercase, spaced, g48). */
 export const SectionLabel = styled.div`
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.xs};
