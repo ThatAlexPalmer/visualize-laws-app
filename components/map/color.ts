@@ -26,7 +26,7 @@ const AXIS_HSL: Record<Axis, AxisHSL> = {
 };
 
 /** Maps each axis to the aggregate's average column. */
-export const AXIS_TO_AVG: Record<Axis, keyof AxisAverages> = {
+const AXIS_TO_AVG: Record<Axis, keyof AxisAverages> = {
   opacity: "avgOpacity",
   enforcementDiscretion: "avgEnforcementDiscretion",
   paternalism: "avgPaternalism",
@@ -49,7 +49,7 @@ export interface Domain {
  * normalize() lands at 0.5 — mid-ramp fill instead of no paint.
  * Returns null only when there is no finite value.
  */
-export function computeDomain(axis: Axis, rows: AxisAverages[]): Domain | null {
+function computeDomain(axis: Axis, rows: AxisAverages[]): Domain | null {
   let min = Infinity;
   let max = -Infinity;
   for (const r of rows) {
@@ -71,18 +71,6 @@ export function normalize(value: number, domain: Domain): number {
   return t < 0 ? 0 : t > 1 ? 1 : t;
 }
 
-/**
- * Axis-aware choropleth fill: sweeps lightness 4%→56% at a fixed hue,
- * producing a wide, readable gradient on a black background.
- */
-export function rampColorForAxis(t: number, axis: Axis): string {
-  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
-  const p = AXIS_HSL[axis];
-  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
-  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
-  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
-}
-
 // --- Penalties layer -------------------------------------------------------
 
 /** Hue ~160, clear of every axis hue so the layer reads as its own thing. */
@@ -94,16 +82,8 @@ const PENALTY_HSL: AxisHSL = {
   litHigh: 52,
 };
 
-export function rampColorForPenalties(t: number): string {
-  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
-  const p = PENALTY_HSL;
-  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
-  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
-  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
-}
-
 /** A row that either layer can paint. */
-export type LayerRow = AxisAverages & { penalties?: PenaltyStats | null };
+type LayerRow = AxisAverages & { penalties?: PenaltyStats | null };
 
 /**
  * The value a row contributes under the active layer, or null when it cannot
@@ -145,13 +125,18 @@ export function computeLayerDomain(
   return { min, max };
 }
 
+function hslRamp(t: number, p: AxisHSL): string {
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  const sat = p.satLow + (p.satHigh - p.satLow) * clamped;
+  const lit = p.litLow + (p.litHigh - p.litLow) * clamped;
+  return `hsl(${p.hue},${sat.toFixed(1)}%,${lit.toFixed(1)}%)`;
+}
+
 /** Ramp colour for the active layer at position `t`. */
 export function rampColorForLayer(
   t: number,
   layer: MapLayer,
   axis: Axis,
 ): string {
-  return layer === "penalties"
-    ? rampColorForPenalties(t)
-    : rampColorForAxis(t, axis);
+  return hslRamp(t, layer === "penalties" ? PENALTY_HSL : AXIS_HSL[axis]);
 }
