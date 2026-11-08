@@ -237,8 +237,6 @@ const FieldHint = styled.p`
   color: ${({ theme }) => theme.colors.g60};
 `;
 
-// The Reset control reuses the Button primitive (ghost variant); it only dims
-// the resting label to g64 and keeps a subtle press affordance.
 const ResetButton = styled(Button)`
   color: ${({ theme }) => theme.colors.g76};
 
