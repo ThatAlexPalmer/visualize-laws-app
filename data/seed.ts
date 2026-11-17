@@ -40,7 +40,7 @@ import { Client } from "pg";
 
 import { buildCityCountyTables } from "./build-city-county";
 import { buildFinesTable } from "./build-fines";
-import { toBool, toStr } from "./fines";
+import { copyText, toBool, toStr } from "./fines";
 import { STATE_NAMES } from "./types";
 import {
   connectWriter, fingerprintFile, getProgress, saveProgress,
@@ -146,16 +146,6 @@ function toNum(value: unknown): number {
   return Number(value);
 }
 
-/** Escape a value for the Postgres COPY *text* format (tab-delimited, \\N = null). */
-function text(value: string | null): string {
-  if (value === null) return "\\N";
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
-}
-
 function bool(value: boolean): string {
   return value ? "t" : "f";
 }
@@ -170,15 +160,15 @@ function num(value: number): string {
 function encodeRow(r: RawRow): string {
   return (
     [
-      text(toStr(r.header)),
-      text(toStr(r.content) ?? ""), // content is NOT NULL
+      copyText(toStr(r.header)),
+      copyText(toStr(r.content) ?? ""), // content is NOT NULL
       bool(toBool(r.is_substantive)),
-      text(toStr(r.function)),
-      text(toStr(r.topic)),
-      text(toStr(r.source_jurisdiction_type)),
-      text((toStr(r.state) ?? "").toLowerCase()), // state is NOT NULL
-      text(toStr(r.city)),
-      text(toStr(r.county)),
+      copyText(toStr(r.function)),
+      copyText(toStr(r.topic)),
+      copyText(toStr(r.source_jurisdiction_type)),
+      copyText((toStr(r.state) ?? "").toLowerCase()), // state is NOT NULL
+      copyText(toStr(r.city)),
+      copyText(toStr(r.county)),
       num(toNum(r.enforcement_discretion)),
       num(toNum(r.opacity)),
       num(toNum(r.paternalism)),
