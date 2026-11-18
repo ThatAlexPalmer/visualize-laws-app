@@ -202,42 +202,26 @@ test("state errors offer a retry on mobile instead of endless loading", async ({
   await expect(retry).toHaveCount(0);
 });
 
-test("reset cancels an in-flight search even when q is still empty", async ({ page }) => {
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  await page.route("**/api/places?**", async (route) => {
-    await gate;
-    await route.fulfill({ json: { places: [{ state: "co", city: "denver", name: "Denver", lawCount: 12 }] } })
-      .catch(() => {});
-  });
-  await page.goto("/");
-  const request = page.waitForRequest("**/api/places?**");
-  await page.getByRole("searchbox").fill("Denver");
-  await request;
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
-  release();
-  await page.waitForTimeout(400);
-  await expect(page.getByRole("searchbox")).toHaveValue("");
-  await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
-});
-
-test("clearing an in-flight place lookup does not restore obsolete text or focus", async ({ page }) => {
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  await page.route("**/api/places?**", async (route) => {
-    await gate;
-    await route.fulfill({ json: { places: [{ state: "co", city: "denver", name: "Denver", lawCount: 12 }] } })
-      .catch(() => {});
-  });
-  await page.goto("/");
-  const request = page.waitForRequest("**/api/places?**");
-  await page.getByRole("searchbox").fill("Denver");
-  await request;
-  await page.getByRole("button", { name: "Clear search" }).click();
-  release();
-  await page.waitForTimeout(400);
-  await expect(page.getByRole("searchbox")).toHaveValue("");
-  await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
+test("reset and clear cancel an in-flight place lookup", async ({ page }) => {
+  for (const name of ["Reset", "Clear search"]) {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/places?**", async (route) => {
+      await gate;
+      await route.fulfill({ json: { places: [{ state: "co", city: "denver", name: "Denver", lawCount: 12 }] } })
+        .catch(() => {});
+    });
+    await page.goto("/");
+    const request = page.waitForRequest("**/api/places?**");
+    await page.getByRole("searchbox").fill("Denver");
+    await request;
+    await page.getByRole("button", { name, exact: name === "Reset" }).click();
+    release();
+    await page.waitForTimeout(400);
+    await expect(page.getByRole("searchbox")).toHaveValue("");
+    await expect(page.getByLabel("State", { exact: true })).toHaveValue("");
+    await page.unroute("**/api/places?**");
+  }
 });
 
 test("estimated totals do not cap pages, and final-page totals are exact", async ({ page }) => {

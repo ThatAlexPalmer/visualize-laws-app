@@ -86,7 +86,7 @@ export function matchAtlasCounties(
  * Duplicate atlas names in a state (county vs independent city) keep the
  * lower FIPS — LOCUS `_county` slugs mean the county.
  */
-export function joinCountySlugs(
+function joinCountySlugs(
   features: { fips: string; name: string }[],
   rows: { county: string | null; name: string }[],
 ): Map<string, string> {

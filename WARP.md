@@ -342,7 +342,7 @@ seed directly: `pnpm seed` (host, against the Docker Postgres) or `docker compos
   layer and the four axes.
 - **A penalty filter is not a corpus filter.** `hasFine` / `jail` / `perDay` / `fineMin` /
   `fineMax` / `penaltyNature` narrow to the model-read subset, so they disable the saved
-  `jurisdictions.law_count` shortcut (`shouldUseSavedScopeTotal`) — otherwise the result
+  `jurisdictions.law_count` shortcut — otherwise the result
   total would badly overstate the match count. `penaltyNature` is whitelisted before it
   reaches SQL; everything else is bound.
 - **Pagination does not trust estimates.** `/api/laws` fetches one lookahead row and returns

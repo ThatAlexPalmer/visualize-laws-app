@@ -127,31 +127,3 @@ export function searchParamsToFilters(sp: URLSearchParams): LawFilters {
 
   return filters;
 }
-
-/** True when any LOCUS-Fines filter is active. */
-export function hasPenaltyFilter(f: LawFilters): boolean {
-  if (f.hasFine === true) return true;
-  if (f.perDay === true) return true;
-  if (f.jail === true) return true;
-  if (f.fineMin !== undefined && Number.isFinite(f.fineMin)) return true;
-  if (f.fineMax !== undefined && Number.isFinite(f.fineMax)) return true;
-  return Boolean(f.penaltyNature && isPenaltyNature(f.penaltyNature));
-}
-
-/**
- * Saved `jurisdictions.law_count` is honest only when the query's WHERE is the
- * same scope the rail already counted: empty (US) or a single state predicate.
- * Extra fragments — or a row-only predicate such as fine sort — mean a
- * different set. Pass the WHERE `queryLaws` already built; do not re-list
- * filters here (a missed field would overstate the rail).
- */
-export function shouldUseSavedScopeTotal(
-  where: readonly string[],
-  rowsWhere: readonly string[] = where,
-): boolean {
-  if (rowsWhere.length !== where.length) return false;
-  if (where.length === 0) return true;
-  return where.length === 1 && STATE_SCOPE_PREDICATE.test(where[0]);
-}
-
-const STATE_SCOPE_PREDICATE = /^laws\.state = \$\d+$/;

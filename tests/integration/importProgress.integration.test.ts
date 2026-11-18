@@ -3,16 +3,20 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { ParquetSchema, ParquetWriter } from "@dsnp/parquetjs";
 import { Client } from "pg";
 import { loadShard } from "@/data/seed";
 import { buildFinesTable } from "@/data/build-fines";
-import { contentSha1 } from "@/data/fines";
 import {
   connectWriter, fingerprintFile, getProgress, ImportStateError,
   resetCorpus, verifyCorpusProgress,
 } from "@/data/importProgress";
+
+function contentSha1(content: string): string {
+  return createHash("sha1").update(content, "utf8").digest("hex").slice(0, 16);
+}
 
 const docker = (...args: string[]) =>
   execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();

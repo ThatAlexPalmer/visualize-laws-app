@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { resolveAxisCopy, resolveFinesCopy } from "@/lib/copy";
 import { useExplorer } from "@/lib/store";
 import {
+  amountShare,
   formatFine,
   formatShare,
   type Axis,
@@ -195,10 +196,8 @@ function fmtDomain(value: number, layer: MapLayer): string {
  * it would be two-thirds one flat shade. As a number it is the finding.
  */
 function PenaltyStatsCards({ stats }: { stats: PenaltyStats }) {
-  const share =
-    stats.penaltySections > 0
-      ? formatShare(stats.amountSections / stats.penaltySections)
-      : "–";
+  const shareValue = amountShare(stats);
+  const share = shareValue === null ? "–" : formatShare(shareValue);
 
   // The link between this layer and the four axes: within the sections a model
   // read, the ones naming a dollar figure score markedly higher on problem

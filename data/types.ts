@@ -254,16 +254,7 @@ export function penaltyAbsenceLabel(fines: LawFines): string {
   }
 }
 
-/**
- * The second hover line on the Fines layer: what the colour actually means for
- * this place, in plain words.
- *
- * Deliberately short and sentence-case — it renders under the place name, not
- * inside it. Returns null when there is nothing to say. Does not mention how
- * many sections were read: that is provenance, not a hover fact.
- *
- * A place nobody checked reads "not annotated", never "no fines".
- */
+/** Fines-layer hover. A place nobody checked reads "not annotated", never "no fines". */
 export function fineHoverLine(
   stats: PenaltyStats | null | undefined,
 ): string | null {

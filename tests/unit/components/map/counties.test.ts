@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { CountyFill } from "@/lib/types";
 
-import { joinCountyFills, joinCountySlugs, loadCountyFeatures } from "@/components/map/counties";
+import { joinCountyFills, loadCountyFeatures } from "@/components/map/counties";
 
 test("atlas loader clears a rejected request and shares the successful retry", async () => {
   await assert.rejects(loadCountyFeatures(async () => {
@@ -58,32 +58,21 @@ test("native FIPS in the mesh paints and blocks a city on the same FIPS", () => 
   assert.equal(painted.size, 1);
 });
 
-test("native with fips null still name-joins", () => {
-  const painted = joinCountyFills(FEATURES, [
-    fill({
-      source: "county",
-      sourcePlace: "harris_county",
-      county: "harris_county",
-      name: "Harris County",
-    }),
-  ]);
-  assert.equal(painted.get("48201")?.source, "county");
-  assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
-});
-
-test("native FIPS not in the mesh still name-joins", () => {
-  const painted = joinCountyFills(FEATURES, [
-    fill({
-      source: "county",
-      fips: "99999",
-      sourcePlace: "harris_county",
-      county: "harris_county",
-      name: "Harris County",
-    }),
-  ]);
-  assert.equal(painted.has("99999"), false);
-  assert.equal(painted.get("48201")?.source, "county");
-  assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
+test("a native county name-joins when its FIPS is missing or not in the mesh", () => {
+  for (const fips of [null, "99999"] as const) {
+    const painted = joinCountyFills(FEATURES, [
+      fill({
+        source: "county",
+        fips,
+        sourcePlace: "harris_county",
+        county: "harris_county",
+        name: "Harris County",
+      }),
+    ]);
+    if (fips) assert.equal(painted.has(fips), false);
+    assert.equal(painted.get("48201")?.source, "county");
+    assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
+  }
 });
 
 test("city fills only leftover in-mesh FIPS", () => {
@@ -125,13 +114,25 @@ test("city row with fips null does not paint", () => {
   assert.equal(painted.size, 0);
 });
 
-test("joinCountySlugs prefers a county-kind slug on a shared name", () => {
-  const fips = joinCountySlugs(
+test("a county-kind slug wins a shared atlas name", () => {
+  const painted = joinCountyFills(
     [{ fips: "51059", name: "Fairfax" }],
     [
-      { county: "fairfax_city", name: "Fairfax City" },
-      { county: "fairfax_county", name: "Fairfax County" },
+      fill({
+        source: "county",
+        sourcePlace: "fairfax_city",
+        county: "fairfax_city",
+        name: "Fairfax City",
+        state: "va",
+      }),
+      fill({
+        source: "county",
+        sourcePlace: "fairfax_county",
+        county: "fairfax_county",
+        name: "Fairfax County",
+        state: "va",
+      }),
     ],
   );
-  assert.equal(fips.get("51059"), "fairfax_county");
+  assert.equal(painted.get("51059")?.sourcePlace, "fairfax_county");
 });

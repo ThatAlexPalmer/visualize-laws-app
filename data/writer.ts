@@ -15,7 +15,7 @@ import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
 /** Local fallbacks when a script is invoked without dotenv-cli. */
-export const WRITER_ENV_FILES = [".env.local", ".env"] as const;
+const WRITER_ENV_FILES = [".env.local", ".env"] as const;
 
 /** Fail-fast on hung COPY; aggregates/joins set their own (disabled) timeout. */
 export const LOAD_STATEMENT_TIMEOUT_MS = 45_000;
@@ -85,7 +85,7 @@ export async function withTimeout<T>(
 }
 
 /** Destroy the live pg socket so a hung COPY fails into the retry path. */
-export function destroyCopySocket(client: Client): void {
+function destroyCopySocket(client: Client): void {
   client.connection.stream.destroy(new Error("COPY watchdog timeout"));
 }
 

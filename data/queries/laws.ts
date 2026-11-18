@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { hasPenaltyFilter, normalizePagination, shouldUseSavedScopeTotal } from "../filters";
+import { normalizePagination } from "../filters";
 import { prisma } from "../db";
 import { slugVariants } from "../slugs";
 import {
@@ -8,6 +8,7 @@ import {
   FINE_SORT_KEY,
   isPenaltyNature,
   isSortKey,
+  type LawDetailResponse,
   type LawFilters,
   type LawFines,
   type LawRecord,
@@ -47,29 +48,15 @@ function placeIlikeSql(
   return `(${col} ILIKE ${likeA} ESCAPE '\\' OR ${col} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
 }
 
-/** Equality on slug variants, not substring ILIKE. */
-export function cityExactSql(
-  raw: string,
-  bind: (value: unknown) => string,
-): string {
-  const [a, b] = slugVariants(raw);
-  if (a === b) return `${T}.city IN (${bind(a)})`;
-  return `${T}.city IN (${bind(a)}, ${bind(b)})`;
-}
-
 /**
- * Build the `EXISTS (... law_fines ...)` predicate for the active penalty
- * filters, or null when none are set.
- *
- * All of them collapse into a single EXISTS so the planner does one
- * semi-join rather than one per filter. Every value is bound; `penaltyNature`
- * is additionally whitelisted against the source vocabulary.
+ * One EXISTS for every active penalty filter, or null when none are set.
+ * One semi-join instead of one per flag. Values are bound; `penaltyNature`
+ * is whitelisted against the source vocabulary.
  */
 function penaltyExistsSql(
   filters: LawFilters,
   bind: (value: unknown) => string,
 ): string | null {
-  if (!hasPenaltyFilter(filters)) return null;
   const conds: string[] = [];
 
   if (filters.hasFine === true) {
@@ -182,11 +169,6 @@ async function estimateFilteredRows(
   }
 }
 
-/** Every list / detail producer sets `fine: number | null` — never omit the key. */
-function withFine<T extends { fine?: number | null }>(row: T): T & { fine: number | null } {
-  return { ...row, fine: row.fine ?? null };
-}
-
 // Summary columns returned by list endpoints. Full content is fetched only when
 // a user opens a law, keeping filter/page responses small.
 //
@@ -251,12 +233,6 @@ const FINES_SELECT_COLUMNS = `
   f.grounded
 `;
 
-export interface LawDetail {
-  law: LawRecord;
-  /** null when the supplement's model never read this law. */
-  fines: LawFines | null;
-}
-
 /** Joined law + optional fines columns from the detail LEFT JOIN. */
 interface LawDetailRow {
   id: number;
@@ -297,7 +273,7 @@ interface LawDetailRow {
  * A LEFT JOIN keeps the law available either way — an absent annotation is not
  * an error and must not be shown as "no penalty".
  */
-export async function getLawById(id: number): Promise<LawDetail | null> {
+export async function getLawById(id: number): Promise<LawDetailResponse | null> {
   const rows = await prisma.$queryRaw<LawDetailRow[]>`
     SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
            ${Prisma.raw(FINES_SELECT_COLUMNS)}
@@ -391,7 +367,14 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   if (state) where.push(`${T}.state = ${bind(state.toLowerCase())}`);
 
   const city = filters.city?.trim();
-  if (city) where.push(cityExactSql(city, bind));
+  if (city) {
+    const [a, b] = slugVariants(city);
+    where.push(
+      a === b
+        ? `${T}.city IN (${bind(a)})`
+        : `${T}.city IN (${bind(a)}, ${bind(b)})`,
+    );
+  }
 
   const county = filters.county?.trim();
   if (county) where.push(placeIlikeSql("county", county, bind));
@@ -477,7 +460,12 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
 
-  const useSaved = shouldUseSavedScopeTotal(where, rowsWhere);
+  // The rail's saved count is the whole corpus or one state. Any other
+  // predicate, including a fine-sort row filter, is a different set.
+  const useSaved =
+    rowsWhere.length === where.length &&
+    (where.length === 0 ||
+      (where.length === 1 && /^laws\.state = \$\d+$/.test(where[0])));
   let usedSaved = false;
   const totalPromise = useSaved
     ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {
@@ -505,7 +493,10 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   ]);
 
   const hasNextPage = fetched.length > pageSize;
-  const rows = fetched.slice(0, pageSize).map(withFine);
+  const rows = fetched.slice(0, pageSize).map((row) => ({
+    ...row,
+    fine: row.fine ?? null,
+  }));
   const pagination = { rows, page, pageSize, hasNextPage };
 
   // A terminal page proves the total, even when it is exactly pageSize rows.

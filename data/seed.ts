@@ -1,33 +1,10 @@
 /**
- * LOCUS Explorer — corpus seeder (agent-seed / feat/seed-pipeline).
- *
- * Streams the 8 LOCUS-v1 parquet shards from Hugging Face, bulk-loads them into
- * the `laws` table via Postgres COPY, tracks completed shards in
- * `seed_checkpoints` for resumability, then recomputes the `jurisdictions`
- * aggregates (national + per-state + per-county) and city_county / county_fills.
- *
- * Usage:
- *   pnpm seed                  # full ~2.2M-row ingest (all 8 shards)
- *   pnpm seed --limit 5000     # fast dev sample (stop after N rows)
- *   pnpm seed --shards 0,1     # only the given shards
- *   pnpm seed --fresh          # TRUNCATE laws + jurisdictions + checkpoints + fills
- *   pnpm build:city-county     # rebuild city fills only (no parquet COPY)
- *   pnpm build:fines           # rebuild the LOCUS-Fines layer only
- *
- * Design notes:
- *   - `laws.search_vector` is a GENERATED column; it is never written here.
- *   - Each COPY batch commits on its own so a remote stall only loses the
- *     in-flight batch. Database progress and source fingerprints commit with
- *     the rows. Reconnects reread progress, including lost COMMIT acknowledgements.
- *     Completed shards also get `seed_checkpoints`; samples resume without reset.
- *   - This is a tsx script run from the repo root: shared code is imported via
- *     the sibling `./types` module (no `@/` alias outside the Next build).
+ * Stream the LOCUS-v1 parquet shards into `laws` via COPY, then rebuild
+ * aggregates. Flags: `--limit N`, `--shards 0,1`, `--fresh`.
+ * `search_vector` is generated and never written. Each COPY batch commits
+ * with its `import_progress` row so a stall only loses the in-flight batch.
  */
-import {
-  createWriteStream,
-  existsSync,
-  unlinkSync,
-} from "node:fs";
+import { createWriteStream, existsSync, unlinkSync } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,7 +168,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
 function clearProgress(): void {
   try {
     if (existsSync(PROGRESS_PATH)) unlinkSync(PROGRESS_PATH);
@@ -199,7 +175,6 @@ function clearProgress(): void {
     /* ignore */
   }
 }
-
 
 async function getCompletedShards(client: Client): Promise<Set<string>> {
   const { rows } = await client.query<{ shard: string }>(

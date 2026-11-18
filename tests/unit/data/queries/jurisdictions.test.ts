@@ -3,7 +3,6 @@ import { test, type TestContext } from "node:test";
 import { prisma } from "@/data/db";
 
 import {
-  countySlugSearchVariants,
   getJurisdictions,
   getJurisdictionDetail,
   parseAxisBounds,
@@ -17,16 +16,6 @@ function stubPrisma(t: TestContext, overrides: Record<string, unknown>) {
     t.after(() => { Reflect.set(prisma, key, original); });
   }
 }
-
-test("countySlugSearchVariants SQL-narrows with slug forms, not the full table", () => {
-  assert.deepEqual(countySlugSearchVariants("El Paso"), [
-    "el_paso",
-    "elpaso",
-  ]);
-  assert.deepEqual(countySlugSearchVariants("pagosa_springs"), [
-    "pagosa_springs",
-  ]);
-});
 
 test("parseAxisBounds requires four finite [min,max] pairs", () => {
   assert.equal(parseAxisBounds(null), undefined);

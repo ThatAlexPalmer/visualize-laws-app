@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { matchCountySlug, resolveCountySlug } from "@/data/slugs";
+import { matchCountySlug, resolveCountySlug, slugVariants } from "@/data/slugs";
 
 const counties = [
   { county: "el_paso_county" },
@@ -10,6 +10,8 @@ const counties = [
 ];
 
 test("resolveCountySlug is the only client fallback — no raw input", () => {
+  assert.deepEqual(slugVariants("El Paso"), ["el_paso", "elpaso"]);
+  assert.deepEqual(slugVariants("pagosa_springs"), ["pagosa_springs", "pagosa_springs"]);
   assert.equal(resolveCountySlug(counties, "El Paso"), "el_paso_county");
   assert.equal(resolveCountySlug(counties, "el_paso_county"), "el_paso_county");
   assert.equal(resolveCountySlug(counties, "St. Mary's"), "saint_marys_county");

@@ -5,14 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-// Run the actual shell logic with stub executables: no DB, migration or seed runs.
-for (const scenario of [
-  { name: "failed count", count: "0", status: "1", exits: 1, seeds: false },
-  { name: "invalid count", count: "unknown", status: "0", exits: 1, seeds: false },
-  { name: "populated database", count: "2211516", status: "0", exits: 0, seeds: false },
-  { name: "empty database", count: "0", status: "0", exits: 0, seeds: true },
-]) {
-  test(`entrypoint handles ${scenario.name}`, () => {
+test("entrypoint seeds only a successful zero count, and refuses a bad count", () => {
+  for (const scenario of [
+    { name: "failed count", count: "0", status: "1", exits: 1, seeds: false },
+    { name: "invalid count", count: "unknown", status: "0", exits: 1, seeds: false },
+    { name: "populated database", count: "2211516", status: "0", exits: 0, seeds: false },
+    { name: "empty database", count: "0", status: "0", exits: 0, seeds: true },
+  ]) {
     const dir = mkdtempSync(join(tmpdir(), "locus-entrypoint-"));
     try {
       writeFileSync(join(dir, "package.json"), "{}");
@@ -31,15 +30,15 @@ esac
         env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, COUNT: scenario.count,
           COUNT_STATUS: scenario.status, CALL_LOG: join(dir, "calls"), SEED_LIMIT: "25000" },
       });
-      assert.equal(result.status, scenario.exits, result.stderr);
+      assert.equal(result.status, scenario.exits, `${scenario.name}: ${result.stderr}`);
       const calls = readFileSync(join(dir, "calls"), "utf8");
-      assert.equal(calls.includes("seed --limit 25000"), scenario.seeds);
-      assert.equal(calls.includes("exec next dev"), scenario.exits === 0);
+      assert.equal(calls.includes("seed --limit 25000"), scenario.seeds, scenario.name);
+      assert.equal(calls.includes("exec next dev"), scenario.exits === 0, scenario.name);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
-}
+  }
+});
 
 test("db-count exits nonzero without printing zero or credentials on connection failure", () => {
   const result = spawnSync(process.execPath, ["--import", "tsx", "data/db-count.ts"], {
