@@ -137,14 +137,7 @@ test("cityExactSql uses IN on slug variants, not ILIKE contains", () => {
   assert.equal(springs, "laws.city IN ($1, $2)");
   assert.deepEqual(params, ["pagosa_springs", "pagosasprings"]);
   assert.equal(springs.includes("%"), false);
-});
-
-test("place predicates are table-qualified", () => {
-  // The rows query LEFT JOINs law_fines, which has its own city/state/county
-  // columns. An unqualified predicate is ambiguous and Postgres errors, so
-  // every place filter would fail the route.
-  const bind = (): string => "$1";
-  assert.ok(cityExactSql("denver", bind).startsWith("laws.city"));
+  assert.ok(springs.startsWith("laws.city"));
 });
 
 test("place lookup 200 with no rows is a real empty match", async () => {
@@ -158,22 +151,12 @@ test("place lookup 200 with no rows is a real empty match", async () => {
   }
 });
 
-test("place lookup HTTP failures throw instead of looking like no match", async () => {
+test("a place lookup HTTP failure is not an empty match", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ error: "down" }), { status: 503 })) as typeof fetch;
   try {
     await assert.rejects(lookupPlaces("city", "denver"), /Place lookup failed with 503/);
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
-test("resolveQueryFocus does not treat a lookup HTTP failure as no match", async () => {
-  const original = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ error: "down" }), { status: 503 })) as typeof fetch;
-  try {
     await assert.rejects(
       resolveQueryFocus("denver", { currentState: null, uniqueOnly: false }),
       /Place lookup failed with 503/,

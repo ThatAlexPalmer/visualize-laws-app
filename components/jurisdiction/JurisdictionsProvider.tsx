@@ -16,7 +16,7 @@ import type {
   JurisdictionDetailResponse,
   JurisdictionsResponse,
 } from "@/lib/types";
-import { fetchJurisdictions } from "./fetchJurisdictions";
+import { fetchJurisdictions, isRecord } from "./fetchJurisdictions";
 
 type JurisdictionsStatus = "loading" | "ready" | "error";
 
@@ -37,10 +37,6 @@ interface JurisdictionsContextValue {
 }
 
 const JurisdictionsContext = createContext<JurisdictionsContextValue | null>(null);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function readDetail(body: unknown): JurisdictionDetailResponse {
   if (!isRecord(body) || !Array.isArray(body.topLaws)) {

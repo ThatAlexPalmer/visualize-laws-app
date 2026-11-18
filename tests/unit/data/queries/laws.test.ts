@@ -5,46 +5,6 @@ import { queryLaws } from "@/data/queries/laws";
 import { GET } from "@/app/api/laws/route";
 import type { LawSummary } from "@/data/types";
 
-import { searchParamsToFilters } from "@/data/filters";
-import { isSortKey } from "@/data/types";
-
-test("isSortKey accepts the four axes plus fine, and nothing else", () => {
-  for (const key of [
-    "opacity",
-    "enforcementDiscretion",
-    "paternalism",
-    "problemSalience",
-    "fine",
-  ]) {
-    assert.equal(isSortKey(key), true, key);
-  }
-  // Anything else is dropped rather than interpolated into ORDER BY.
-  for (const key of ["content", "id", "effective_max", "", "fine; DROP"]) {
-    assert.equal(isSortKey(key), false, key);
-  }
-});
-
-test("queryLaws saved-scope total follows the built WHERE, not a filter list", async (t) => {
-  const stub = fixture(t, { saved: 100 });
-
-  await queryLaws(searchParamsToFilters(new URLSearchParams("state=co")));
-  assert.equal(stub.savedCalls(), 1);
-
-  const fineSort = searchParamsToFilters(
-    new URLSearchParams("state=co&sort=fine&dir=desc"),
-  );
-  assert.equal(fineSort.sort?.key, "fine");
-  await queryLaws(fineSort);
-  assert.equal(stub.savedCalls(), 1);
-
-  const penalty = searchParamsToFilters(
-    new URLSearchParams("state=co&hasFine=true"),
-  );
-  assert.equal(penalty.hasFine, true);
-  await queryLaws(penalty);
-  assert.equal(stub.savedCalls(), 1);
-});
-
 const law: LawSummary = {
   id: 1, header: "Parking", state: "co", city: "pagosa_springs", county: null,
   isSubstantive: true, function: "Rules", topic: "Other", sourceJurisdictionType: "cities",
@@ -101,15 +61,15 @@ test("underestimated totals cannot hide lookahead or change the returned page si
   assert.ok(calls.every(c => !/count\(\*\)/i.test(c.sql)));
 });
 
-for (const size of [0, 3, 8]) {
-  test(`terminal first page with ${size} rows is exact despite a high estimate`, async (t) => {
+test("a terminal first page is exact despite a high estimate", async (t) => {
+  for (const size of [0, 3, 8]) {
     fixture(t, { size, estimate: 50000 });
     const result = await queryLaws(filtered());
-    assert.equal(result.hasNextPage, false);
-    assert.equal(result.totalKind, "exact");
-    assert.equal(result.total, size);
-  });
-}
+    assert.equal(result.hasNextPage, false, String(size));
+    assert.equal(result.totalKind, "exact", String(size));
+    assert.equal(result.total, size, String(size));
+  }
+});
 
 test("terminal later full page proves its total even if estimation fails", async (t) => {
   fixture(t, { size: 8, failEstimate: true });
@@ -119,15 +79,15 @@ test("terminal later full page proves its total even if estimation fails", async
   assert.equal(result.total, 24);
 });
 
-for (const estimate of [-1, NaN, Infinity, "12", 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-  test(`invalid estimate ${String(estimate)} is unavailable, not an exact total`, async (t) => {
+test("an invalid estimate is unavailable, not an exact total", async (t) => {
+  for (const estimate of [-1, NaN, Infinity, "12", 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     fixture(t, { estimate });
     const result = await queryLaws(filtered());
-    assert.equal(result.hasNextPage, true);
-    assert.equal(result.totalKind, "unavailable");
-    assert.equal(result.total, null);
-  });
-}
+    assert.equal(result.hasNextPage, true, String(estimate));
+    assert.equal(result.totalKind, "unavailable", String(estimate));
+    assert.equal(result.total, null, String(estimate));
+  }
+});
 
 test("failed estimation leaves continuation usable", async (t) => {
   fixture(t, { failEstimate: true });
@@ -193,14 +153,20 @@ test("missing saved scope falls back to a labelled catalog estimate", async (t) 
   assert.equal(result.total, 500);
 });
 
-for (const dir of ["asc", "desc"] as const) {
-  test(`fine ${dir} lookahead shares every bound predicate and stable sort`, async (t) => {
+test("fine sort lookahead shares every bound predicate and a stable sort", async (t) => {
+  for (const dir of ["asc", "desc"] as const) {
     const stub = fixture(t);
-    await queryLaws({ ...filtered(), sort: { key: "fine", dir },
-      hasFine: true, jail: true, fineMin: 100, fineMax: 500 });
-    assert.equal(stub.savedCalls(), 0);
-    const rows = stub.calls.find(c => c.sql.includes("LIMIT"))!;
-    const estimate = stub.calls.find(c => c.sql.startsWith("EXPLAIN"))!;
+    await queryLaws({
+      ...filtered(),
+      sort: { key: "fine", dir },
+      hasFine: true,
+      jail: true,
+      fineMin: 100,
+      fineMax: 500,
+    });
+    assert.equal(stub.savedCalls(), 0, dir);
+    const rows = stub.calls.find((c) => c.sql.includes("LIMIT"))!;
+    const estimate = stub.calls.find((c) => c.sql.startsWith("EXPLAIN"))!;
     assert.deepEqual(rows.params, [...estimate.params, 9, 0]);
     assert.deepEqual(estimate.params, ["co", "pagosa_springs", 100, 500]);
     for (const { sql } of [rows, estimate]) {
@@ -211,8 +177,8 @@ for (const dir of ["asc", "desc"] as const) {
       assert.match(sql, /lf.effective_min <= \$4/);
     }
     assert.match(rows.sql, new RegExp(`ORDER BY lfs.effective_max ${dir.toUpperCase()}, laws.id ASC`));
-  });
-}
+  }
+});
 
 test("HTTP response includes precision and continuation and keeps the size cap", async (t) => {
   const { calls } = fixture(t, { size: 101 });

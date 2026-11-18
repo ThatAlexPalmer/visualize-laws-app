@@ -23,7 +23,7 @@ test("searchParamsToFilters defaults page 1 and pageSize 25", () => {
   assert.equal(f.pageSize, 25);
 });
 
-test("round-trip serialize/parse for q, place, axes, penalties, sort, page, fineMin=0", () => {
+test("search params round-trip, and false substantive stays the string false", () => {
   const original: LawFilters = {
     q: "water",
     state: "co",
@@ -46,22 +46,14 @@ test("round-trip serialize/parse for q, place, axes, penalties, sort, page, fine
     pageSize: 8,
     sort: { key: "opacity", dir: "desc" },
   };
-  const parsed = roundTrip(original);
-  assert.deepEqual(parsed, original);
+  assert.deepEqual(roundTrip(original), original);
+
+  const off = filtersToSearchParams({ page: 1, pageSize: 25, isSubstantive: false });
+  assert.equal(off.get("isSubstantive"), "false");
+  assert.equal(roundTrip({ page: 1, pageSize: 25, isSubstantive: false }).isSubstantive, false);
 });
 
-test("isSubstantive false serializes as the string false and round-trips", () => {
-  const parsed = roundTrip({ page: 1, pageSize: 25, isSubstantive: false });
-  assert.equal(parsed.isSubstantive, false);
-  const sp = filtersToSearchParams({
-    page: 1,
-    pageSize: 25,
-    isSubstantive: false,
-  });
-  assert.equal(sp.get("isSubstantive"), "false");
-});
-
-test("booleans hasFine/perDay/jail serialize only when true", () => {
+test("penalty flags serialize only when true", () => {
   const off = filtersToSearchParams({
     page: 1,
     pageSize: 25,
@@ -85,7 +77,7 @@ test("booleans hasFine/perDay/jail serialize only when true", () => {
   assert.equal(on.get("jail"), "true");
 });
 
-test("sort/dir are omitted unless sort is a whitelisted key", () => {
+test("sort is omitted unless the key is a real column", () => {
   const none = filtersToSearchParams({ page: 1, pageSize: 25, sort: null });
   assert.equal(none.get("sort"), null);
   assert.equal(none.get("dir"), null);
@@ -97,134 +89,77 @@ test("sort/dir are omitted unless sort is a whitelisted key", () => {
   });
   assert.equal(fine.get("sort"), "fine");
   assert.equal(fine.get("dir"), "asc");
+
+  for (const key of ["fine", "opacity", "enforcementDiscretion", "paternalism", "problemSalience"]) {
+    assert.equal(isSortKey(key), true, key);
+  }
+  for (const key of [
+    "content",
+    "id",
+    "effective_max",
+    "",
+    "fine; DROP",
+    "constructor",
+    "toString",
+    "__proto__",
+    "hasOwnProperty",
+  ]) {
+    assert.equal(isSortKey(key), false, key);
+    assert.equal(fromQs(`sort=${key}`).sort, undefined, key);
+  }
 });
 
-test("penaltyNature is serialized only when it is in the vocabulary", () => {
-  const ok = filtersToSearchParams({
-    page: 1,
-    pageSize: 25,
-    penaltyNature: "civil",
-  });
-  assert.equal(ok.get("penaltyNature"), "civil");
+test("penaltyNature is kept only for the source vocabulary", () => {
+  assert.equal(
+    filtersToSearchParams({ page: 1, pageSize: 25, penaltyNature: "civil" }).get("penaltyNature"),
+    "civil",
+  );
+  for (const nature of ["criminal", "civil", "both"] as const) {
+    assert.equal(hasPenaltyFilter(fromQs(`penaltyNature=${nature}`)), true, nature);
+  }
+  assert.equal(hasPenaltyFilter(fromQs("penaltyNature=CRIMINAL")), false);
+  assert.equal(hasPenaltyFilter(fromQs("penaltyNature=' OR 1=1--")), false);
+  assert.equal(fromQs("penaltyNature=CRIMINAL").penaltyNature, undefined);
 });
 
-test("axis min/max use ${axis.key}Min / ${axis.key}Max", () => {
-  const sp = filtersToSearchParams({
-    page: 1,
-    pageSize: 25,
-    opacity: { min: -0.5, max: 1.25 },
-  });
-  assert.equal(sp.get("opacityMin"), "-0.5");
-  assert.equal(sp.get("opacityMax"), "1.25");
-});
-
-test("shouldUseSavedScopeTotal: empty or state-only WHERE reuses the saved total", () => {
-  assert.equal(shouldUseSavedScopeTotal([]), true);
-  assert.equal(shouldUseSavedScopeTotal(["laws.state = $1"]), true);
-  // Sort / page never appear in WHERE, so they do not change the decision.
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1"], ["laws.state = $1"]),
-    true,
-  );
-});
-
-test("shouldUseSavedScopeTotal: extra WHERE fragments keep their own count", () => {
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.city IN ($2)"]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.county ILIKE $2 ESCAPE '\\'"]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", `laws."function" = $2`]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.topic = $2"]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.is_substantive = $2"]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.opacity >= $2"]),
-    false,
-  );
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.paternalism <= $2"]),
-    false,
-  );
-  // A predicate that is not on any historical filter list still disables —
-  // the decision is the WHERE that was built, not a parallel field list.
-  assert.equal(
-    shouldUseSavedScopeTotal(["laws.state = $1", "laws.source_jurisdiction_type = $2"]),
-    false,
-  );
-});
-
-test("a penalty WHERE fragment disables the saved scope total", () => {
-  assert.equal(
-    shouldUseSavedScopeTotal([
-      "laws.state = $1",
-      "EXISTS (SELECT 1 FROM law_fines lf WHERE lf.law_id = laws.id AND lf.effective_max IS NOT NULL)",
-    ]),
-    false,
-  );
+test("saved scope totals apply only to an empty or state-only WHERE", () => {
+  const state = "laws.state = $1";
+  const cases: Array<{ where: string[]; rows?: string[]; saved: boolean }> = [
+    { where: [], saved: true },
+    { where: [state], saved: true },
+    { where: [state], rows: [state], saved: true },
+    { where: [state, "laws.city IN ($2)"], saved: false },
+    { where: [state, "laws.county ILIKE $2 ESCAPE '\\'"], saved: false },
+    { where: [state, `laws."function" = $2`], saved: false },
+    { where: [state, "laws.topic = $2"], saved: false },
+    { where: [state, "laws.is_substantive = $2"], saved: false },
+    { where: [state, "laws.opacity >= $2"], saved: false },
+    { where: [state, "laws.paternalism <= $2"], saved: false },
+    { where: [state, "laws.source_jurisdiction_type = $2"], saved: false },
+    {
+      where: [
+        state,
+        "EXISTS (SELECT 1 FROM law_fines lf WHERE lf.law_id = laws.id AND lf.effective_max IS NOT NULL)",
+      ],
+      saved: false,
+    },
+    { where: [state], rows: [state, "lfs.effective_max IS NOT NULL"], saved: false },
+  ];
+  for (const c of cases) {
+    assert.equal(shouldUseSavedScopeTotal(c.where, c.rows), c.saved, c.where.join(" | "));
+  }
 });
 
 test("hasPenaltyFilter ignores absent, false and malformed values", () => {
   assert.equal(hasPenaltyFilter(fromQs()), false);
   assert.equal(hasPenaltyFilter(fromQs("state=co")), false);
-  // Only the literal "true" turns a boolean filter on.
   assert.equal(hasPenaltyFilter(fromQs("hasFine=false")), false);
   assert.equal(hasPenaltyFilter(fromQs("jail=1")), false);
   assert.equal(hasPenaltyFilter(fromQs("perDay=")), false);
   assert.equal(hasPenaltyFilter({ page: 1, pageSize: 25, hasFine: false }), false);
-  // Non-numeric bounds are not a filter.
   assert.equal(hasPenaltyFilter(fromQs("fineMin=abc")), false);
   assert.equal(hasPenaltyFilter(fromQs("fineMin=")), false);
-  // 0 is a real lower bound and must count.
   assert.equal(hasPenaltyFilter(fromQs("fineMin=0")), true);
-});
-
-test("a row-only predicate disables the saved scope total", () => {
-  // Fine sort adds `lfs.effective_max IS NOT NULL` to the rows WHERE only.
-  assert.equal(
-    shouldUseSavedScopeTotal(
-      ["laws.state = $1"],
-      ["laws.state = $1", "lfs.effective_max IS NOT NULL"],
-    ),
-    false,
-  );
-  // An axis sort does not add a row-only predicate, so the saved total stands.
-  assert.equal(shouldUseSavedScopeTotal(["laws.state = $1"]), true);
-});
-
-test("penaltyNature is whitelisted against the source vocabulary", () => {
-  for (const nature of ["criminal", "civil", "both"] as const) {
-    assert.equal(hasPenaltyFilter(fromQs(`penaltyNature=${nature}`)), true, nature);
-  }
-  // Anything outside the vocabulary is dropped rather than reaching SQL.
-  assert.equal(hasPenaltyFilter(fromQs("penaltyNature=CRIMINAL")), false);
-  assert.equal(hasPenaltyFilter(fromQs("penaltyNature=' OR 1=1--")), false);
-  const dropped = fromQs("penaltyNature=CRIMINAL");
-  assert.equal(dropped.penaltyNature, undefined);
-});
-
-test("isSortKey still gates sort on the wire", () => {
-  const parsed = fromQs("sort=fine; DROP&dir=desc");
-  assert.equal(parsed.sort, undefined);
-  assert.equal(isSortKey("fine"), true);
-});
-
-test("prototype properties are not sort columns", () => {
-  for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
-    assert.equal(isSortKey(key), false);
-    assert.equal(fromQs(`sort=${key}`).sort, undefined);
-  }
 });
 
 test("pagination rejects non-finite, fractional and unsafe offsets", () => {

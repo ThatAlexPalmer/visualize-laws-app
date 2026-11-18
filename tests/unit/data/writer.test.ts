@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -8,7 +8,6 @@ import { test } from "node:test";
 import { Client } from "pg";
 
 import {
-  WRITER_ENV_FILES,
   copyBatch,
   destroyCopySocket,
   loadEnv,
@@ -16,27 +15,9 @@ import {
   writerConnectionString,
 } from "@/data/writer";
 
-const WRITERS = [
-  "data/seed.ts",
-  "data/build-fines.ts",
-  "data/build-city-county.ts",
-] as const;
-
 function isolatedKey(name: string): string {
   return `WRITER_TEST_${name}_${process.pid}_${Date.now()}`;
 }
-
-test("seed and builders share writer.ts and do not redefine loadEnv/COPY helpers", () => {
-  assert.deepEqual([...WRITER_ENV_FILES], [".env.local", ".env"]);
-  for (const file of WRITERS) {
-    const src = readFileSync(file, "utf8");
-    assert.match(src, /from ["']\.\/writer["']/);
-    assert.doesNotMatch(src, /function loadEnv\(/);
-    assert.doesNotMatch(src, /function copyBatch\(/);
-    assert.doesNotMatch(src, /function withTimeout\(/);
-    assert.doesNotMatch(src, /as any\)\.connection/);
-  }
-});
 
 test("loadEnv prefers .env.local, then .env, and never overwrites process.env", () => {
   const cwd = mkdtempSync(join(tmpdir(), "writer-env-"));

@@ -14,12 +14,6 @@ import {
   type PlaceLookupResponse,
 } from "../types";
 
-/** Slug forms used to SQL-narrow county lookup before matchCountySlug. */
-export function countySlugSearchVariants(raw: string): string[] {
-  const [underscore, compact] = slugVariants(raw);
-  return [...new Set([underscore, compact])];
-}
-
 export function parseAxisBounds(json: unknown): AxisBounds | undefined {
   if (!json || typeof json !== "object" || Array.isArray(json)) return undefined;
   const row = json as Record<string, unknown>;
@@ -74,78 +68,70 @@ function toStats(row: {
 }
 
 /**
- * Penalty aggregates keyed by state code, for the US map payload.
- *
- * Missing rows are left undefined rather than zero-filled: a place the
- * supplement never annotated is "not annotated", which the map must render
- * differently from a place whose sections state no amount.
+ * The penalties layer is additive. A missing table or a Prisma client that
+ * predates PlacePenalty throws on the property access itself, so the read
+ * stays inside this try — an inline call in `Promise.all` used to blank the map.
+ * Missing rows stay absent, not zero: "not annotated" is not "no penalty".
  */
+async function readPenalties<T>(
+  label: string,
+  load: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    console.error(`${label} failed:`, err);
+    return fallback;
+  }
+}
+
 async function penaltiesByState(): Promise<Map<string, PenaltyStats>> {
-  try {
-    const rows = await prisma.placePenalty.findMany({
-      where: { level: "state" },
-      select: PENALTY_SELECT,
-    });
-    return new Map(
-      rows.flatMap((row) => (row.state ? [[row.state, toStats(row)] as const] : [])),
-    );
-  } catch (err) {
-    // The layer is additive: an un-migrated database still renders the scores.
-    console.error("penaltiesByState failed:", err);
-    return new Map();
-  }
+  const rows = await readPenalties(
+    "penaltiesByState",
+    () => prisma.placePenalty.findMany({ where: { level: "state" }, select: PENALTY_SELECT }),
+    [],
+  );
+  return new Map(
+    rows.flatMap((row) => (row.state ? [[row.state, toStats(row)] as const] : [])),
+  );
 }
 
-/**
- * The single national penalty row, or null.
- *
- * Guarded like the others and never called inline inside a `Promise.all`
- * array: if the generated Prisma client predates the PlacePenalty model,
- * `prisma.placePenalty` is undefined and the property access throws
- * *synchronously*, before any `.catch()` can attach — which took the whole
- * map down rather than just dropping this layer.
- */
 async function nationalPenalty(): Promise<PenaltyStats | null> {
-  try {
-    const row = await prisma.placePenalty.findFirst({
-      where: { level: "national" },
-      select: PENALTY_SELECT,
-    });
-    return row ? toStats(row) : null;
-  } catch (err) {
-    console.error("nationalPenalty failed:", err);
-    return null;
-  }
+  const row = await readPenalties(
+    "nationalPenalty",
+    () => prisma.placePenalty.findFirst({ where: { level: "national" }, select: PENALTY_SELECT }),
+    null,
+  );
+  return row ? toStats(row) : null;
 }
 
-/** The one state-level penalty row, or null. Guarded like the rest. */
 async function statePenaltyFor(state: string): Promise<PenaltyStats | null> {
-  try {
-    const row = await prisma.placePenalty.findFirst({
-      where: { level: "state", state },
-      select: PENALTY_SELECT,
-    });
-    return row ? toStats(row) : null;
-  } catch (err) {
-    console.error(`statePenaltyFor(${state}) failed:`, err);
-    return null;
-  }
+  const row = await readPenalties(
+    `statePenaltyFor(${state})`,
+    () =>
+      prisma.placePenalty.findFirst({
+        where: { level: "state", state },
+        select: PENALTY_SELECT,
+      }),
+    null,
+  );
+  return row ? toStats(row) : null;
 }
 
-/** Penalty aggregates for one state, keyed by place slug (`source_place`). */
 async function penaltiesByPlace(state: string): Promise<Map<string, PenaltyStats>> {
-  try {
-    const rows = await prisma.placePenalty.findMany({
-      where: { level: "place", state },
-      select: PENALTY_SELECT,
-    });
-    return new Map(
-      rows.flatMap((row) => (row.place ? [[row.place, toStats(row)] as const] : [])),
-    );
-  } catch (err) {
-    console.error(`penaltiesByPlace(${state}) failed:`, err);
-    return new Map();
-  }
+  const rows = await readPenalties(
+    `penaltiesByPlace(${state})`,
+    () =>
+      prisma.placePenalty.findMany({
+        where: { level: "place", state },
+        select: PENALTY_SELECT,
+      }),
+    [],
+  );
+  return new Map(
+    rows.flatMap((row) => (row.place ? [[row.place, toStats(row)] as const] : [])),
+  );
 }
 
 // The columns that make up a JurisdictionAgg (excludes id + bounds).
@@ -230,7 +216,8 @@ export async function resolvePlace(opts: {
   const city = opts.city?.trim();
 
   if (county) {
-    const variants = countySlugSearchVariants(county);
+    const [underscore, compact] = slugVariants(county);
+    const variants = [...new Set([underscore, compact])];
     const rows = await prisma.jurisdiction.findMany({
       where: {
         level: "county",

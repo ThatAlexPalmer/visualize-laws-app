@@ -8,6 +8,7 @@ import {
   FINE_SORT_KEY,
   isPenaltyNature,
   isSortKey,
+  type LawDetailResponse,
   type LawFilters,
   type LawFines,
   type LawRecord,
@@ -182,11 +183,6 @@ async function estimateFilteredRows(
   }
 }
 
-/** Every list / detail producer sets `fine: number | null` — never omit the key. */
-function withFine<T extends { fine?: number | null }>(row: T): T & { fine: number | null } {
-  return { ...row, fine: row.fine ?? null };
-}
-
 // Summary columns returned by list endpoints. Full content is fetched only when
 // a user opens a law, keeping filter/page responses small.
 //
@@ -251,12 +247,6 @@ const FINES_SELECT_COLUMNS = `
   f.grounded
 `;
 
-export interface LawDetail {
-  law: LawRecord;
-  /** null when the supplement's model never read this law. */
-  fines: LawFines | null;
-}
-
 /** Joined law + optional fines columns from the detail LEFT JOIN. */
 interface LawDetailRow {
   id: number;
@@ -297,7 +287,7 @@ interface LawDetailRow {
  * A LEFT JOIN keeps the law available either way — an absent annotation is not
  * an error and must not be shown as "no penalty".
  */
-export async function getLawById(id: number): Promise<LawDetail | null> {
+export async function getLawById(id: number): Promise<LawDetailResponse | null> {
   const rows = await prisma.$queryRaw<LawDetailRow[]>`
     SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
            ${Prisma.raw(FINES_SELECT_COLUMNS)}
@@ -505,7 +495,10 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   ]);
 
   const hasNextPage = fetched.length > pageSize;
-  const rows = fetched.slice(0, pageSize).map(withFine);
+  const rows = fetched.slice(0, pageSize).map((row) => ({
+    ...row,
+    fine: row.fine ?? null,
+  }));
   const pagination = { rows, page, pageSize, hasNextPage };
 
   // A terminal page proves the total, even when it is exactly pageSize rows.

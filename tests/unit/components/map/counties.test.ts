@@ -58,32 +58,21 @@ test("native FIPS in the mesh paints and blocks a city on the same FIPS", () => 
   assert.equal(painted.size, 1);
 });
 
-test("native with fips null still name-joins", () => {
-  const painted = joinCountyFills(FEATURES, [
-    fill({
-      source: "county",
-      sourcePlace: "harris_county",
-      county: "harris_county",
-      name: "Harris County",
-    }),
-  ]);
-  assert.equal(painted.get("48201")?.source, "county");
-  assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
-});
-
-test("native FIPS not in the mesh still name-joins", () => {
-  const painted = joinCountyFills(FEATURES, [
-    fill({
-      source: "county",
-      fips: "99999",
-      sourcePlace: "harris_county",
-      county: "harris_county",
-      name: "Harris County",
-    }),
-  ]);
-  assert.equal(painted.has("99999"), false);
-  assert.equal(painted.get("48201")?.source, "county");
-  assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
+test("a native county name-joins when its FIPS is missing or not in the mesh", () => {
+  for (const fips of [null, "99999"] as const) {
+    const painted = joinCountyFills(FEATURES, [
+      fill({
+        source: "county",
+        fips,
+        sourcePlace: "harris_county",
+        county: "harris_county",
+        name: "Harris County",
+      }),
+    ]);
+    if (fips) assert.equal(painted.has(fips), false);
+    assert.equal(painted.get("48201")?.source, "county");
+    assert.equal(painted.get("48201")?.sourcePlace, "harris_county");
+  }
 });
 
 test("city fills only leftover in-mesh FIPS", () => {

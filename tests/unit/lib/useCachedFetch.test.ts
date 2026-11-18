@@ -11,6 +11,7 @@ test("heldForKey drops a previous key on miss so TX cannot render as CA", () => 
 
   assert.equal(heldForKey(heldTx, "ca", cache), null);
   assert.equal(heldForKey(heldTx, null, cache), null);
+  assert.equal(heldForKey(null, "ca", cache), null);
 
   const hit = heldForKey(heldTx, "tx", cache);
   assert.equal(hit?.key, "tx");
@@ -20,13 +21,6 @@ test("heldForKey drops a previous key on miss so TX cannot render as CA", () => 
   const fromCache = heldForKey(heldTx, "ca", cache);
   assert.equal(fromCache?.key, "ca");
   assert.equal(fromCache?.value, california);
-});
-
-test("heldForKey on error-shaped miss stays empty until the current key is stored", () => {
-  const texas = { name: "Texas" };
-  const cache = new Map<string, { name: string }>([["tx", texas]]);
-  assert.equal(heldForKey({ key: "tx", value: texas }, "ca", cache), null);
-  assert.equal(heldForKey(null, "ca", cache), null);
 });
 
 test("statusForKey does not keep TX ready when the key is CA", () => {
