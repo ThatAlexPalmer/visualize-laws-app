@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useMemo, useReducer } from "react";
-import { focusesEqual, placeFilterFields } from "./place";
+import { cityFilter, countyFilter, focusesEqual } from "./place";
 import type { Axis, LawFilters, LawSummary, MapLayer, PlaceDraft, PlaceFocus } from "./types";
 
 export type { PlaceDraft, PlaceFocus };
@@ -80,7 +80,9 @@ function stripPlaceFields(filters: LawFilters): LawFilters {
 export function queryFilters(state: ExplorerState): LawFilters {
   return {
     ...state.filters,
-    ...placeFilterFields(state.focus, state.placeDraft),
+    state: state.focus?.state,
+    city: cityFilter(state.focus, state.placeDraft),
+    county: countyFilter(state.focus, state.placeDraft),
   };
 }
 

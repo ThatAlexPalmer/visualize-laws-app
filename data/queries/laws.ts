@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { hasPenaltyFilter, normalizePagination, shouldUseSavedScopeTotal } from "../filters";
+import { normalizePagination } from "../filters";
 import { prisma } from "../db";
 import { slugVariants } from "../slugs";
 import {
@@ -47,29 +47,15 @@ function placeIlikeSql(
   return `(${col} ILIKE ${likeA} ESCAPE '\\' OR ${col} ILIKE ${bind(`%${escapeLike(b)}%`)} ESCAPE '\\')`;
 }
 
-/** Equality on slug variants, not substring ILIKE. */
-export function cityExactSql(
-  raw: string,
-  bind: (value: unknown) => string,
-): string {
-  const [a, b] = slugVariants(raw);
-  if (a === b) return `${T}.city IN (${bind(a)})`;
-  return `${T}.city IN (${bind(a)}, ${bind(b)})`;
-}
-
 /**
- * Build the `EXISTS (... law_fines ...)` predicate for the active penalty
- * filters, or null when none are set.
- *
- * All of them collapse into a single EXISTS so the planner does one
- * semi-join rather than one per filter. Every value is bound; `penaltyNature`
- * is additionally whitelisted against the source vocabulary.
+ * One EXISTS for every active penalty filter, or null when none are set.
+ * One semi-join instead of one per flag. Values are bound; `penaltyNature`
+ * is whitelisted against the source vocabulary.
  */
 function penaltyExistsSql(
   filters: LawFilters,
   bind: (value: unknown) => string,
 ): string | null {
-  if (!hasPenaltyFilter(filters)) return null;
   const conds: string[] = [];
 
   if (filters.hasFine === true) {
@@ -251,7 +237,7 @@ const FINES_SELECT_COLUMNS = `
   f.grounded
 `;
 
-export interface LawDetail {
+interface LawDetail {
   law: LawRecord;
   /** null when the supplement's model never read this law. */
   fines: LawFines | null;
@@ -391,7 +377,14 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
   if (state) where.push(`${T}.state = ${bind(state.toLowerCase())}`);
 
   const city = filters.city?.trim();
-  if (city) where.push(cityExactSql(city, bind));
+  if (city) {
+    const [a, b] = slugVariants(city);
+    where.push(
+      a === b
+        ? `${T}.city IN (${bind(a)})`
+        : `${T}.city IN (${bind(a)}, ${bind(b)})`,
+    );
+  }
 
   const county = filters.county?.trim();
   if (county) where.push(placeIlikeSql("county", county, bind));
@@ -477,7 +470,12 @@ export async function queryLaws(filters: LawFilters): Promise<LawsResponse> {
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
 
-  const useSaved = shouldUseSavedScopeTotal(where, rowsWhere);
+  // The rail's saved count is the whole corpus or one state. Any other
+  // predicate, including a fine-sort row filter, is a different set.
+  const useSaved =
+    rowsWhere.length === where.length &&
+    (where.length === 0 ||
+      (where.length === 1 && /^laws\.state = \$\d+$/.test(where[0])));
   let usedSaved = false;
   const totalPromise = useSaved
     ? savedScopeLawCount(state ? state.toLowerCase() : null).then((saved) => {

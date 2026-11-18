@@ -1,4 +1,4 @@
-import { resolveCountySlug, type LawFilters, type PlaceDraft, type PlaceFocus } from "./types";
+import { resolveCountySlug, type PlaceDraft, type PlaceFocus } from "./types";
 
 export function focusState(focus: PlaceFocus | null): string | null {
   return focus?.state ?? null;
@@ -24,18 +24,6 @@ export function countyFilter(
   if (draft?.field === "county") return draft.value;
   if (focus?.kind === "county") return focus.county;
   return undefined;
-}
-
-/** Place fields the laws API accepts — derived from focus + draft only. */
-export function placeFilterFields(
-  focus: PlaceFocus | null,
-  draft: PlaceDraft | null,
-): Pick<LawFilters, "state" | "city" | "county"> {
-  return {
-    state: focus?.state,
-    city: cityFilter(focus, draft),
-    county: countyFilter(focus, draft),
-  };
 }
 
 /**

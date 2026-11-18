@@ -12,15 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<DetailResponse>> {
   const { id: rawId } = await params;
-  if (!/^\d+$/.test(rawId)) {
-    return NextResponse.json(
-      { error: "Law id must be a positive integer." },
-      { status: 400 },
-    );
-  }
-
   const id = Number(rawId);
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
     return NextResponse.json(
       { error: "Law id must be a positive integer." },
       { status: 400 },

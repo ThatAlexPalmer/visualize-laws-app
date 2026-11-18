@@ -14,12 +14,6 @@ import {
   type PlaceLookupResponse,
 } from "../types";
 
-/** Slug forms used to SQL-narrow county lookup before matchCountySlug. */
-export function countySlugSearchVariants(raw: string): string[] {
-  const [underscore, compact] = slugVariants(raw);
-  return [...new Set([underscore, compact])];
-}
-
 export function parseAxisBounds(json: unknown): AxisBounds | undefined {
   if (!json || typeof json !== "object" || Array.isArray(json)) return undefined;
   const row = json as Record<string, unknown>;
@@ -230,7 +224,8 @@ export async function resolvePlace(opts: {
   const city = opts.city?.trim();
 
   if (county) {
-    const variants = countySlugSearchVariants(county);
+    const [underscore, compact] = slugVariants(county);
+    const variants = [...new Set([underscore, compact])];
     const rows = await prisma.jurisdiction.findMany({
       where: {
         level: "county",

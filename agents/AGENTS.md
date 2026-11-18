@@ -227,8 +227,8 @@ Node suites discover `**/*.test.ts` within their directory; Playwright discovers
   the supplement never sent that law to its model — it does **not** mean the law has no
   penalty. Never render a missing row as “no fine.”
 - Penalty filters (`hasFine`, `jail`, `perDay`, `fineMin`, `fineMax`, `penaltyNature`) narrow
-  to that subset, so they must keep disabling the saved-total shortcut in
-  `shouldUseSavedScopeTotal`. `penaltyNature` is whitelisted before it reaches SQL.
+  to that subset, so they must not reuse the saved corpus or state total.
+  `penaltyNature` is whitelisted before it reaches SQL.
 - Seed is resumable; see **Seeding runbook** below.
 
 ## City / county map (invariants)
