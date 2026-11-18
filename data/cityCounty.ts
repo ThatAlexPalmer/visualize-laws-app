@@ -10,7 +10,7 @@ export const CENSUS_COUNTY_URL =
   "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt";
 
 /** One legal suffix stripped from Census place names. */
-export const PLACE_LEGAL_SUFFIXES = [
+const PLACE_LEGAL_SUFFIXES = [
   "city",
   "town",
   "village",
@@ -19,15 +19,15 @@ export const PLACE_LEGAL_SUFFIXES = [
   "municipality",
 ] as const;
 
-export type CityMatchRule = "exact" | "concat" | "multi" | "unmatched";
+type CityMatchRule = "exact" | "concat" | "multi" | "unmatched";
 
-export interface CensusPlace {
+interface CensusPlace {
   state: string;
   placeName: string;
   counties: string[];
 }
 
-export interface CensusCounty {
+interface CensusCounty {
   state: string;
   fips: string;
   name: string;
@@ -145,7 +145,7 @@ export function indexCountiesByKey(
 }
 
 /** Resolve a Census county name in a state to one FIPS, or null if ambiguous. */
-export function resolveCountyFips(
+function resolveCountyFips(
   state: string,
   countyName: string,
   byKey: Map<string, CensusCounty[]>,
