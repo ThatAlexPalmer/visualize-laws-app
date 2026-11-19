@@ -1,30 +1,11 @@
 /**
  * LOCUS-Fines supplement — pure helpers (no I/O).
  *
- * The supplement (https://huggingface.co/datasets/LocalLaws/LOCUS-Fines) ships
- * penalty annotations for the LOCUS-v1 corpus but **not** the law text. Rows
- * re-attach to `laws` through seven identity columns, the last of which is a
- * fingerprint of the section text:
- *
- *     content_sha1 = sha1(content).hexdigest()[:16]
- *
- * Two things the dataset card does not tell you, both verified against the
- * full 2,211,516-row corpus:
- *
- *  1. That seven-column key is **not unique** in LOCUS-v1 — 2,411 groups
- *     covering 5,200 rows repeat. A plain merge fans out, so the fines side is
- *     deduped on `identityKey` before the join (see `data/build-fines.ts`).
- *  2. `city` / `county` are NULL on most rows and are mutually exclusive, so
- *     the key normalizes NULL to the empty string. The join then uses plain
- *     equality (hashable) instead of `IS NOT DISTINCT FROM` (not hashable,
- *     which would force a nested loop over 2.2M rows).
- *
- * Only rows the supplement actually sent to its model are stored. Every dollar
- * amount and every model judgement lives on an `annotation_source = 'LLM'` row
- * (632,005 of 2,211,516); the rest are rule-derived from LOCUS fields and add
- * nothing we cannot already compute.
+ * Only `annotation_source = 'LLM'` rows are stored. City and county are
+ * normalized from NULL to '' here so `data/build-fines.ts` can hash-join them.
+ * Dedupe is `DISTINCT ON` in that SQL, and the content fingerprint is
+ * `substr(encode(digest(content, 'sha1'), 'hex'), 1, 16)` in Postgres.
  */
-import { createHash } from "node:crypto";
 
 /**
  * The supplement is one ~87 MB parquet on the auto-converted branch, matching
@@ -37,7 +18,7 @@ export const FINES_PARQUET_URL =
 export const FINES_EXPECTED_ROWS = 2_211_516;
 
 /** `annotation_source` value for rows the model actually read. */
-export const MODEL_ANNOTATION_SOURCE = "LLM";
+const MODEL_ANNOTATION_SOURCE = "LLM";
 
 /**
  * Staging column order. The seven identity columns come first (stored
@@ -113,12 +94,12 @@ export function toStr(value: unknown): string | null {
 }
 
 /** Identity-column value: never null, so the join key is a plain equality. */
-export function toKey(value: unknown): string {
+function toKey(value: unknown): string {
   return toStr(value) ?? "";
 }
 
 /** Nullable dollar amount. Non-finite values are dropped rather than stored. */
-export function toNullableNum(value: unknown): number | null {
+function toNullableNum(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "bigint" ? Number(value) : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -135,34 +116,9 @@ export function toBool(value: unknown): boolean {
 }
 
 /** `grounded` is genuinely tri-state: true / false / null on rule-derived rows. */
-export function toNullableBool(value: unknown): boolean | null {
+function toNullableBool(value: unknown): boolean | null {
   if (value === null || value === undefined) return null;
   return toBool(value);
-}
-
-// --- Identity --------------------------------------------------------------
-
-/** The supplement's fingerprint: first 16 hex chars of sha1(content). */
-export function contentSha1(content: string): string {
-  return createHash("sha1").update(content, "utf8").digest("hex").slice(0, 16);
-}
-
-/**
- * Dedupe key for one fines row. Uses a unit-separator delimiter so a slug that
- * legitimately contains punctuation cannot forge a collision across fields.
- * Mirrors the SQL join, which compares the same seven values with NULL
- * normalized to ''.
- */
-export function identityKey(row: RawFineRow): string {
-  return [
-    toKey(row.state),
-    toKey(row.source_jurisdiction_type),
-    toKey(row.city),
-    toKey(row.county),
-    toKey(row.function),
-    toKey(row.header),
-    toKey(row.content_sha1),
-  ].join("\u001f");
 }
 
 /** True when the supplement's model read this row (vs. rule-derived). */
@@ -182,12 +138,12 @@ export function copyText(value: string | null): string {
     .replace(/\t/g, "\\t");
 }
 
-export function copyBool(value: boolean | null): string {
+function copyBool(value: boolean | null): string {
   if (value === null) return "\\N";
   return value ? "t" : "f";
 }
 
-export function copyNum(value: number | null): string {
+function copyNum(value: number | null): string {
   return value === null ? "\\N" : String(value);
 }
 

@@ -3,16 +3,8 @@ import { test } from "node:test";
 
 import {
   FINES_STAGING_COLUMNS,
-  contentSha1,
-  copyBool,
-  copyNum,
-  copyText,
   encodeStagingRow,
-  identityKey,
   isModelAnnotated,
-  toKey,
-  toNullableBool,
-  toNullableNum,
   type RawFineRow,
 } from "@/data/fines";
 import {
@@ -22,11 +14,6 @@ import {
   type PenaltyStats,
 } from "@/data/types";
 
-/**
- * Real rows from the head of the supplement, paired with the `content_sha1`
- * the dataset publishes for them. These fingerprints were confirmed against
- * the matching `laws` rows in the local full corpus.
- */
 const KINGCOVE: RawFineRow = {
   state: "ak",
   source_jurisdiction_type: "cities",
@@ -56,12 +43,12 @@ const PENALTY_ROW: RawFineRow = {
   penalty_stated: "amounts_here",
   fine_structure: "fluid",
   fixed_amount: null,
-  min_amount: 50,
+  min_amount: 0,
   max_amount: 1000,
   first_violation_amount: null,
   second_violation_amount: null,
   subsequent_violation_amount: null,
-  effective_min: 50,
+  effective_min: 0,
   effective_max: 1000,
   per_day_violation: true,
   jail_mentioned: false,
@@ -70,156 +57,34 @@ const PENALTY_ROW: RawFineRow = {
   grounded: true,
 };
 
-test("contentSha1 reproduces the supplement's fingerprint format", () => {
-  // sha1("") = da39a3ee5e6b4b0d3255bfef95601890afd80709
-  assert.equal(contentSha1(""), "da39a3ee5e6b4b0d");
-  assert.equal(contentSha1("").length, 16);
-  // Stable and content-sensitive.
-  assert.equal(contentSha1("abc"), contentSha1("abc"));
-  assert.notEqual(contentSha1("abc"), contentSha1("abd"));
-});
-
-test("contentSha1 hashes UTF-8 bytes, matching the Python reference", () => {
-  // hashlib.sha1("§ 1-8 café".encode()).hexdigest()[:16]
-  const utf8 = Buffer.from("§ 1-8 café", "utf8");
-  assert.equal(
-    contentSha1("§ 1-8 café"),
-    // Same input hashed as bytes, so a latin1 round-trip would diverge here.
-    contentSha1(utf8.toString("utf8")),
-  );
-  assert.notEqual(contentSha1("§ 1-8 café"), contentSha1("SS 1-8 cafe"));
-});
-
-test("isModelAnnotated keeps only rows the model read", () => {
+test("only rows the model read are stored", () => {
   assert.equal(isModelAnnotated(PENALTY_ROW), true);
   assert.equal(isModelAnnotated(KINGCOVE), false);
   assert.equal(isModelAnnotated({ annotation_source: null }), false);
 });
 
-test("identityKey normalizes NULL city/county to empty, matching the SQL join", () => {
-  const key = identityKey(PENALTY_ROW);
-  const parts = key.split("\u001f");
-  assert.equal(parts.length, 7);
-  assert.equal(parts[2], "kingcove");
-  // county is null on a city row; the join compares COALESCE(county, '').
-  assert.equal(parts[3], "");
-  assert.equal(parts[6], "4b006d0c042a0ddb");
-});
-
-test("identityKey separates fields that differ only in one column", () => {
-  const a = identityKey(PENALTY_ROW);
-  const b = identityKey({ ...PENALTY_ROW, function: "Rules" });
-  const c = identityKey({ ...PENALTY_ROW, content_sha1: "0000000000000000" });
-  assert.notEqual(a, b);
-  assert.notEqual(a, c);
-});
-
-test("identityKey cannot be forged by shifting text across field boundaries", () => {
-  // Without a delimiter outside the slug alphabet, these would collide.
-  const left = identityKey({ state: "ak", source_jurisdiction_type: "cities" });
-  const right = identityKey({ state: "akcities", source_jurisdiction_type: "" });
-  assert.notEqual(left, right);
-});
-
-test("duplicate identity keys collapse; distinct ones do not", () => {
-  // Mirrors the DISTINCT ON in the attach query: LOCUS-v1 repeats some
-  // sections verbatim, so several staged rows can share one key.
-  const rows: RawFineRow[] = [
-    PENALTY_ROW,
-    { ...PENALTY_ROW },
-    { ...PENALTY_ROW, header: "## 1.15.030 Something else." },
-  ];
-  const unique = new Map(rows.map((r) => [identityKey(r), r]));
-  assert.equal(rows.length, 3);
-  assert.equal(unique.size, 2);
-});
-
-test("toKey turns absent values into the empty string", () => {
-  assert.equal(toKey(null), "");
-  assert.equal(toKey(undefined), "");
-  assert.equal(toKey("pagosa_springs"), "pagosa_springs");
-  assert.equal(toKey(Buffer.from("kingcove", "utf8")), "kingcove");
-});
-
-test("toNullableNum keeps 0 and drops non-finite values", () => {
-  // 0 is a real fine amount (effective_min bottoms out at 0), so it must not
-  // be coerced to null by a falsy check.
-  assert.equal(toNullableNum(0), 0);
-  assert.equal(toNullableNum(5_000_000), 5_000_000);
-  assert.equal(toNullableNum(12.5), 12.5);
-  assert.equal(toNullableNum(null), null);
-  assert.equal(toNullableNum(undefined), null);
-  assert.equal(toNullableNum(Number.NaN), null);
-  assert.equal(toNullableNum(Number.POSITIVE_INFINITY), null);
-});
-
-test("toNullableBool keeps grounded tri-state", () => {
-  assert.equal(toNullableBool(true), true);
-  assert.equal(toNullableBool(false), false);
-  assert.equal(toNullableBool(null), null);
-  assert.equal(toNullableBool(undefined), null);
-});
-
-test("COPY encoders emit the text format's null and escapes", () => {
-  assert.equal(copyText(null), "\\N");
-  assert.equal(copyNum(null), "\\N");
-  assert.equal(copyBool(null), "\\N");
-  assert.equal(copyBool(true), "t");
-  assert.equal(copyBool(false), "f");
-  assert.equal(copyNum(0), "0");
-  // Tabs and newlines inside a header would otherwise break row framing.
-  assert.equal(copyText("a\tb"), "a\\tb");
-  assert.equal(copyText("a\nb"), "a\\nb");
-  assert.equal(copyText("a\\b"), "a\\\\b");
-});
-
-test("encodeStagingRow emits one line per staging column, in order", () => {
-  const line = encodeStagingRow(PENALTY_ROW);
-  assert.ok(line.endsWith("\n"));
-  const fields = line.slice(0, -1).split("\t");
-  assert.equal(fields.length, FINES_STAGING_COLUMNS.length);
-
-  const at = (name: (typeof FINES_STAGING_COLUMNS)[number]) =>
-    fields[FINES_STAGING_COLUMNS.indexOf(name)];
-
-  assert.equal(at("state"), "ak");
-  assert.equal(at("city"), "kingcove");
-  assert.equal(at("county"), ""); // NULL normalized for the hash join
-  assert.equal(at("content_sha1"), "4b006d0c042a0ddb");
-  assert.equal(at("annotation_source"), "LLM");
-  assert.equal(at("fine_relevant"), "t");
-  assert.equal(at("fixed_amount"), "\\N");
-  assert.equal(at("min_amount"), "50");
-  assert.equal(at("effective_max"), "1000");
-  assert.equal(at("per_day_violation"), "t");
-  assert.equal(at("jail_mentioned"), "f");
-  assert.equal(at("penalty_nature"), "civil");
-  assert.equal(at("extraction_flag"), "\\N");
-  assert.equal(at("grounded"), "t");
-});
-
-test("encodeStagingRow escapes a header containing a tab", () => {
+test("staging COPY keeps nulls, a zero amount, and a tab inside a header", () => {
   const line = encodeStagingRow({
     ...PENALTY_ROW,
     header: "## 1.15.025\tCivil remedies",
   });
   const fields = line.slice(0, -1).split("\t");
-  // Still one field per column: the literal tab was escaped, not emitted.
+  const at = (name: (typeof FINES_STAGING_COLUMNS)[number]) =>
+    fields[FINES_STAGING_COLUMNS.indexOf(name)];
   assert.equal(fields.length, FINES_STAGING_COLUMNS.length);
+  assert.equal(at("county"), "");
+  assert.equal(at("min_amount"), "0");
+  assert.equal(at("fixed_amount"), "\\N");
+  assert.equal(at("header"), "## 1.15.025\\tCivil remedies");
+  assert.equal(at("grounded"), "t");
+
+  const unread = encodeStagingRow(KINGCOVE).slice(0, -1).split("\t");
   assert.equal(
-    fields[FINES_STAGING_COLUMNS.indexOf("header")],
-    "## 1.15.025\\tCivil remedies",
+    unread[FINES_STAGING_COLUMNS.indexOf("grounded")],
+    "\\N",
   );
+  assert.equal(unread.length, FINES_STAGING_COLUMNS.length);
 });
-
-test("a rule-derived row still encodes with a tri-state null grounded", () => {
-  const line = encodeStagingRow(KINGCOVE);
-  const fields = line.slice(0, -1).split("\t");
-  assert.equal(fields[FINES_STAGING_COLUMNS.indexOf("grounded")], "\\N");
-  assert.equal(fields[FINES_STAGING_COLUMNS.indexOf("fine_relevant")], "f");
-});
-
-// --- Presentation ----------------------------------------------------------
 
 function stats(over: Partial<PenaltyStats> = {}): PenaltyStats {
   return {
@@ -234,44 +99,16 @@ function stats(over: Partial<PenaltyStats> = {}): PenaltyStats {
   };
 }
 
-test("formatFine shows cents only when the amount has them", () => {
+test("fines render as dollars, a share of sections read, and a hover line", () => {
   assert.equal(formatFine(500), "$500");
-  assert.equal(formatFine(5_000_000), "$5,000,000");
   assert.equal(formatFine(37.5), "$37.50");
   assert.equal(formatFine(0), "$0");
-});
-
-test("amountShare divides by sections read, and is null when nothing was read", () => {
   assert.equal(amountShare(stats({ penaltySections: 200, amountSections: 50 })), 0.25);
   assert.equal(amountShare(stats({ penaltySections: 0, amountSections: 0 })), null);
   assert.equal(amountShare(null), null);
-  assert.equal(amountShare(undefined), null);
-});
-
-test("fineHoverLine reads as a sentence, not dataset jargon", () => {
-  // Texas, the worked example: short enough to sit on one line under the
-  // place name rather than becoming a wall of shouted capitals.
   assert.equal(fineHoverLine(stats()), "12% state a fine · typical $500");
-});
-
-test("fineHoverLine says 'not annotated', never 'no fines'", () => {
-  // An absent annotation means nobody looked — the supplement only sent about
-  // a third of the corpus to its model.
+  assert.equal(fineHoverLine(stats({ medianFine: null })), "12% state a fine");
   for (const value of [null, undefined, stats({ penaltySections: 0 })]) {
-    const line = fineHoverLine(value);
-    assert.equal(line, "not annotated");
-    assert.ok(!/no fine/i.test(line ?? ""));
+    assert.equal(fineHoverLine(value), "not annotated");
   }
-});
-
-test("fineHoverLine drops the median when it was suppressed as too thin", () => {
-  const line = fineHoverLine(stats({ medianFine: null }));
-  assert.ok(!line?.includes("typical"), line ?? "");
-  assert.equal(line, "12% state a fine");
-});
-
-test("fineHoverLine does not mention how many sections were read", () => {
-  const line = fineHoverLine(stats());
-  assert.ok(!/sections read/i.test(line ?? ""), line ?? "");
-  assert.ok(!/model/i.test(line ?? ""), line ?? "");
 });

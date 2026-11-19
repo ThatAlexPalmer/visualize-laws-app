@@ -19,7 +19,7 @@ import { useJurisdictions } from "@/components/jurisdiction/JurisdictionsProvide
 
 import { computeLayerDomain, type Domain } from "./color";
 import { resolveFillRows } from "./counties";
-import { COUNTY_FILL_MIN, countyScaleReady } from "./sparseCounties";
+import { COUNTY_FILL_MIN } from "./sparseCounties";
 
 const EMPTY_ROWS: JurisdictionAgg[] = [];
 
@@ -33,7 +33,6 @@ export interface MapViewValue {
   fillRows: CountyFill[];
   fillByKey: Map<string, CountyFill>;
   scoredCounties: CountyFill[];
-  scoredCountyN: number;
   sparseCounties: boolean;
   countyViewReady: boolean;
   domain: Domain | null;
@@ -82,17 +81,11 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
     () => fillRows.filter((r) => r.sourcePlace),
     [fillRows],
   );
-  const scoredCountyN = scoredCounties.length;
-
   const sparseCounties = Boolean(
-    selectedState && stateDetail && scoredCountyN < COUNTY_FILL_MIN,
+    selectedState && stateDetail && scoredCounties.length < COUNTY_FILL_MIN,
   );
 
-  const countyViewReady = countyScaleReady({
-    selectedState,
-    hasDetail: Boolean(stateDetail),
-    countiesBaked,
-  });
+  const countyViewReady = Boolean(selectedState && countiesBaked && stateDetail);
 
   const mapAggregatesInFlight = status === "loading" && rows.length === 0;
   const countiesInFlight =
@@ -132,7 +125,6 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
       fillRows,
       fillByKey,
       scoredCounties,
-      scoredCountyN,
       sparseCounties,
       countyViewReady,
       domain,
@@ -150,7 +142,6 @@ export function MapViewProvider({ children }: { children: ReactNode }) {
       fillRows,
       fillByKey,
       scoredCounties,
-      scoredCountyN,
       sparseCounties,
       countyViewReady,
       domain,

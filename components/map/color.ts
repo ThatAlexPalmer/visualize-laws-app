@@ -43,28 +43,6 @@ export interface Domain {
   max: number;
 }
 
-/**
- * Color-scale domain from the rows on screen. A single finite value
- * (one county, or identical averages) expands around that value so
- * normalize() lands at 0.5 — mid-ramp fill instead of no paint.
- * Returns null only when there is no finite value.
- */
-function computeDomain(axis: Axis, rows: AxisAverages[]): Domain | null {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const r of rows) {
-    const v = axisValue(r, axis);
-    if (Number.isFinite(v)) {
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  // One joined county (or identical avgs): pad so the fill is mid-ramp, not empty.
-  if (max <= min) return { min: min - 1, max: min + 1 };
-  return { min, max };
-}
-
 /** Clamp a value to [0,1] within the given domain. */
 export function normalize(value: number, domain: Domain): number {
   const t = (value - domain.min) / (domain.max - domain.min);
@@ -100,28 +78,28 @@ export function layerValue(
 }
 
 /**
- * Domain for the active layer, from the rows on screen. National slider
- * bounds are not a color scale. Penalties are a share, so a log or
- * percentile clamp is only a hazard for raw dollar amounts, which this
- * layer does not paint.
+ * Domain from the rows on screen, not the national slider bounds.
+ * One finite value is padded so the fill lands mid-ramp instead of vanishing.
  */
 export function computeLayerDomain(
   layer: MapLayer,
   axis: Axis,
   rows: LayerRow[],
 ): Domain | null {
-  if (layer !== "penalties") return computeDomain(axis, rows);
-
   let min = Infinity;
   let max = -Infinity;
   for (const r of rows) {
-    const v = amountShare(r.penalties);
+    const v = layer === "penalties" ? amountShare(r.penalties) : axisValue(r, axis);
     if (v === null || !Number.isFinite(v)) continue;
     if (v < min) min = v;
     if (v > max) max = v;
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  if (max <= min) return { min: Math.max(0, min - 0.01), max: min + 0.01 };
+  if (max <= min) {
+    return layer === "penalties"
+      ? { min: Math.max(0, min - 0.01), max: min + 0.01 }
+      : { min: min - 1, max: min + 1 };
+  }
   return { min, max };
 }
 

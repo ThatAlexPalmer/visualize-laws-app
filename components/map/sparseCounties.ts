@@ -1,19 +1,6 @@
 /** Minimum scored counties before the in-state choropleth paints. */
 export const COUNTY_FILL_MIN = 8;
 
-/** County domain/fills only after the mesh is baked and in-state rows exist. */
-export function countyScaleReady({
-  selectedState,
-  hasDetail,
-  countiesBaked,
-}: {
-  selectedState: string | null;
-  hasDetail: boolean;
-  countiesBaked: boolean;
-}): boolean {
-  return Boolean(selectedState && countiesBaked && hasDetail);
-}
-
 export function formatSparseCountyCopy(
   stateLabel: string,
   names: string[],

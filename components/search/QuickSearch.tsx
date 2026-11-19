@@ -146,7 +146,6 @@ export function QuickSearch() {
       return;
     }
 
-    lookupAbort.current?.abort();
     const ac = new AbortController();
     lookupAbort.current = ac;
     try {
