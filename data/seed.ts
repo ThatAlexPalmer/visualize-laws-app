@@ -4,13 +4,9 @@
  * `search_vector` is generated and never written. Each COPY batch commits
  * with its `import_progress` row so a stall only loses the in-flight batch.
  */
-import { createWriteStream, existsSync, unlinkSync } from "node:fs";
-import { mkdir, rename } from "node:fs/promises";
+import { existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { ParquetReader } from "@dsnp/parquetjs";
 import { Client } from "pg";
@@ -21,10 +17,11 @@ import { copyText, toBool, toStr } from "./fines";
 import { STATE_NAMES } from "./types";
 import {
   connectWriter, fingerprintFile, getProgress, saveProgress,
-  verifyCorpusProgress, resetCorpus, ImportStateError,
+  verifyCorpusProgress, resetCorpus, withTransaction, ImportStateError,
 } from "./importProgress";
 import {
   LOAD_STATEMENT_TIMEOUT_MS,
+  cacheDownload,
   copyBatch,
   loadEnv,
   writerConnectionString,
@@ -192,21 +189,9 @@ async function ensureShard(n: number): Promise<string> {
     return dest;
   }
 
-  await mkdir(CACHE_DIR, { recursive: true });
   const url = `${HF_BASE}/${name}`;
   console.log(`  shard ${n + 1}/${SHARD_COUNT}: downloading ${url}`);
-  const res = await fetch(url);
-  if (!res.ok || !res.body) {
-    throw new Error(`Failed to download ${url}: HTTP ${res.status}`);
-  }
-  // Stream to a .part file, then atomically rename so an interrupted download
-  // never leaves a truncated file that looks complete.
-  const tmp = `${dest}.part`;
-  await pipeline(
-    Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>),
-    createWriteStream(tmp),
-  );
-  await rename(tmp, dest);
+  await cacheDownload(url, dest);
   return dest;
 }
 
@@ -253,19 +238,10 @@ export async function loadShard(
   const flushBatch = async (): Promise<void> => {
     if (batch.length === 0) return;
     const size = batch.length;
-    await client.query("BEGIN");
-    try {
+    await withTransaction(client, async () => {
       await copyBatch(client, COPY_SQL, batch);
       await saveProgress(client, source, opts.fingerprint, committed + size);
-      await client.query("COMMIT");
-    } catch (err) {
-      try {
-        await client.query("ROLLBACK");
-      } catch {
-        /* ignore — connection likely gone */
-      }
-      throw err;
-    }
+    });
     newlyCommitted += size;
     committed += size;
     const dt = (Date.now() - batchStart) / 1000;
@@ -305,8 +281,7 @@ export async function loadShard(
     }
 
     if (complete) {
-      await client.query("BEGIN");
-      try {
+      await withTransaction(client, async () => {
         await client.query(
           `INSERT INTO seed_checkpoints (shard, rows_loaded)
            VALUES ($1, $2)
@@ -315,15 +290,7 @@ export async function loadShard(
           [id, committed],
         );
         await saveProgress(client, source, opts.fingerprint, committed, true);
-        await client.query("COMMIT");
-      } catch (err) {
-        try {
-          await client.query("ROLLBACK");
-        } catch {
-          /* ignore */
-        }
-        throw err;
-      }
+      });
     }
   } finally {
     await reader.close();
@@ -334,83 +301,77 @@ export async function loadShard(
 
 // --- Aggregates ------------------------------------------------------------
 
+// One score list for national, state, and county. The three rows must not drift.
+function scoreSelect(alias = ""): string {
+  const p = alias ? `${alias}.` : "";
+  return `count(*)::int,
+  count(*) FILTER (WHERE ${p}is_substantive)::int,
+  COALESCE(avg(${p}opacity), 0),
+  COALESCE(avg(${p}enforcement_discretion), 0),
+  COALESCE(avg(${p}paternalism), 0),
+  COALESCE(avg(${p}problem_salience), 0)`;
+}
+
+const AGG_COLUMNS =
+  "level, state, county, name, law_count, substantive_count, " +
+  "avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience";
+
+function aggUpsert(bounds = false): string {
+  return `ON CONFLICT (level, state, county) DO UPDATE SET
+  name = EXCLUDED.name,
+  law_count = EXCLUDED.law_count,
+  substantive_count = EXCLUDED.substantive_count,
+  avg_opacity = EXCLUDED.avg_opacity,
+  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
+  avg_paternalism = EXCLUDED.avg_paternalism,
+  avg_problem_salience = EXCLUDED.avg_problem_salience${
+    bounds ? ",\n  bounds = EXCLUDED.bounds" : ""
+  }`;
+}
+
 // State name comes from the shared STATE_NAMES map (passed as $1::jsonb) and
 // falls back to the uppercased code for any code not in the map.
 const STATE_AGG_SQL = `
 INSERT INTO jurisdictions
-  (level, state, county, name, law_count, substantive_count,
-   avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience)
+  (${AGG_COLUMNS})
 SELECT
   'state',
   l.state,
   NULL,
   COALESCE($1::jsonb ->> l.state, upper(l.state)),
-  count(*)::int,
-  count(*) FILTER (WHERE l.is_substantive)::int,
-  COALESCE(avg(l.opacity), 0),
-  COALESCE(avg(l.enforcement_discretion), 0),
-  COALESCE(avg(l.paternalism), 0),
-  COALESCE(avg(l.problem_salience), 0)
+  ${scoreSelect("l")}
 FROM laws l
 WHERE l.state IS NOT NULL AND l.state <> ''
 GROUP BY l.state
-ON CONFLICT (level, state, county) DO UPDATE SET
-  name = EXCLUDED.name,
-  law_count = EXCLUDED.law_count,
-  substantive_count = EXCLUDED.substantive_count,
-  avg_opacity = EXCLUDED.avg_opacity,
-  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
-  avg_paternalism = EXCLUDED.avg_paternalism,
-  avg_problem_salience = EXCLUDED.avg_problem_salience
-`;
+${aggUpsert()}`;
 
 // County display name: initcap of the LOCUS slug with underscores as spaces
 // (`el_paso_county` → `El Paso County`). Slug is stored lowercased.
 const COUNTY_AGG_SQL = `
 INSERT INTO jurisdictions
-  (level, state, county, name, law_count, substantive_count,
-   avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience)
+  (${AGG_COLUMNS})
 SELECT
   'county',
   l.state,
   lower(l.county),
   initcap(replace(lower(l.county), '_', ' ')),
-  count(*)::int,
-  count(*) FILTER (WHERE l.is_substantive)::int,
-  COALESCE(avg(l.opacity), 0),
-  COALESCE(avg(l.enforcement_discretion), 0),
-  COALESCE(avg(l.paternalism), 0),
-  COALESCE(avg(l.problem_salience), 0)
+  ${scoreSelect("l")}
 FROM laws l
 WHERE l.state IS NOT NULL AND l.state <> ''
   AND l.county IS NOT NULL AND l.county <> ''
 GROUP BY l.state, lower(l.county)
-ON CONFLICT (level, state, county) DO UPDATE SET
-  name = EXCLUDED.name,
-  law_count = EXCLUDED.law_count,
-  substantive_count = EXCLUDED.substantive_count,
-  avg_opacity = EXCLUDED.avg_opacity,
-  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
-  avg_paternalism = EXCLUDED.avg_paternalism,
-  avg_problem_salience = EXCLUDED.avg_problem_salience
-`;
+${aggUpsert()}`;
 
 // `bounds` is per-axis [min,max] using the shared Axis camelCase keys.
 const NATIONAL_AGG_SQL = `
 INSERT INTO jurisdictions
-  (level, state, county, name, law_count, substantive_count,
-   avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience, bounds)
+  (${AGG_COLUMNS}, bounds)
 SELECT
   'national',
   NULL,
   NULL,
   'United States',
-  count(*)::int,
-  count(*) FILTER (WHERE is_substantive)::int,
-  COALESCE(avg(opacity), 0),
-  COALESCE(avg(enforcement_discretion), 0),
-  COALESCE(avg(paternalism), 0),
-  COALESCE(avg(problem_salience), 0),
+  ${scoreSelect()},
   CASE WHEN count(*) = 0 THEN NULL ELSE jsonb_build_object(
     'opacity', jsonb_build_array(min(opacity), max(opacity)),
     'enforcementDiscretion', jsonb_build_array(min(enforcement_discretion), max(enforcement_discretion)),
@@ -418,16 +379,7 @@ SELECT
     'problemSalience', jsonb_build_array(min(problem_salience), max(problem_salience))
   ) END
 FROM laws
-ON CONFLICT (level, state, county) DO UPDATE SET
-  name = EXCLUDED.name,
-  law_count = EXCLUDED.law_count,
-  substantive_count = EXCLUDED.substantive_count,
-  avg_opacity = EXCLUDED.avg_opacity,
-  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
-  avg_paternalism = EXCLUDED.avg_paternalism,
-  avg_problem_salience = EXCLUDED.avg_problem_salience,
-  bounds = EXCLUDED.bounds
-`;
+${aggUpsert(true)}`;
 
 /**
  * Recompute the national + per-state + per-county aggregate rows from the
@@ -438,23 +390,14 @@ ON CONFLICT (level, state, county) DO UPDATE SET
 async function computeAggregates(client: Client): Promise<void> {
   // Full-table scans over ~2.2M rows can exceed the load-phase timeout.
   await client.query(`SET statement_timeout = ${AGG_STATEMENT_TIMEOUT_MS}`);
-  await client.query("BEGIN");
-  try {
+  await withTransaction(client, async () => {
     await client.query(
       "DELETE FROM jurisdictions WHERE level IN ('state', 'national', 'county')",
     );
     await client.query(STATE_AGG_SQL, [JSON.stringify(STATE_NAMES)]);
     await client.query(COUNTY_AGG_SQL);
     await client.query(NATIONAL_AGG_SQL);
-    await client.query("COMMIT");
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  }
+  });
 }
 
 // --- Main ------------------------------------------------------------------

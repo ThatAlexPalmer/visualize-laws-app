@@ -9,12 +9,9 @@
  * `pnpm seed --shards ''` also runs this after recomputing jurisdictions.
  * Census files cache under `.locus-cache/`.
  */
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { Client } from "pg";
 
@@ -29,8 +26,8 @@ import {
   type CityCountyMatch,
 } from "./cityCounty";
 import { prettySlug } from "./slugs";
-import { acquireWriter, connectWriter } from "./importProgress";
-import { loadEnv, writerConnectionString } from "./writer";
+import { acquireWriter, connectWriter, withTransaction } from "./importProgress";
+import { cacheDownload, loadEnv, writerConnectionString } from "./writer";
 
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PLACE_CACHE = resolve(CACHE_DIR, "national_place2020.txt");
@@ -71,19 +68,8 @@ export interface CityCountyBuildStats {
 
 async function ensureCached(url: string, dest: string): Promise<string> {
   if (existsSync(dest)) return dest;
-  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
   console.log(`  downloading ${url}`);
-  const res = await fetch(url);
-  if (!res.ok || !res.body) {
-    throw new Error(`Failed to download ${url}: HTTP ${res.status}`);
-  }
-  const tmp = `${dest}.part`;
-  await pipeline(
-    Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>),
-    createWriteStream(tmp),
-  );
-  const { rename } = await import("node:fs/promises");
-  await rename(tmp, dest);
+  await cacheDownload(url, dest);
   return dest;
 }
 
@@ -247,8 +233,7 @@ export async function buildCityCountyTables(
     });
   }
 
-  await client.query("BEGIN");
-  try {
+  await withTransaction(client, async () => {
     await client.query("DELETE FROM city_county");
     await client.query("DELETE FROM county_fills");
     await insertChunks(
@@ -290,15 +275,7 @@ export async function buildCityCountyTables(
         row.avgProblemSalience,
       ]),
     );
-    await client.query("COMMIT");
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  }
+  });
 
   const uniqueFips = new Set(
     fills.map((f) => f.fips).filter((fips): fips is string => Boolean(fips)),

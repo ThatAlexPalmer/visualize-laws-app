@@ -29,13 +29,9 @@
  * model-row ordinals. Reruns reconcile the database checkpoint before replay.
  * UNLOGGED staging loss is detected and requires explicit --restage.
  */
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import {
   asyncBufferFromFile,
@@ -55,10 +51,11 @@ import {
 import { PENALTY_MEDIAN_MIN } from "./types";
 import {
   acquireWriter, connectWriter, fingerprintFile, getProgress, saveProgress,
-  ImportStateError,
+  withTransaction, ImportStateError,
 } from "./importProgress";
 import {
   LOAD_STATEMENT_TIMEOUT_MS,
+  cacheDownload,
   copyBatch,
   loadEnv,
   writerConnectionString,
@@ -282,20 +279,8 @@ async function ensureParquet(): Promise<string> {
     console.log("  using cached locus-fines.parquet");
     return PARQUET_CACHE;
   }
-  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
   console.log(`  downloading ${FINES_PARQUET_URL}`);
-  const res = await fetch(FINES_PARQUET_URL);
-  if (!res.ok || !res.body) {
-    throw new Error(`Failed to download the fines parquet: HTTP ${res.status}`);
-  }
-  // Stream to .part then rename, so an interrupted download never leaves a
-  // truncated file that looks complete.
-  const tmp = `${PARQUET_CACHE}.part`;
-  await pipeline(
-    Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>),
-    createWriteStream(tmp),
-  );
-  await rename(tmp, PARQUET_CACHE);
+  await cacheDownload(FINES_PARQUET_URL, PARQUET_CACHE);
   return PARQUET_CACHE;
 }
 
@@ -325,16 +310,11 @@ export async function buildFinesTable(
   await client.query(CREATE_STAGING_SQL);
   if (opts.restage) {
     console.log("  --restage: clearing staged rows");
-    await client.query("BEGIN");
-    try {
+    await withTransaction(client, async () => {
       await client.query(`TRUNCATE TABLE ${STAGING_TABLE}`);
       await client.query("DELETE FROM import_progress WHERE source = $1", [SOURCE]);
       await client.query("DROP TABLE IF EXISTS law_fines_import");
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    }
+    });
   } else {
     const legacy = await client.query<{ present: boolean }>(
       "SELECT to_regclass('law_fines_import') IS NOT NULL AS present",
@@ -375,15 +355,10 @@ export async function buildFinesTable(
   const flush = async (): Promise<void> => {
     if (batch.length === 0) return;
     const size = batch.length;
-    await client.query("BEGIN");
-    try {
+    await withTransaction(client, async () => {
       await copyBatch(client, COPY_SQL, batch);
       await saveProgress(client, SOURCE, fingerprint, staged + size);
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    }
+    });
     staged += size;
     batch = [];
     if (staged % 100_000 < size) {
@@ -427,8 +402,7 @@ export async function buildFinesTable(
   const distinctKeys = Number(keys.rows[0]?.n ?? 0);
 
   let matched = 0;
-  await client.query("BEGIN");
-  try {
+  await withTransaction(client, async () => {
     // law_fines and place_penalties are both fully derived from the parquet +
     // laws. TRUNCATE is transactional but blocks readers until COMMIT.
     await client.query("TRUNCATE TABLE law_fines RESTART IDENTITY");
@@ -438,16 +412,7 @@ export async function buildFinesTable(
     // --- 3. Per-place aggregates for the map's Penalties layer -------------
     await client.query("DELETE FROM place_penalties");
     await client.query(placePenaltiesSql(PENALTY_MEDIAN_MIN));
-
-    await client.query("COMMIT");
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  }
+  });
 
   const summary = await client.query<{ amounts: string; places: string }>(`
     SELECT
@@ -458,15 +423,10 @@ export async function buildFinesTable(
   `);
 
   // --- 4. Drop staging -----------------------------------------------------
-  await client.query("BEGIN");
-  try {
+  await withTransaction(client, async () => {
     await client.query(`DROP TABLE IF EXISTS ${STAGING_TABLE}`);
     await client.query("DELETE FROM import_progress WHERE source = $1", [SOURCE]);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw error;
-  }
+  });
 
   return {
     parquetRows,

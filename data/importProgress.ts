@@ -44,21 +44,36 @@ export async function fingerprintFile(file: string): Promise<string> {
   return `sha256:${hash.digest("hex")}`;
 }
 
+/** One BEGIN/COMMIT for a writer unit. */
+export async function withTransaction<T>(
+  client: Client,
+  run: () => Promise<T>,
+): Promise<T> {
+  await client.query("BEGIN");
+  try {
+    const result = await run();
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // A dead connection cannot roll back; keep the error that aborted the unit.
+    }
+    throw error;
+  }
+}
+
 /** Explicit --fresh only. Reset corpus and all progress/staging as one unit. */
 export async function resetCorpus(client: Client): Promise<void> {
   await acquireWriter(client);
-  await client.query("BEGIN");
-  try {
+  await withTransaction(client, async () => {
     await client.query(
       "TRUNCATE TABLE laws, law_fines, place_penalties, jurisdictions, " +
       "seed_checkpoints, import_progress, city_county, county_fills RESTART IDENTITY",
     );
     await client.query("DROP TABLE IF EXISTS law_fines_import, law_fines_import_v2");
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw error;
-  }
+  });
 }
 
 export async function getProgress(
