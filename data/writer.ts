@@ -1,15 +1,19 @@
 /**
- * Shared writer CLI helpers: env files, COPY batches, and load timeouts.
+ * Shared writer CLI helpers: env files, COPY batches, load timeouts, and
+ * the cache download the seed and both builders use.
  *
  * Seed and both derived builders must use this module. Do not add another
- * `loadEnv` / COPY watchdog. `tsx` does not auto-load env files; dotenv-cli
- * (`pnpm seed`, `pnpm build:*`) already sets `process.env`, so this loader
- * only fills missing keys and never overrides `.env.prod` or the shell.
+ * `loadEnv`, COPY watchdog, or `.part` downloader. `tsx` does not auto-load
+ * env files; dotenv-cli (`pnpm seed`, `pnpm build:*`) already sets
+ * `process.env`, so this loader only fills missing keys and never overrides
+ * `.env.prod` or the shell.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createWriteStream, existsSync, readFileSync } from "node:fs";
+import { mkdir, rename } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
@@ -53,6 +57,24 @@ export function writerConnectionString(): string {
     );
   }
   return url;
+}
+
+/**
+ * Download `url` to `dest` through a sibling `.part` file. An interrupted
+ * download must not leave a truncated file that the next run treats as complete.
+ */
+export async function cacheDownload(url: string, dest: string): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true });
+  const res = await fetch(url);
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download ${url}: HTTP ${res.status}`);
+  }
+  const tmp = `${dest}.part`;
+  await pipeline(
+    Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>),
+    createWriteStream(tmp),
+  );
+  await rename(tmp, dest);
 }
 
 /** Reject if `promise` does not settle within `ms` (and run `onTimeout`). */
