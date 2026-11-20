@@ -2,70 +2,21 @@
 
 // /about — product mission, current LOCUS-v1 coverage, legal-layer roadmap,
 // and dataset attribution. Reached from the nav "About" link.
-import Link from "next/link";
 import styled from "styled-components";
 import { motion } from "framer-motion";
-import { Footer } from "@/components/footer/Footer";
+import { ArticlePage, articleItem } from "@/components/layout/ArticlePage";
 import {
   BIBTEX,
   DATASET_URL,
   PAPER_URL,
 } from "@/lib/attribution";
 import { ButtonLink } from "@/components/ui/buttons";
-import { Cluster, Row, SectionLabel, Stack } from "@/components/ui/containers";
-import { Heading, Kicker as UiKicker, MonoLink, Muted } from "@/components/ui/text";
+import { Cluster, SectionLabel, Stack } from "@/components/ui/containers";
+import { Heading, Muted } from "@/components/ui/text";
 import { useExplorer } from "@/lib/store";
-
-const Page = styled.div`
-  height: 100%;
-  overflow-y: auto;
-  background: ${({ theme }) => theme.colors.bg};
-`;
-
-const Inner = styled(motion.main)`
-  max-width: 760px;
-  margin: 0 auto;
-  padding: ${({ theme }) => theme.space(8)} ${({ theme }) => theme.space(5)}
-    ${({ theme }) => theme.space(16)};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
-    padding: ${({ theme }) => theme.space(6)} ${({ theme }) => theme.space(4)}
-      ${({ theme }) => theme.space(12)};
-  }
-`;
-
-const TopRow = styled(Row)`
-  justify-content: space-between;
-  margin-bottom: ${({ theme }) => theme.space(8)};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
-    display: none;
-  }
-`;
-
-// Same mono micro-label as the rest of the app, with the wider /about tracking.
-const Kicker = styled(UiKicker)`
-  letter-spacing: 0.18em;
-`;
 
 const Section = styled(motion.section)`
   margin-top: ${({ theme }) => theme.space(10)};
-`;
-
-const H1 = styled(Heading)`
-  font-size: ${({ theme }) => theme.fontSize.xxl};
-  line-height: 1.05;
-  letter-spacing: -0.02em;
-  font-weight: ${({ theme }) => theme.fontWeights.bold};
-
-  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
-    font-size: clamp(2rem, 11vw, 2.7rem);
-  }
-`;
-
-const Lede = styled(Muted)`
-  margin: ${({ theme }) => theme.space(5)} 0 0;
-  font-size: ${({ theme }) => theme.fontSize.lg};
 `;
 
 const H2 = styled(Heading)`
@@ -168,19 +119,6 @@ const Links = styled(Cluster)`
 const LinkButton = styled(ButtonLink)`
   padding: ${({ theme }) => theme.space(1.5)} ${({ theme }) => theme.space(3)};
 `;
-
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
-};
-const item = {
-  hidden: { opacity: 0, y: 14 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-  },
-};
 
 const COVERS: [string, string][] = [
   ["Zoning & land use", "what you can build, and whether your block gets a taco truck"],
@@ -287,21 +225,15 @@ export default function AboutPage() {
   const copy = state.unhinged ? FUNNY_COPY : NORMAL_COPY;
 
   return (
-    <Page>
-      <Inner variants={container} initial="hidden" animate="show">
-        <TopRow>
-          <MonoLink as={Link} href="/">
-            {copy.back}
-          </MonoLink>
-          <Kicker>{copy.kicker}</Kicker>
-        </TopRow>
-
-        <Section variants={item}>
-          <H1 as="h1">{copy.title}</H1>
-          <Lede>{copy.lede}</Lede>
-        </Section>
-
-        <Section variants={item}>
+    <ArticlePage
+      back={copy.back}
+      kicker={copy.kicker}
+      title={copy.title}
+      lede={copy.lede}
+      align="center"
+      titleGap
+    >
+        <Section variants={articleItem}>
           <H2>{copy.layersTitle}</H2>
           <Body>{copy.layersBody}</Body>
           <Note as="div" style={{ marginTop: 16 }}>
@@ -323,7 +255,7 @@ export default function AboutPage() {
           <Note>{copy.layersNote}</Note>
         </Section>
 
-        <Section variants={item}>
+        <Section variants={articleItem}>
           <H2>{copy.governsTitle}</H2>
           <Body>{copy.governsBody}</Body>
           <CoverList style={{ marginTop: 16 }}>
@@ -336,12 +268,12 @@ export default function AboutPage() {
           </CoverList>
         </Section>
 
-        <Section variants={item}>
+        <Section variants={articleItem}>
           <H2>{copy.whyTitle}</H2>
           <Body>{copy.whyBody}</Body>
         </Section>
 
-        <Section variants={item}>
+        <Section variants={articleItem}>
           <H2>{copy.coverageTitle}</H2>
           <Body>{copy.coverageBody}</Body>
           <Cta href="/" $variant="primary" $pill>
@@ -349,14 +281,14 @@ export default function AboutPage() {
           </Cta>
         </Section>
 
-        <Section variants={item}>
+        <Section variants={articleItem}>
           <H2>{copy.roadmapTitle}</H2>
           <Body>{copy.roadmapBody}</Body>
           <Body>{copy.roadmapWhy}</Body>
           <Note>{copy.roadmapNote}</Note>
         </Section>
 
-        <Section variants={item}>
+        <Section variants={articleItem}>
           <CiteLabel>{copy.cite}</CiteLabel>
           <Cite>{BIBTEX}</Cite>
           <Links $gap={3}>
@@ -380,8 +312,6 @@ export default function AboutPage() {
             </LinkButton>
           </Links>
         </Section>
-      </Inner>
-      <Footer />
-    </Page>
+    </ArticlePage>
   );
 }
