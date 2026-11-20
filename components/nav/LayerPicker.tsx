@@ -79,35 +79,18 @@ const SheetAxes = styled.div`
   gap: ${({ theme }) => theme.space(1.5)};
 `;
 
-const SheetAxis = styled.button<{ $active: boolean; $accent: string }>`
+/**
+ * One tile for the compact sheet. The penalties tile spans both columns so the
+ * 2x2 of axes does not leave an orphan cell.
+ */
+const SheetTile = styled.button<{ $active: boolean; $accent: string; $span?: boolean }>`
+  ${({ $span }) => ($span ? "grid-column: span 2;" : "")}
   width: 100%;
   height: 52px;
   padding: ${({ theme }) => theme.space(3)};
   border: 1px solid ${({ $active, $accent, theme }) => ($active ? $accent : theme.colors.g12)};
   border-radius: ${({ theme }) => theme.radius.md};
   background: ${({ $active, $accent }) => ($active ? $accent : "transparent")};
-  color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  text-align: center;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-`;
-
-/**
- * Full-width tile in the 2-column mobile sheet. Spanning both columns avoids
- * an orphan cell after the 2x2 of axes.
- */
-const SheetLayer = styled.button<{ $active: boolean }>`
-  grid-column: span 2;
-  width: 100%;
-  height: 52px;
-  padding: ${({ theme }) => theme.space(3)};
-  border: 1px solid
-    ${({ $active, theme }) => ($active ? theme.colors.penalty : theme.colors.g12)};
-  border-radius: ${({ theme }) => theme.radius.md};
-  background: ${({ $active, theme }) =>
-    $active ? theme.colors.penalty : "transparent"};
   color: ${({ $active, theme }) => ($active ? theme.colors.bg : theme.colors.g90)};
   font-family: ${({ theme }) => theme.font.mono};
   font-size: ${({ theme }) => theme.fontSize.sm};
@@ -264,7 +247,7 @@ export function LayerPicker({
       {AXES.map((a) => {
         const copy = resolveAxisCopy(a.key, unhinged);
         return (
-          <SheetAxis
+          <SheetTile
             key={a.key}
             $active={!penaltiesActive && axis === a.key}
             aria-pressed={!penaltiesActive && axis === a.key}
@@ -272,12 +255,18 @@ export function LayerPicker({
             onClick={() => selectAxis(a.key)}
           >
             {copy.label}
-          </SheetAxis>
+          </SheetTile>
         );
       })}
-      <SheetLayer $active={penaltiesActive} aria-pressed={penaltiesActive} onClick={selectPenalties}>
+      <SheetTile
+        $span
+        $active={penaltiesActive}
+        aria-pressed={penaltiesActive}
+        $accent={theme.colors.penalty}
+        onClick={selectPenalties}
+      >
         {finesCopy.label}
-      </SheetLayer>
+      </SheetTile>
     </SheetAxes>
   );
 }
