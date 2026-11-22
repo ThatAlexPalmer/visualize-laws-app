@@ -35,9 +35,7 @@ export function parseAxisBounds(json: unknown): AxisBounds | undefined {
   return out;
 }
 
-const PENALTY_SELECT = {
-  state: true,
-  place: true,
+const PENALTY_STATS = {
   penaltySections: true,
   amountSections: true,
   jailSections: true,
@@ -45,26 +43,22 @@ const PENALTY_SELECT = {
   medianFine: true,
   salienceAmount: true,
   salienceNoAmount: true,
+} as const satisfies Record<keyof PenaltyStats, true>;
+
+const PENALTY_SELECT = {
+  state: true,
+  place: true,
+  ...PENALTY_STATS,
 } as const;
 
-function toStats(row: {
-  penaltySections: number;
-  amountSections: number;
-  jailSections: number;
-  perDaySections: number;
-  medianFine: number | null;
-  salienceAmount: number | null;
-  salienceNoAmount: number | null;
-}): PenaltyStats {
-  return {
-    penaltySections: row.penaltySections,
-    amountSections: row.amountSections,
-    jailSections: row.jailSections,
-    perDaySections: row.perDaySections,
-    medianFine: row.medianFine,
-    salienceAmount: row.salienceAmount,
-    salienceNoAmount: row.salienceNoAmount,
-  };
+function pick<T, K extends keyof T>(row: T, keys: readonly K[]): Pick<T, K> {
+  const out = {} as Pick<T, K>;
+  for (const key of keys) out[key] = row[key];
+  return out;
+}
+
+function toStats(row: PenaltyStats): PenaltyStats {
+  return pick(row, Object.keys(PENALTY_STATS) as (keyof PenaltyStats)[]);
 }
 
 /**
@@ -134,18 +128,22 @@ async function penaltiesByPlace(state: string): Promise<Map<string, PenaltyStats
   );
 }
 
-// The columns that make up a JurisdictionAgg (excludes id + bounds).
-const AGG_SELECT = {
-  level: true,
-  state: true,
-  county: true,
-  name: true,
+const SCORE_SELECT = {
   lawCount: true,
   substantiveCount: true,
   avgOpacity: true,
   avgEnforcementDiscretion: true,
   avgPaternalism: true,
   avgProblemSalience: true,
+} as const;
+
+// JurisdictionAgg columns (excludes id + bounds). County fills reuse the scores.
+const AGG_SELECT = {
+  level: true,
+  state: true,
+  county: true,
+  name: true,
+  ...SCORE_SELECT,
 } as const;
 
 const LAW_SELECT = {
@@ -398,12 +396,7 @@ async function queryCountyFills(
         sourcePlace: true,
         county: true,
         name: true,
-        lawCount: true,
-        substantiveCount: true,
-        avgOpacity: true,
-        avgEnforcementDiscretion: true,
-        avgPaternalism: true,
-        avgProblemSalience: true,
+        ...SCORE_SELECT,
       },
       orderBy: { name: "asc" },
     });

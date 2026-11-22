@@ -169,103 +169,96 @@ async function estimateFilteredRows(
   }
 }
 
-// Summary columns returned by list endpoints. Full content is fetched only when
-// a user opens a law, keeping filter/page responses small.
-//
-// Qualified with the `laws` alias throughout because the rows query always
-// LEFT JOINs law_fines — the stated fine rides along on every list row so it
-// stays visible regardless of which map layer is selected.
-const SUMMARY_SELECT_COLUMNS = `
-  laws.id,
-  laws.header,
-  laws.is_substantive AS "isSubstantive",
-  laws."function",
-  laws.topic,
-  laws.source_jurisdiction_type AS "sourceJurisdictionType",
-  laws.state,
-  laws.city,
-  laws.county,
-  laws.opacity,
-  laws.enforcement_discretion AS "enforcementDiscretion",
-  laws.paternalism,
-  laws.problem_salience AS "problemSalience",
+// One column list for the list query, the detail query, and the LawRecord.
+// `content` is detail-only; `fine` is the joined effective_max, not a laws column.
+const LAW_FIELDS = [
+  ["id", "id"],
+  ["header", "header"],
+  ["is_substantive", "isSubstantive"],
+  ["function", "function"],
+  ["topic", "topic"],
+  ["source_jurisdiction_type", "sourceJurisdictionType"],
+  ["state", "state"],
+  ["city", "city"],
+  ["county", "county"],
+  ["opacity", "opacity"],
+  ["enforcement_discretion", "enforcementDiscretion"],
+  ["paternalism", "paternalism"],
+  ["problem_salience", "problemSalience"],
+] as const satisfies ReadonlyArray<
+  readonly [string, keyof Omit<LawRecord, "fine" | "content">]
+>;
+
+function lawSelect(alias: string): string {
+  return LAW_FIELDS.map(([column, key]) => {
+    const ident = column === "function" ? '"function"' : column;
+    const qualified = `${alias}.${ident}`;
+    return column === key ? qualified : `${qualified} AS "${key}"`;
+  }).join(",\n  ");
+}
+
+// Full content stays off the list. The stated fine rides along so it stays
+// visible on any map layer.
+const SUMMARY_SELECT_COLUMNS = `${lawSelect("laws")},
   lfs.effective_max AS "fine"
 `;
 
-// The summary columns plus content, qualified with the `l` alias for the
-// law_fines join.
-// Spelled out rather than derived, so a change to the summary list is a
-// deliberate edit here too.
-const DETAIL_SELECT_COLUMNS_QUALIFIED = `
-  l.id,
-  l.header,
-  l.is_substantive AS "isSubstantive",
-  l."function",
-  l.topic,
-  l.source_jurisdiction_type AS "sourceJurisdictionType",
-  l.state,
-  l.city,
-  l.county,
-  l.opacity,
-  l.enforcement_discretion AS "enforcementDiscretion",
-  l.paternalism,
-  l.problem_salience AS "problemSalience",
+const DETAIL_SELECT_COLUMNS = `${lawSelect("l")},
   l.content
 `;
 
-const FINES_SELECT_COLUMNS = `
-  f.fine_relevant AS "fineRelevant",
-  f.penalty_scope AS "penaltyScope",
-  f.penalty_stated AS "penaltyStated",
-  f.fine_structure AS "fineStructure",
-  f.fixed_amount AS "fixedAmount",
-  f.min_amount AS "minAmount",
-  f.max_amount AS "maxAmount",
-  f.first_violation_amount AS "firstViolationAmount",
-  f.second_violation_amount AS "secondViolationAmount",
-  f.subsequent_violation_amount AS "subsequentViolationAmount",
-  f.effective_min AS "effectiveMin",
-  f.effective_max AS "effectiveMax",
-  f.per_day_violation AS "perDayViolation",
-  f.jail_mentioned AS "jailMentioned",
-  f.penalty_nature AS "penaltyNature",
-  f.extraction_flag AS "extractionFlag",
-  f.grounded
-`;
+// One list for the detail SELECT and the LawFines object.
+// `missing` replaces SQL NULL. The two booleans are NOT NULL; false is only
+// the stand-in if a driver still returns null.
+const FINE_FIELDS = [
+  ["fineRelevant", "fine_relevant", null],
+  ["penaltyScope", "penalty_scope", null],
+  ["penaltyStated", "penalty_stated", null],
+  ["fineStructure", "fine_structure", null],
+  ["fixedAmount", "fixed_amount", null],
+  ["minAmount", "min_amount", null],
+  ["maxAmount", "max_amount", null],
+  ["firstViolationAmount", "first_violation_amount", null],
+  ["secondViolationAmount", "second_violation_amount", null],
+  ["subsequentViolationAmount", "subsequent_violation_amount", null],
+  ["effectiveMin", "effective_min", null],
+  ["effectiveMax", "effective_max", null],
+  ["perDayViolation", "per_day_violation", false],
+  ["jailMentioned", "jail_mentioned", false],
+  ["penaltyNature", "penalty_nature", null],
+  ["extractionFlag", "extraction_flag", null],
+  ["grounded", "grounded", null],
+] as const satisfies ReadonlyArray<readonly [keyof LawFines, string, null | false]>;
 
-/** Joined law + optional fines columns from the detail LEFT JOIN. */
-interface LawDetailRow {
-  id: number;
-  header: string | null;
-  isSubstantive: boolean;
-  function: string | null;
-  topic: string | null;
-  sourceJurisdictionType: string | null;
-  state: string;
-  city: string | null;
-  county: string | null;
-  opacity: number;
-  enforcementDiscretion: number;
-  paternalism: number;
-  problemSalience: number;
-  content: string;
-  fineRelevant: boolean | null;
-  penaltyScope: string | null;
-  penaltyStated: string | null;
-  fineStructure: string | null;
-  fixedAmount: number | null;
-  minAmount: number | null;
-  maxAmount: number | null;
-  firstViolationAmount: number | null;
-  secondViolationAmount: number | null;
-  subsequentViolationAmount: number | null;
-  effectiveMin: number | null;
-  effectiveMax: number | null;
-  perDayViolation: boolean | null;
-  jailMentioned: boolean | null;
-  penaltyNature: string | null;
-  extractionFlag: string | null;
-  grounded: boolean | null;
+const FINES_SELECT_COLUMNS = FINE_FIELDS.map(([key, column]) => {
+  const qualified = `f.${column}`;
+  return column === key ? qualified : `${qualified} AS "${key}"`;
+}).join(",\n  ");
+
+/** Joined law plus a nullable fines annotation. Null means the LEFT JOIN missed. */
+type LawDetailRow = Omit<LawRecord, "fine"> & {
+  [K in keyof LawFines]: LawFines[K] | null;
+};
+
+type FineRow = { [K in (typeof FINE_FIELDS)[number][0]]: LawFines[K] };
+
+function finesFromRow(row: LawDetailRow): FineRow | null {
+  if (row.fineRelevant == null) return null;
+  const fines = {} as FineRow;
+  for (const [key, , missing] of FINE_FIELDS) {
+    (fines as Record<string, unknown>)[key] = row[key] ?? missing;
+  }
+  return fines;
+}
+
+type LawFieldKey = (typeof LAW_FIELDS)[number][1];
+
+function lawFromRow(row: LawDetailRow): Pick<LawRecord, LawFieldKey> {
+  const law = {} as Pick<LawRecord, LawFieldKey>;
+  for (const [, key] of LAW_FIELDS) {
+    (law as Record<string, unknown>)[key] = row[key];
+  }
+  return law;
 }
 
 /**
@@ -275,7 +268,7 @@ interface LawDetailRow {
  */
 export async function getLawById(id: number): Promise<LawDetailResponse | null> {
   const rows = await prisma.$queryRaw<LawDetailRow[]>`
-    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS_QUALIFIED)},
+    SELECT ${Prisma.raw(DETAIL_SELECT_COLUMNS)},
            ${Prisma.raw(FINES_SELECT_COLUMNS)}
     FROM laws l
     LEFT JOIN law_fines f ON f.law_id = l.id
@@ -285,50 +278,16 @@ export async function getLawById(id: number): Promise<LawDetailResponse | null> 
   const row = rows[0];
   if (!row) return null;
 
-  const law: LawRecord = {
-    id: row.id,
-    header: row.header,
-    isSubstantive: row.isSubstantive,
-    function: row.function,
-    topic: row.topic,
-    sourceJurisdictionType: row.sourceJurisdictionType,
-    state: row.state,
-    city: row.city,
-    county: row.county,
-    opacity: row.opacity,
-    enforcementDiscretion: row.enforcementDiscretion,
-    paternalism: row.paternalism,
-    problemSalience: row.problemSalience,
+  const law = {
+    ...lawFromRow(row),
     content: row.content,
+    // The list query selects this same amount as `fine`.
     fine: row.effectiveMax ?? null,
   };
 
   // `fine_relevant` is NOT NULL in law_fines, so a null here means the LEFT
   // JOIN found no annotation rather than an annotation that says false.
-  const fines: LawFines | null =
-    row.fineRelevant === null || row.fineRelevant === undefined
-      ? null
-      : {
-          fineRelevant: row.fineRelevant,
-          penaltyScope: row.penaltyScope ?? null,
-          penaltyStated: row.penaltyStated ?? null,
-          fineStructure: row.fineStructure ?? null,
-          fixedAmount: row.fixedAmount ?? null,
-          minAmount: row.minAmount ?? null,
-          maxAmount: row.maxAmount ?? null,
-          firstViolationAmount: row.firstViolationAmount ?? null,
-          secondViolationAmount: row.secondViolationAmount ?? null,
-          subsequentViolationAmount: row.subsequentViolationAmount ?? null,
-          effectiveMin: row.effectiveMin ?? null,
-          effectiveMax: row.effectiveMax ?? null,
-          perDayViolation: row.perDayViolation ?? false,
-          jailMentioned: row.jailMentioned ?? false,
-          penaltyNature: row.penaltyNature ?? null,
-          extractionFlag: row.extractionFlag ?? null,
-          grounded: row.grounded ?? null,
-        };
-
-  return { law, fines };
+  return { law, fines: finesFromRow(row) };
 }
 
 /** Run a filtered/sorted/paginated query for laws from the LawFilters contract. */
