@@ -69,6 +69,21 @@ const NATURE_OPTS: { label: string; value: PenaltyNature }[] = [
   { label: "Criminal and civil", value: "both" },
 ];
 
+const PLACE_FIELDS = [
+  { field: "city" as const, label: "City", placeholder: "e.g. Pagosa Springs" },
+  { field: "county" as const, label: "County", placeholder: "e.g. El Paso" },
+];
+
+const ENUM_FIELDS = [
+  { id: "filter-function", label: "Function", key: "function" as const, empty: "Any function", options: FUNCTIONS },
+  { id: "filter-topic", label: "Topic", key: "topic" as const, empty: "Any topic", options: TOPICS },
+];
+
+const FLAG_TOGGLES = [
+  { key: "jail" as const, label: "Jail" },
+  { key: "perDay" as const, label: "Per day" },
+];
+
 const FilterSlot = styled.div`
   min-height: 0;
   height: 100%;
@@ -273,8 +288,10 @@ function FilterControls() {
   const placeLookupAbort = useRef<AbortController | null>(null);
   const dirtyAxes = useRef(new Set<Axis>());
 
-  const [city, setCity] = useState(filters.city ?? "");
-  const [county, setCounty] = useState(filters.county ?? "");
+  const [placeText, setPlaceText] = useState({
+    city: filters.city ?? "",
+    county: filters.county ?? "",
+  });
   const [ranges, setRanges] = useState<Record<Axis, ScoreRange>>(() =>
     makeFullRanges((axis) => filters[axis] ?? { ...DEFAULT_SCORE_RANGE }),
   );
@@ -368,12 +385,12 @@ function FilterControls() {
 
   // Keep local inputs in sync with the store (chips, map clicks, reset).
   useEffect(() => {
-    const next = cityFilter(state.focus, state.placeDraft);
-    setCity(next == null ? "" : prettySlug(next));
-  }, [state.focus, state.placeDraft]);
-  useEffect(() => {
-    const next = countyFilter(state.focus, state.placeDraft);
-    setCounty(next == null ? "" : prettySlug(next));
+    const text = (value: string | undefined) =>
+      value == null ? "" : prettySlug(value);
+    setPlaceText({
+      city: text(cityFilter(state.focus, state.placeDraft)),
+      county: text(countyFilter(state.focus, state.placeDraft)),
+    });
   }, [state.focus, state.placeDraft]);
   useEffect(() => {
     setRanges((previous) => {
@@ -399,13 +416,44 @@ function FilterControls() {
     cityDeb.cancel();
     countyDeb.cancel();
     rangeDeb.cancel();
-    setCity("");
-    setCounty("");
+    setPlaceText({ city: "", county: "" });
     const next = makeFullRanges(domainFor);
     rangesRef.current = next;
     setRanges(next);
     dispatch({ type: "resetFilters" });
   };
+
+  // `layoutId` is per control so the Type and Fines pills do not share one animation.
+  const segments = (
+    key: "isSubstantive" | "hasFine",
+    options: readonly { label: string; value: boolean | undefined }[],
+    layoutId: string,
+  ) => (
+    <Segmented>
+      {options.map((opt) => {
+        const active = filters[key] === opt.value;
+        return (
+          <SegItem
+            key={opt.label}
+            type="button"
+            $active={active}
+            aria-pressed={active}
+            onClick={() =>
+              dispatch({ type: "patchFilters", filters: { [key]: opt.value } })
+            }
+          >
+            {active && (
+              <PillHighlight
+                layoutId={layoutId}
+                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+              />
+            )}
+            {ui(opt.label, unhinged)}
+          </SegItem>
+        );
+      })}
+    </Segmented>
+  );
 
   return (
     <>
@@ -466,178 +514,87 @@ function FilterControls() {
         </Select>
       </Field>
 
-      <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="filter-city">City</FieldLabel>
-        <Input
-          id="filter-city"
-          type="text"
-          placeholder="e.g. Pagosa Springs"
-          value={city}
-          onChange={(e) => {
-            placeLookupAbort.current?.abort();
-            setCity(e.target.value);
-            cityDeb.run(e.target.value);
-            if (county) {
-              setCounty("");
-              countyDeb.cancel();
+      {PLACE_FIELDS.map(({ field, label, placeholder }) => {
+        const other = field === "city" ? "county" : "city";
+        const debounced = field === "city" ? cityDeb : countyDeb;
+        const otherDebounced = field === "city" ? countyDeb : cityDeb;
+        return (
+          <Field as={motion.div} variants={item} key={field}>
+            <FieldLabel htmlFor={`filter-${field}`}>{label}</FieldLabel>
+            <Input
+              id={`filter-${field}`}
+              type="text"
+              placeholder={placeholder}
+              value={placeText[field]}
+              onChange={(e) => {
+                const value = e.target.value;
+                placeLookupAbort.current?.abort();
+                setPlaceText((current) => {
+                  const next = { ...current, [field]: value };
+                  if (placeText[other]) next[other] = "";
+                  return next;
+                });
+                debounced.run(value);
+                if (placeText[other]) otherDebounced.cancel();
+              }}
+            />
+          </Field>
+        );
+      })}
+
+      {ENUM_FIELDS.map((field) => (
+        <Field as={motion.div} variants={item} key={field.key}>
+          <FieldLabel htmlFor={field.id}>{field.label}</FieldLabel>
+          <Select
+            id={field.id}
+            value={filters[field.key] ?? ""}
+            onChange={(e) =>
+              dispatch({
+                type: "patchFilters",
+                filters: { [field.key]: e.target.value || undefined },
+              })
             }
-          }}
-        />
-      </Field>
-
-      <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="filter-county">County</FieldLabel>
-        <Input
-          id="filter-county"
-          type="text"
-          placeholder="e.g. El Paso"
-          value={county}
-          onChange={(e) => {
-            placeLookupAbort.current?.abort();
-            setCounty(e.target.value);
-            countyDeb.run(e.target.value);
-            if (city) {
-              setCity("");
-              cityDeb.cancel();
-            }
-          }}
-        />
-      </Field>
-
-      <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="filter-function">Function</FieldLabel>
-        <Select
-          id="filter-function"
-          value={filters.function ?? ""}
-          onChange={(e) =>
-            dispatch({
-              type: "patchFilters",
-              filters: { function: e.target.value || undefined },
-            })
-          }
-        >
-          <option value="">{ui("Any function", unhinged)}</option>
-          {FUNCTIONS.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </Select>
-      </Field>
-
-      <Field as={motion.div} variants={item}>
-        <FieldLabel htmlFor="filter-topic">Topic</FieldLabel>
-        <Select
-          id="filter-topic"
-          value={filters.topic ?? ""}
-          onChange={(e) =>
-            dispatch({
-              type: "patchFilters",
-              filters: { topic: e.target.value || undefined },
-            })
-          }
-        >
-          <option value="">{ui("Any topic", unhinged)}</option>
-          {TOPICS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </Select>
-      </Field>
+          >
+            <option value="">{ui(field.empty, unhinged)}</option>
+            {field.options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ))}
 
       <Field as={motion.div} variants={item}>
         <SectionLabel>Type</SectionLabel>
-        <Segmented>
-          {SUBSTANTIVE_OPTS.map((opt) => {
-            const active = filters.isSubstantive === opt.value;
-            return (
-              <SegItem
-                key={opt.label}
-                type="button"
-                $active={active}
-                aria-pressed={active}
-                onClick={() =>
-                  dispatch({
-                    type: "patchFilters",
-                    filters: { isSubstantive: opt.value },
-                  })
-                }
-              >
-                {active && (
-                  <PillHighlight
-                    layoutId="filter-substantive-pill"
-                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                  />
-                )}
-                {ui(opt.label, unhinged)}
-              </SegItem>
-            );
-          })}
-        </Segmented>
+        {segments("isSubstantive", SUBSTANTIVE_OPTS, "filter-substantive-pill")}
       </Field>
 
       <Field as={motion.div} variants={item}>
         <SectionLabel>{ui("Fines", unhinged)}</SectionLabel>
-        <Segmented>
-          {FINE_OPTS.map((opt) => {
-            const active = (filters.hasFine ?? undefined) === opt.value;
-            return (
-              <SegItem
-                key={opt.label}
-                type="button"
-                $active={active}
-                aria-pressed={active}
-                onClick={() =>
-                  dispatch({
-                    type: "patchFilters",
-                    filters: { hasFine: opt.value },
-                  })
-                }
-              >
-                {active && (
-                  <PillHighlight
-                    layoutId="filter-fine-pill"
-                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                  />
-                )}
-                {ui(opt.label, unhinged)}
-              </SegItem>
-            );
-          })}
-        </Segmented>
+        {segments("hasFine", FINE_OPTS, "filter-fine-pill")}
 
         <ToggleRow>
-          <ToggleChip
-            type="button"
-            $variant="ghost"
-            $pill
-            $on={filters.jail === true}
-            aria-pressed={filters.jail === true}
-            onClick={() =>
-              dispatch({
-                type: "patchFilters",
-                filters: { jail: filters.jail ? undefined : true },
-              })
-            }
-          >
-            {ui("Jail", unhinged)}
-          </ToggleChip>
-          <ToggleChip
-            type="button"
-            $variant="ghost"
-            $pill
-            $on={filters.perDay === true}
-            aria-pressed={filters.perDay === true}
-            onClick={() =>
-              dispatch({
-                type: "patchFilters",
-                filters: { perDay: filters.perDay ? undefined : true },
-              })
-            }
-          >
-            {ui("Per day", unhinged)}
-          </ToggleChip>
+          {FLAG_TOGGLES.map((toggle) => (
+            <ToggleChip
+              key={toggle.key}
+              type="button"
+              $variant="ghost"
+              $pill
+              $on={filters[toggle.key] === true}
+              aria-pressed={filters[toggle.key] === true}
+              onClick={() =>
+                dispatch({
+                  type: "patchFilters",
+                  filters: {
+                    [toggle.key]: filters[toggle.key] ? undefined : true,
+                  },
+                })
+              }
+            >
+              {ui(toggle.label, unhinged)}
+            </ToggleChip>
+          ))}
         </ToggleRow>
 
         <Select
