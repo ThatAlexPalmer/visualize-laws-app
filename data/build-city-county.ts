@@ -26,16 +26,21 @@ import {
   type CityCountyMatch,
 } from "./cityCounty";
 import { prettySlug } from "./slugs";
+import type { AxisAverages } from "./types";
 import { acquireWriter, connectWriter, withTransaction } from "./importProgress";
-import { cacheDownload, loadEnv, writerConnectionString } from "./writer";
+import {
+  cacheDownload,
+  loadEnv,
+  scoreAggregateSql,
+  scoreAvgColumnList,
+  writerConnectionString,
+} from "./writer";
 
 const CACHE_DIR = resolve(process.cwd(), ".locus-cache");
 const PLACE_CACHE = resolve(CACHE_DIR, "national_place2020.txt");
 const COUNTY_CACHE = resolve(CACHE_DIR, "national_county2020.txt");
 
-interface CityAggRow {
-  state: string;
-  city: string;
+interface ScoreSqlRow {
   law_count: number;
   substantive_count: number;
   avg_opacity: number;
@@ -44,16 +49,24 @@ interface CityAggRow {
   avg_problem_salience: number;
 }
 
-interface NativeCountyRow {
+interface CityAggRow extends ScoreSqlRow {
+  state: string;
+  city: string;
+}
+
+interface NativeCountyRow extends ScoreSqlRow {
   state: string;
   county: string;
   name: string;
-  law_count: number;
-  substantive_count: number;
-  avg_opacity: number;
-  avg_enforcement_discretion: number;
-  avg_paternalism: number;
-  avg_problem_salience: number;
+}
+
+function averagesFrom(row: ScoreSqlRow): AxisAverages {
+  return {
+    avgOpacity: row.avg_opacity,
+    avgEnforcementDiscretion: row.avg_enforcement_discretion,
+    avgPaternalism: row.avg_paternalism,
+    avgProblemSalience: row.avg_problem_salience,
+  };
 }
 
 export interface CityCountyBuildStats {
@@ -137,12 +150,7 @@ export async function buildCityCountyTables(
   const cityAggs = await client.query<CityAggRow>(
     `SELECT
        state, city,
-       count(*)::int AS law_count,
-       count(*) FILTER (WHERE is_substantive)::int AS substantive_count,
-       COALESCE(avg(opacity), 0) AS avg_opacity,
-       COALESCE(avg(enforcement_discretion), 0) AS avg_enforcement_discretion,
-       COALESCE(avg(paternalism), 0) AS avg_paternalism,
-       COALESCE(avg(problem_salience), 0) AS avg_problem_salience
+       ${scoreAggregateSql({ names: true })}
      FROM laws
      WHERE city IS NOT NULL AND city <> ''
      GROUP BY state, city`,
@@ -155,8 +163,7 @@ export async function buildCityCountyTables(
   const natives = await client.query<NativeCountyRow>(
     `SELECT
        state, county, name, law_count, substantive_count,
-       avg_opacity, avg_enforcement_discretion, avg_paternalism,
-       avg_problem_salience
+       ${scoreAvgColumnList()}
      FROM jurisdictions
      WHERE level = 'county'
        AND state IS NOT NULL AND county IS NOT NULL`,
@@ -171,11 +178,7 @@ export async function buildCityCountyTables(
     name: string;
     lawCount: number;
     substantiveCount: number;
-    avgOpacity: number;
-    avgEnforcementDiscretion: number;
-    avgPaternalism: number;
-    avgProblemSalience: number;
-  };
+  } & AxisAverages;
 
   const fills: FillRow[] = [];
   const nativeFips = new Set<string>();
@@ -191,10 +194,7 @@ export async function buildCityCountyTables(
       name: row.name,
       lawCount: row.law_count,
       substantiveCount: row.substantive_count,
-      avgOpacity: row.avg_opacity,
-      avgEnforcementDiscretion: row.avg_enforcement_discretion,
-      avgPaternalism: row.avg_paternalism,
-      avgProblemSalience: row.avg_problem_salience,
+      ...averagesFrom(row),
     });
   }
 
@@ -226,10 +226,7 @@ export async function buildCityCountyTables(
       name: match.countyName ?? prettySlug(match.city),
       lawCount: agg.law_count,
       substantiveCount: agg.substantive_count,
-      avgOpacity: agg.avg_opacity,
-      avgEnforcementDiscretion: agg.avg_enforcement_discretion,
-      avgPaternalism: agg.avg_paternalism,
-      avgProblemSalience: agg.avg_problem_salience,
+      ...averagesFrom(agg),
     });
   }
 
@@ -257,8 +254,7 @@ export async function buildCityCountyTables(
       client,
       `INSERT INTO county_fills
          (state, fips, source, source_place, county, name,
-          law_count, substantive_count, avg_opacity,
-          avg_enforcement_discretion, avg_paternalism, avg_problem_salience)
+          law_count, substantive_count, ${scoreAvgColumnList()})
        VALUES`,
       fills.map((row) => [
         row.state,

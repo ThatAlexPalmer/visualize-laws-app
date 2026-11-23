@@ -14,16 +14,19 @@ import { Client } from "pg";
 import { buildCityCountyTables } from "./build-city-county";
 import { buildFinesTable } from "./build-fines";
 import { copyText, toBool, toStr } from "./fines";
-import { STATE_NAMES } from "./types";
+import { AXES, STATE_NAMES } from "./types";
 import {
   connectWriter, fingerprintFile, getProgress, saveProgress,
   verifyCorpusProgress, resetCorpus, withTransaction, ImportStateError,
 } from "./importProgress";
 import {
   LOAD_STATEMENT_TIMEOUT_MS,
+  axisBoundsSql,
   cacheDownload,
   copyBatch,
   loadEnv,
+  scoreAggregateSql,
+  scoreAvgColumnList,
   writerConnectionString,
 } from "./writer";
 
@@ -301,32 +304,20 @@ export async function loadShard(
 
 // --- Aggregates ------------------------------------------------------------
 
-// One score list for national, state, and county. The three rows must not drift.
-function scoreSelect(alias = ""): string {
-  const p = alias ? `${alias}.` : "";
-  return `count(*)::int,
-  count(*) FILTER (WHERE ${p}is_substantive)::int,
-  COALESCE(avg(${p}opacity), 0),
-  COALESCE(avg(${p}enforcement_discretion), 0),
-  COALESCE(avg(${p}paternalism), 0),
-  COALESCE(avg(${p}problem_salience), 0)`;
-}
-
 const AGG_COLUMNS =
   "level, state, county, name, law_count, substantive_count, " +
-  "avg_opacity, avg_enforcement_discretion, avg_paternalism, avg_problem_salience";
+  scoreAvgColumnList();
 
 function aggUpsert(bounds = false): string {
+  const averages = AXES.map((axis) => {
+    const column = `avg_${axis.column}`;
+    return `${column} = EXCLUDED.${column}`;
+  }).join(",\n  ");
   return `ON CONFLICT (level, state, county) DO UPDATE SET
   name = EXCLUDED.name,
   law_count = EXCLUDED.law_count,
   substantive_count = EXCLUDED.substantive_count,
-  avg_opacity = EXCLUDED.avg_opacity,
-  avg_enforcement_discretion = EXCLUDED.avg_enforcement_discretion,
-  avg_paternalism = EXCLUDED.avg_paternalism,
-  avg_problem_salience = EXCLUDED.avg_problem_salience${
-    bounds ? ",\n  bounds = EXCLUDED.bounds" : ""
-  }`;
+  ${averages}${bounds ? ",\n  bounds = EXCLUDED.bounds" : ""}`;
 }
 
 // State name comes from the shared STATE_NAMES map (passed as $1::jsonb) and
@@ -339,7 +330,7 @@ SELECT
   l.state,
   NULL,
   COALESCE($1::jsonb ->> l.state, upper(l.state)),
-  ${scoreSelect("l")}
+  ${scoreAggregateSql({ alias: "l" })}
 FROM laws l
 WHERE l.state IS NOT NULL AND l.state <> ''
 GROUP BY l.state
@@ -355,7 +346,7 @@ SELECT
   l.state,
   lower(l.county),
   initcap(replace(lower(l.county), '_', ' ')),
-  ${scoreSelect("l")}
+  ${scoreAggregateSql({ alias: "l" })}
 FROM laws l
 WHERE l.state IS NOT NULL AND l.state <> ''
   AND l.county IS NOT NULL AND l.county <> ''
@@ -371,12 +362,9 @@ SELECT
   NULL,
   NULL,
   'United States',
-  ${scoreSelect()},
+  ${scoreAggregateSql()},
   CASE WHEN count(*) = 0 THEN NULL ELSE jsonb_build_object(
-    'opacity', jsonb_build_array(min(opacity), max(opacity)),
-    'enforcementDiscretion', jsonb_build_array(min(enforcement_discretion), max(enforcement_discretion)),
-    'paternalism', jsonb_build_array(min(paternalism), max(paternalism)),
-    'problemSalience', jsonb_build_array(min(problem_salience), max(problem_salience))
+    ${axisBoundsSql()}
   ) END
 FROM laws
 ${aggUpsert(true)}`;
