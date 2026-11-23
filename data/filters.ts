@@ -24,17 +24,22 @@ export function normalizePagination(rawPage: unknown, rawSize: unknown) {
   return { page, pageSize, offset: (page - 1) * pageSize };
 }
 
+const TEXT_FIELDS = ["q", "state", "city", "county", "function", "topic"] as const;
+
+/** Only "on" is meaningful, so false is not serialized. */
+const TRUE_FLAGS = ["hasFine", "perDay", "jail"] as const;
+
+const NUMBER_FIELDS = ["fineMin", "fineMax"] as const;
+
 /** Serialize filters for GET /api/laws. Sort / dir only when `sort` is set. */
 export function filtersToSearchParams(f: LawFilters): URLSearchParams {
   const p = new URLSearchParams();
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
-  if (f.q) p.set("q", f.q);
-  if (f.state) p.set("state", f.state);
-  if (f.city) p.set("city", f.city);
-  if (f.county) p.set("county", f.county);
-  if (f.function) p.set("function", f.function);
-  if (f.topic) p.set("topic", f.topic);
+  for (const key of TEXT_FIELDS) {
+    const value = f[key];
+    if (value) p.set(key, value);
+  }
   if (f.isSubstantive !== undefined) {
     p.set("isSubstantive", f.isSubstantive ? "true" : "false");
   }
@@ -44,12 +49,13 @@ export function filtersToSearchParams(f: LawFilters): URLSearchParams {
     if (Number.isFinite(r.min)) p.set(`${a.key}Min`, String(r.min));
     if (Number.isFinite(r.max)) p.set(`${a.key}Max`, String(r.max));
   }
-  // Penalty flags: only "on" is meaningful, so false is not serialized.
-  if (f.hasFine === true) p.set("hasFine", "true");
-  if (f.perDay === true) p.set("perDay", "true");
-  if (f.jail === true) p.set("jail", "true");
-  if (f.fineMin !== undefined) p.set("fineMin", String(f.fineMin));
-  if (f.fineMax !== undefined) p.set("fineMax", String(f.fineMax));
+  for (const key of TRUE_FLAGS) {
+    if (f[key] === true) p.set(key, "true");
+  }
+  for (const key of NUMBER_FIELDS) {
+    const value = f[key];
+    if (value !== undefined) p.set(key, String(value));
+  }
   if (f.penaltyNature && isPenaltyNature(f.penaltyNature)) {
     p.set("penaltyNature", f.penaltyNature);
   }
@@ -71,23 +77,10 @@ export function searchParamsToFilters(sp: URLSearchParams): LawFilters {
     pageSize,
   };
 
-  const q = sp.get("q")?.trim();
-  if (q) filters.q = q;
-
-  const state = sp.get("state")?.trim();
-  if (state) filters.state = state;
-
-  const city = sp.get("city")?.trim();
-  if (city) filters.city = city;
-
-  const county = sp.get("county")?.trim();
-  if (county) filters.county = county;
-
-  const fn = sp.get("function")?.trim();
-  if (fn) filters.function = fn;
-
-  const topic = sp.get("topic")?.trim();
-  if (topic) filters.topic = topic;
+  for (const key of TEXT_FIELDS) {
+    const value = sp.get(key)?.trim();
+    if (value) filters[key] = value;
+  }
 
   const isSubstantive = sp.get("isSubstantive");
   if (isSubstantive === "true") filters.isSubstantive = true;
@@ -105,14 +98,14 @@ export function searchParamsToFilters(sp: URLSearchParams): LawFilters {
     };
   }
 
-  if (sp.get("hasFine") === "true") filters.hasFine = true;
-  if (sp.get("perDay") === "true") filters.perDay = true;
-  if (sp.get("jail") === "true") filters.jail = true;
+  for (const key of TRUE_FLAGS) {
+    if (sp.get(key) === "true") filters[key] = true;
+  }
 
-  const fineMin = parseFloatOrNull(sp.get("fineMin"));
-  if (fineMin !== null) filters.fineMin = fineMin;
-  const fineMax = parseFloatOrNull(sp.get("fineMax"));
-  if (fineMax !== null) filters.fineMax = fineMax;
+  for (const key of NUMBER_FIELDS) {
+    const value = parseFloatOrNull(sp.get(key));
+    if (value !== null) filters[key] = value;
+  }
 
   const nature = sp.get("penaltyNature")?.trim();
   if (nature && isPenaltyNature(nature)) filters.penaltyNature = nature;

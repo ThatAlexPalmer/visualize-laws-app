@@ -18,6 +18,8 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 
+import { AXES } from "./types";
+
 /** Local fallbacks when a script is invoked without dotenv-cli. */
 const WRITER_ENV_FILES = [".env.local", ".env"] as const;
 
@@ -109,6 +111,39 @@ export async function withTimeout<T>(
 /** Destroy the live pg socket so a hung COPY fails into the retry path. */
 function destroyCopySocket(client: Client): void {
   client.connection.stream.destroy(new Error("COPY watchdog timeout"));
+}
+
+/**
+ * Jurisdiction score aggregates, in `AXES` order: row count, substantive
+ * count, then one average per axis. Seed inserts these positionally.
+ * `names` adds `law_count` / `avg_<column>` for the city-county builder.
+ */
+export function scoreAggregateSql(opts: { alias?: string; names?: boolean } = {}): string {
+  const p = opts.alias ? `${opts.alias}.` : "";
+  const line = (expr: string, name: string) => (opts.names ? `${expr} AS ${name}` : expr);
+  return [
+    line("count(*)::int", "law_count"),
+    line(
+      `count(*) FILTER (WHERE ${p}is_substantive)::int`,
+      "substantive_count",
+    ),
+    ...AXES.map((axis) =>
+      line(`COALESCE(avg(${p}${axis.column}), 0)`, `avg_${axis.column}`),
+    ),
+  ].join(",\n  ");
+}
+
+/** `avg_opacity, avg_enforcement_discretion, ...` in `AXES` order. */
+export function scoreAvgColumnList(): string {
+  return AXES.map((axis) => `avg_${axis.column}`).join(", ");
+}
+
+/** Per-axis `[min, max]` object for the national `bounds` column. */
+export function axisBoundsSql(): string {
+  return AXES.map(
+    (axis) =>
+      `'${axis.key}', jsonb_build_array(min(${axis.column}), max(${axis.column}))`,
+  ).join(",\n    ");
 }
 
 /** COPY one batch on the current connection, with a socket-level watchdog. */
