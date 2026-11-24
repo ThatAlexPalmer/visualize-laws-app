@@ -42,9 +42,12 @@ import { Client } from "pg";
 
 import {
   FINES_EXPECTED_ROWS,
+  FINES_IDENTITY_COLUMNS,
   FINES_PARQUET_URL,
   FINES_STAGING_COLUMNS,
+  createFinesStagingSql,
   encodeStagingRow,
+  finesAttachLists,
   isModelAnnotated,
   type RawFineRow,
 } from "./fines";
@@ -81,46 +84,11 @@ const COPY_SQL = `COPY ${STAGING_TABLE} (row_no, ${FINES_STAGING_COLUMNS.map(
   (c) => `"${c}"`,
 ).join(", ")}) FROM STDIN`;
 
-// The seven identity columns, in the order used for both dedupe and join.
-const IDENTITY_COLUMNS = [
-  "state",
-  "source_jurisdiction_type",
-  "city",
-  "county",
-  "function",
-  "header",
-  "content_sha1",
-] as const;
+const IDENTITY_COLUMNS = FINES_IDENTITY_COLUMNS.map((column) => `"${column}"`).join(
+  ", ",
+);
 
-const CREATE_STAGING_SQL = `
-CREATE UNLOGGED TABLE IF NOT EXISTS ${STAGING_TABLE} (
-  row_no                      INTEGER PRIMARY KEY CHECK (row_no > 0),
-  state                       TEXT NOT NULL,
-  source_jurisdiction_type    TEXT NOT NULL,
-  city                        TEXT NOT NULL,
-  county                      TEXT NOT NULL,
-  "function"                  TEXT NOT NULL,
-  header                      TEXT NOT NULL,
-  content_sha1                TEXT NOT NULL,
-  annotation_source           TEXT NOT NULL,
-  fine_relevant               BOOLEAN NOT NULL,
-  penalty_scope               TEXT,
-  penalty_stated              TEXT,
-  fine_structure              TEXT,
-  fixed_amount                DOUBLE PRECISION,
-  min_amount                  DOUBLE PRECISION,
-  max_amount                  DOUBLE PRECISION,
-  first_violation_amount      DOUBLE PRECISION,
-  second_violation_amount     DOUBLE PRECISION,
-  subsequent_violation_amount DOUBLE PRECISION,
-  effective_min               DOUBLE PRECISION,
-  effective_max               DOUBLE PRECISION,
-  per_day_violation           BOOLEAN NOT NULL,
-  jail_mentioned              BOOLEAN NOT NULL,
-  penalty_nature              TEXT,
-  extraction_flag             TEXT,
-  grounded                    BOOLEAN
-)`;
+const CREATE_STAGING_SQL = createFinesStagingSql(STAGING_TABLE);
 
 /**
  * Dedupe + attach.
@@ -136,33 +104,19 @@ CREATE UNLOGGED TABLE IF NOT EXISTS ${STAGING_TABLE} (
  * planner can hash-join. `IS NOT DISTINCT FROM` would be correct but is not
  * hashable, and degrades to a nested loop over 2.2M rows.
  */
+const ATTACHED = finesAttachLists();
+
 const ATTACH_SQL = `
 INSERT INTO law_fines (
-  law_id, state, city, county, content_sha1, annotation_source,
-  fine_relevant, penalty_scope, penalty_stated, fine_structure,
-  fixed_amount, min_amount, max_amount,
-  first_violation_amount, second_violation_amount, subsequent_violation_amount,
-  effective_min, effective_max,
-  per_day_violation, jail_mentioned, penalty_nature, extraction_flag, grounded
+  law_id, ${ATTACHED.insert}
 )
 SELECT
   l.id,
-  f.state,
-  NULLIF(f.city, ''),
-  NULLIF(f.county, ''),
-  f.content_sha1,
-  f.annotation_source,
-  f.fine_relevant, f.penalty_scope, f.penalty_stated, f.fine_structure,
-  f.fixed_amount, f.min_amount, f.max_amount,
-  f.first_violation_amount, f.second_violation_amount,
-  f.subsequent_violation_amount,
-  f.effective_min, f.effective_max,
-  f.per_day_violation, f.jail_mentioned, f.penalty_nature,
-  f.extraction_flag, f.grounded
+  ${ATTACHED.select}
 FROM (
-  SELECT DISTINCT ON (${IDENTITY_COLUMNS.map((c) => `"${c}"`).join(", ")}) *
+  SELECT DISTINCT ON (${IDENTITY_COLUMNS}) *
   FROM ${STAGING_TABLE}
-  ORDER BY ${IDENTITY_COLUMNS.map((c) => `"${c}"`).join(", ")}, row_no
+  ORDER BY ${IDENTITY_COLUMNS}, row_no
 ) f
 JOIN laws l
   ON  l.state = f.state
@@ -177,7 +131,7 @@ JOIN laws l
 const DISTINCT_KEYS_SQL = `
 SELECT count(*)::bigint AS n FROM (
   SELECT 1 FROM ${STAGING_TABLE}
-  GROUP BY ${IDENTITY_COLUMNS.map((c) => `"${c}"`).join(", ")}
+  GROUP BY ${IDENTITY_COLUMNS}
 ) t`;
 
 /**
