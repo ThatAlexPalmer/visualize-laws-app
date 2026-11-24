@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { normalizePagination } from "../filters";
 import { prisma } from "../db";
+import { FINE_API_FIELDS } from "../fines";
 import { slugVariants } from "../slugs";
 import {
   AXES,
@@ -207,32 +208,12 @@ const DETAIL_SELECT_COLUMNS = `${lawSelect("l")},
   l.content
 `;
 
-// One list for the detail SELECT and the LawFines object.
 // `missing` replaces SQL NULL. The two booleans are NOT NULL; false is only
-// the stand-in if a driver still returns null.
-const FINE_FIELDS = [
-  ["fineRelevant", "fine_relevant", null],
-  ["penaltyScope", "penalty_scope", null],
-  ["penaltyStated", "penalty_stated", null],
-  ["fineStructure", "fine_structure", null],
-  ["fixedAmount", "fixed_amount", null],
-  ["minAmount", "min_amount", null],
-  ["maxAmount", "max_amount", null],
-  ["firstViolationAmount", "first_violation_amount", null],
-  ["secondViolationAmount", "second_violation_amount", null],
-  ["subsequentViolationAmount", "subsequent_violation_amount", null],
-  ["effectiveMin", "effective_min", null],
-  ["effectiveMax", "effective_max", null],
-  ["perDayViolation", "per_day_violation", false],
-  ["jailMentioned", "jail_mentioned", false],
-  ["penaltyNature", "penalty_nature", null],
-  ["extractionFlag", "extraction_flag", null],
-  ["grounded", "grounded", null],
-] as const satisfies ReadonlyArray<readonly [keyof LawFines, string, null | false]>;
-
-const FINES_SELECT_COLUMNS = FINE_FIELDS.map(([key, column]) => {
+// the stand-in if a driver still returns null. Column names live on
+// `FINE_API_FIELDS`, the same list the fines importer COPYs.
+const FINES_SELECT_COLUMNS = FINE_API_FIELDS.map(({ column, api }) => {
   const qualified = `f.${column}`;
-  return column === key ? qualified : `${qualified} AS "${key}"`;
+  return column === api ? qualified : `${qualified} AS "${api}"`;
 }).join(",\n  ");
 
 /** Joined law plus a nullable fines annotation. Null means the LEFT JOIN missed. */
@@ -240,13 +221,11 @@ type LawDetailRow = Omit<LawRecord, "fine"> & {
   [K in keyof LawFines]: LawFines[K] | null;
 };
 
-type FineRow = { [K in (typeof FINE_FIELDS)[number][0]]: LawFines[K] };
-
-function finesFromRow(row: LawDetailRow): FineRow | null {
+function finesFromRow(row: LawDetailRow): LawFines | null {
   if (row.fineRelevant == null) return null;
-  const fines = {} as FineRow;
-  for (const [key, , missing] of FINE_FIELDS) {
-    (fines as Record<string, unknown>)[key] = row[key] ?? missing;
+  const fines = {} as LawFines;
+  for (const { api, missing } of FINE_API_FIELDS) {
+    (fines as unknown as Record<string, unknown>)[api] = row[api] ?? missing;
   }
   return fines;
 }
